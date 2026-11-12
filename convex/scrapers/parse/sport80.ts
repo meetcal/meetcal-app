@@ -1,6 +1,6 @@
 // Pure parts of `scrapers/sport80.ts` (port of `usaw/sport80_api/update_supabase_from_sport80.py`).
 
-import { isRecord } from '../../lib/json';
+import { isRecord, textOrNull } from '../../lib/json';
 import { pyFloat } from '../lib/numbers';
 import { DAY_MS } from '../../lib/dates';
 
@@ -50,8 +50,8 @@ export function pageRows(page: Dict): Dict[] {
  */
 export function nested(data: Dict, primaryKey: string, columnName?: string): unknown {
   if (columnName && 'columns' in data) {
-    const columns = (data.columns ?? {}) as Record<string, Dict | undefined>;
-    return columns[columnName]?.value ?? null;
+    const column = isRecord(data.columns) ? data.columns[columnName] : undefined;
+    return isRecord(column) ? (column.value ?? null) : null;
   }
   return data[primaryKey] ?? null;
 }
@@ -112,18 +112,22 @@ export function newestEvents(events: Dict[], count = RECENT_EVENTS): Dict[] {
     .map(({ event }) => event);
 }
 
-/** The event id: the last segment of `action[0].route`, else `id`. */
+function firstAction(event: Dict): unknown {
+  const actions: unknown = event.action;
+  if (!Array.isArray(actions)) return undefined;
+  const [first]: unknown[] = actions;
+  return first;
+}
+
 export function eventIdOf(event: Dict): string | null {
-  const action = event.action;
-  if (Array.isArray(action) && action[0] && typeof action[0] === 'object' && typeof (action[0] as Dict).route === 'string') {
-    return ((action[0] as Dict).route as string).split('/').pop()!.trim();
-  }
+  const action = firstAction(event);
+  if (isRecord(action) && typeof action.route === 'string') return (action.route.split('/').pop() ?? '').trim();
   return event.id ? String(event.id).trim() : null;
 }
 
 export function hasResultsRoute(event: Dict): boolean {
-  const action = event.action;
-  return Array.isArray(action) && !!action[0] && typeof action[0] === 'object' && 'route' in (action[0] as Dict);
+  const action = firstAction(event);
+  return isRecord(action) && 'route' in action;
 }
 
 /** Python `float(x) if x is not None else None`; a value float() rejects makes the row invalid. */
@@ -178,8 +182,8 @@ function formatResult(eventId: string, meet: string, day: string, item: Dict): R
     eventId,
     meet,
     date: day,
-    name: or(nested(item, 'lifter', 'Athlete'), nested(item, 'name', 'Name')) as string | null,
-    age: or(nested(item, 'age_category', 'Age Category'), nested(item, 'age', 'Age')) as string | null,
+    name: textOrNull(or(nested(item, 'lifter', 'Athlete'), nested(item, 'name', 'Name'))),
+    age: textOrNull(or(nested(item, 'age_category', 'Age Category'), nested(item, 'age', 'Age'))),
     bodyWeight: toFloat(or(nested(item, 'body_weight_kg', 'Bodyweight'), nested(item, 'body_weight_(kg)'))),
     snatch1: toFloat(nested(item, 'snatch_lift_1', 'Snatch 1')),
     snatch2: toFloat(nested(item, 'snatch_lift_2', 'Snatch 2')),

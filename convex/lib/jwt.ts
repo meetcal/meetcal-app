@@ -1,3 +1,5 @@
+import { isRecord } from './json';
+
 /**
  * ES256 JWTs for MeetCal-issued tokens (`convex/apiTokens.ts`), signed with
  * Web Crypto. The signing key is a P-256 private JWK with a `kid`, kept in the
@@ -18,11 +20,11 @@ export function parseSigningJwk(raw: string | undefined): SigningJwk | null {
   } catch {
     return null;
   }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const jwk = value as Record<string, unknown>;
-  const text = (key: string) => typeof jwk[key] === 'string' && (jwk[key] as string).length > 0;
-  if (jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !text('d') || !text('x') || !text('y') || !text('kid')) return null;
-  return jwk as unknown as SigningJwk;
+  if (!isRecord(value)) return null;
+  const { kty, crv, d, x, y, kid } = value;
+  const text = (field: unknown): field is string => typeof field === 'string' && field.length > 0;
+  if (kty !== 'EC' || crv !== 'P-256' || !text(d) || !text(x) || !text(y) || !text(kid)) return null;
+  return { ...value, kty, crv, d, x, y, kid };
 }
 
 /** The key's public half, as a JWKS entry. */

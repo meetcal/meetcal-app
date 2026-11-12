@@ -1,3 +1,4 @@
+import { EVENT_RESULTS_MAX, readAll } from '../lib/boundedRead';
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -82,10 +83,13 @@ export function sameEditionRows(stored: readonly Doc<'lifting_results'>[], incom
 /** One event's stored results by `resultKey`, oldest first within a key; read once per mutation. */
 export async function eventResultsByKey(ctx: MutationCtx, eventId: string): Promise<Map<string, Doc<'lifting_results'>[]>> {
   const byKey = new Map<string, Doc<'lifting_results'>[]>();
-  const rows = await ctx.db
-    .query('lifting_results')
-    .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
-    .collect();
+  const rows = await readAll(
+    ctx.db
+      .query('lifting_results')
+      .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId)),
+    EVENT_RESULTS_MAX,
+    'results of one event',
+  );
   for (const row of rows.sort((a, b) => a._creationTime - b._creationTime)) {
     const key = resultKey(row);
     const list = byKey.get(key);
@@ -299,10 +303,13 @@ export const pruneEventResults = internalMutation({
     // edition: an imported row of another source, or of another edition, under
     // the same event id is not its to delete.
     const stored = (
-      await ctx.db
-        .query('lifting_results')
-        .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
-        .collect()
+      await readAll(
+        ctx.db
+          .query('lifting_results')
+          .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId)),
+        EVENT_RESULTS_MAX,
+        'results of one event',
+      )
     ).filter((row) => row.federation === 'USAW' && !row.adaptive && dates.some((date) => sameEditionDates(row.date, date)));
     const stale = stored.filter((row) => !kept.has(resultKey(row)));
     const dropped = stale.filter((row) => !names.has(normalizeName(row.name)));

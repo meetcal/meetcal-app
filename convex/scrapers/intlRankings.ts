@@ -1,5 +1,6 @@
 'use node';
 
+import { errorMessage } from '../lib/json';
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -46,7 +47,7 @@ export const run = internalAction({
         const info = parseMeetInfo(lines, title, url);
         pdfs.push({ title, url, info, rankings: parseRankingsTable(lines, info) });
       } catch (error) {
-        failures.push({ source: title, error: `${url}: ${(error as Error).message}` });
+        failures.push({ source: title, error: `${url}: ${errorMessage(error)}` });
       }
     }
     const failed = () => failures.map(({ source, error }) => `${source}: ${error}`);
@@ -80,7 +81,7 @@ export const run = internalAction({
         );
         groups.push({ meet, gender, ageCategory, ...counts, pruned: false });
       } catch (error) {
-        failures.push({ source: pdf.title, error: `${pdf.url}: not stored: ${(error as Error).message}` });
+        failures.push({ source: pdf.title, error: `${pdf.url}: not stored: ${errorMessage(error)}` });
       }
     }
     if (failures.length === 0 && groups.length > 0) {
@@ -92,7 +93,7 @@ export const run = internalAction({
         });
       } catch (error) {
         // A refused prune is a source failure too, so the alert tracks it as one.
-        throw sourcesFailed('intl rankings: stale groups not pruned', [{ source: 'prune', error: (error as Error).message }]);
+        throw sourcesFailed('intl rankings: stale groups not pruned', [{ source: 'prune', error: errorMessage(error) }]);
       }
       for (const g of pruned.deletedGroups) groups.push({ ...g, inserted: 0, updated: 0, unchanged: 0, pruned: true });
     }

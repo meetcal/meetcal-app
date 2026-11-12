@@ -190,11 +190,13 @@ export function wrappedStats(rows: readonly ApiLiftingResult[]): WrappedStats {
   const meetBests = [...meetTotals.values()].filter((total) => total > 0);
   const improvementFromFirst = meetBests.length >= 2 ? meetBests[meetBests.length - 1] - meetBests[0] : null;
 
+  const ATTEMPT_NUMBERS: readonly (1 | 2 | 3 | undefined)[] = [1, 2, 3];
   let favoriteAttempt: WrappedStats['favoriteAttempt'] = null;
   let favoriteMakes = 0;
   madeByAttempt.forEach((count, index) => {
-    if (count > favoriteMakes) {
-      favoriteAttempt = (index + 1) as 1 | 2 | 3;
+    const attempt = ATTEMPT_NUMBERS[index];
+    if (attempt !== undefined && count > favoriteMakes) {
+      favoriteAttempt = attempt;
       favoriteMakes = count;
     }
   });

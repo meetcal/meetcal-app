@@ -1,3 +1,5 @@
+import { changedFields, typedKeys } from '../lib/json';
+import { MEETS_MAX, MEET_RESULTS_MAX, MEET_RESULT_TITLES_MAX, readAll } from '../lib/boundedRead';
 import { v, type Infer } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -31,20 +33,26 @@ export const setMeetResultTitles = internalMutation({
     if (wanted.some((title) => title === '' || title === meet)) throw new Error("a results title must be non-empty and not the meet's own name");
     for (const title of wanted) {
       const other = (
-        await ctx.db
-          .query('meet_result_titles')
-          .withIndex('by_title', (q) => q.eq('title', title))
-          .collect()
+        await readAll(
+          ctx.db
+            .query('meet_result_titles')
+            .withIndex('by_title', (q) => q.eq('title', title)),
+          MEET_RESULT_TITLES_MAX,
+          'results titles linked to one meet',
+        )
       ).find((link) => link.meet !== meet);
       if (other) throw new Error(`${JSON.stringify(title)} is already linked to ${JSON.stringify(other.meet)}`);
       if ((await ctx.db.query('meets').withIndex('by_name', (q) => q.eq('name', title)).first()) !== null) {
         throw new Error(`${JSON.stringify(title)} is a meet of its own, not a results title`);
       }
     }
-    const existing = await ctx.db
-      .query('meet_result_titles')
-      .withIndex('by_meet', (q) => q.eq('meet', meet))
-      .collect();
+    const existing = await readAll(
+      ctx.db
+        .query('meet_result_titles')
+        .withIndex('by_meet', (q) => q.eq('meet', meet)),
+      MEET_RESULT_TITLES_MAX,
+      'results titles linked to one meet',
+    );
     for (const link of existing) await ctx.db.delete(link._id);
     for (const title of wanted) await ctx.db.insert('meet_result_titles', { meet, title });
     await recordWrite(ctx, 'lifting_results', [{ kind: 'meet', key: meet }]);
@@ -57,10 +65,13 @@ async function resultCounts(ctx: MutationCtx, titles: readonly string[]): Promis
   const counts: Record<string, number> = {};
   for (const title of titles) {
     counts[title] = (
-      await ctx.db
-        .query('lifting_results')
-        .withIndex('by_meet', (q) => q.eq('meet', title))
-        .collect()
+      await readAll(
+        ctx.db
+          .query('lifting_results')
+          .withIndex('by_meet', (q) => q.eq('meet', title)),
+        MEET_RESULTS_MAX,
+        'results of one meet',
+      )
     ).length;
   }
   return counts;
@@ -136,10 +147,13 @@ async function meetOfFederation(
   federation: string,
 ): Promise<{ match: Doc<'meets'> | null; taken: boolean; freeName: string | null }> {
   const named = (candidate: string) =>
-    ctx.db
-      .query('meets')
-      .withIndex('by_name', (q) => q.eq('name', candidate))
-      .collect();
+    readAll(
+      ctx.db
+        .query('meets')
+        .withIndex('by_name', (q) => q.eq('name', candidate)),
+      MEETS_MAX,
+      'meets',
+    );
   const plain = await named(name);
   const own = plain.filter((meet) => meetFederation(meet) === federation && (meet.sourceName ?? meet.name) === name);
   const taken = own.length === 0 && plain.length > 0;
@@ -160,10 +174,13 @@ async function meetOfFederation(
  * oldest, if older rows repeat one), or null.
  */
 async function meetOfSource(ctx: MutationCtx, sourceId: string, federation: string): Promise<Doc<'meets'> | null> {
-  const rows = await ctx.db
-    .query('meets')
-    .withIndex('by_source_id', (q) => q.eq('sourceId', sourceId))
-    .collect();
+  const rows = await readAll(
+    ctx.db
+      .query('meets')
+      .withIndex('by_source_id', (q) => q.eq('sourceId', sourceId)),
+    MEETS_MAX,
+    'meets',
+  );
   return oldestMeet(rows.filter((meet) => meetFederation(meet) === federation));
 }
 
@@ -234,7 +251,7 @@ export const upsertMeets = internalMutation({
       // title).
       const before = existing.sourceName ?? existing.name;
       const sourceName = row.name === name ? undefined : row.name;
-      const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => existing[key] !== values[key]) || existing.sourceName !== sourceName;
+      const changed = typedKeys(values).some((key) => existing[key] !== values[key]) || existing.sourceName !== sourceName;
       const sourceId = row.sourceId ? { sourceId: row.sourceId } : {};
       if (changed) {
         await ctx.db.patch(existing._id, { ...values, sourceName, ...sourceId, updatedAt: now });
@@ -299,10 +316,13 @@ export const setMeetSourceId = internalMutation({
   handler: async (ctx, { name, sourceId }) => {
     if (!/^\d+$/.test(sourceId)) throw new Error(`not a Sport80 event id: ${JSON.stringify(sourceId)}`);
     const meet = oldestMeet(
-      await ctx.db
-        .query('meets')
-        .withIndex('by_name', (q) => q.eq('name', name))
-        .collect(),
+      await readAll(
+        ctx.db
+          .query('meets')
+          .withIndex('by_name', (q) => q.eq('name', name)),
+        MEETS_MAX,
+        'meets',
+      ),
     );
     if (!meet) throw new Error(`no meet named ${JSON.stringify(name)}`);
     const holder = await meetOfSource(ctx, sourceId, meetFederation(meet));
@@ -384,10 +404,13 @@ export const syncUsamwEvents = internalMutation({
     // candidates for a folded-name or date match.
     const earliest = events.reduce((min, e) => (e.startDate < min ? e.startDate : min), '9999-12-31');
     const usamw = (
-      await ctx.db
-        .query('meets')
-        .withIndex('by_end_date', (q) => q.gte('endDate', earliest))
-        .collect()
+      await readAll(
+        ctx.db
+          .query('meets')
+          .withIndex('by_end_date', (q) => q.gte('endDate', earliest)),
+        MEETS_MAX,
+        'meets',
+      )
     ).filter((meet) => meetFederation(meet) === 'USAMW');
     // A meet stored under the event's own name is that event, whatever its
     // dates; those are claimed first, so a date match never takes another
@@ -458,14 +481,14 @@ export const syncUsamwEvents = internalMutation({
         site.venueName ??= 'TBD';
       }
       site.status = nextMeetStatus(match.status, meetStatusAt({ ...match, ...site }, now, formatters));
-      const patch = Object.fromEntries(Object.entries(site).filter(([key, value]) => match[key as keyof typeof site] !== value)) as Partial<Doc<'meets'>>;
+      const patch = changedFields(site, match);
       if (Object.keys(patch).length === 0) {
         result.unchanged.push(match.name);
         continue;
       }
       await ctx.db.patch(match._id, { ...patch, updatedAt: now });
       hints.push({ kind: 'meet', key: match.name });
-      result.updated.push(`${match.name} (${Object.entries(patch).map(([k, value]) => `${k} ${match[k as keyof typeof patch] ?? ''} -> ${value}`).join(', ')})`);
+      result.updated.push(`${match.name} (${typedKeys(patch).map((key) => `${key} ${match[key] ?? ''} -> ${patch[key]}`).join(', ')})`);
     }
     if (hints.length) await recordWrite(ctx, 'meets', hints);
     return result;
@@ -495,10 +518,13 @@ export const updateMeetStatuses = internalMutation({
     const meets: Doc<'meets'>[] = [];
     for (const status of ['upcoming', 'ongoing'] as const) {
       meets.push(
-        ...(await ctx.db
-          .query('meets')
-          .withIndex('by_status_and_start_date', (q) => q.eq('status', status))
-          .collect()),
+        ...(await readAll(
+          ctx.db
+            .query('meets')
+            .withIndex('by_status_and_start_date', (q) => q.eq('status', status)),
+          MEETS_MAX,
+          'meets',
+        )),
       );
     }
     const counts: Record<MeetStatus, number> = { upcoming: 0, ongoing: 0, completed: 0 };

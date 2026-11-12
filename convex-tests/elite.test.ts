@@ -19,6 +19,7 @@ import {
   scoreResult,
   standardFor,
   standardTables,
+  type EliteAnswer,
 } from '../convex/lib/elite';
 import { qpoints, type RankedFields, sinclair } from '../convex/lib/leaderboard';
 import {
@@ -31,7 +32,6 @@ import {
   eliteStandards,
   wsoElite,
 } from '../convex/results';
-import type { EliteAnswer } from '../convex/lib/elite';
 import { fakeDb, handlerOf } from './fakeDb';
 
 /** A USAW result with a made snatch and clean & jerk, its total their sum. */

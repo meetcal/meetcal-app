@@ -1,3 +1,5 @@
+import { typedKeys } from '../lib/json';
+import { MEET_ROSTER_MAX, MEET_SESSIONS_MAX, readAll } from '../lib/boundedRead';
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -46,10 +48,13 @@ export const replaceMeetAthletes = internalMutation({
     if (problems.length && !allowUnchecked) {
       throw new Error(`refusing ${meet}'s start list: ${problems.join('; ')}. If it really is so, pass '{"allowUnchecked":true}'`);
     }
-    const existing = await ctx.db
-      .query('athletes')
-      .withIndex('by_meet', (q) => q.eq('meet', meet))
-      .collect();
+    const existing = await readAll(
+      ctx.db
+        .query('athletes')
+        .withIndex('by_meet', (q) => q.eq('meet', meet)),
+      MEET_ROSTER_MAX,
+      'athletes of one meet',
+    );
     for (const row of existing) await ctx.db.delete(row._id);
     for (const row of rows) {
       const memberId = row.memberId.trim() === '' ? placeholderMemberId(row.name) : row.memberId;
@@ -73,10 +78,13 @@ export const replaceMeetSchedule = internalMutation({
   handler: async (ctx, { meet, rows, allowEmpty }) => {
     if (rows.some((row) => row.meet !== meet)) throw new Error('every row must belong to `meet`');
     refuseEmptyReplace('schedule', meet, rows, allowEmpty);
-    const existing = await ctx.db
-      .query('session_schedule')
-      .withIndex('by_meet', (q) => q.eq('meet', meet))
-      .collect();
+    const existing = await readAll(
+      ctx.db
+        .query('session_schedule')
+        .withIndex('by_meet', (q) => q.eq('meet', meet)),
+      MEET_SESSIONS_MAX,
+      'sessions of one meet',
+    );
     for (const row of existing) await ctx.db.delete(row._id);
     for (const row of rows) await ctx.db.insert('session_schedule', row);
     await recordWrite(ctx, 'session_schedule', [{ kind: 'meet', key: meet }]);
@@ -155,10 +163,13 @@ export const upsertEntryAthletes = internalMutation({
   args: { meet: v.string(), rows: v.array(entryRow), complete: v.optional(v.boolean()), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { meet, rows, complete, allowShrink }) => {
     if (rows.some((row) => row.meet !== meet)) throw new Error('every row must belong to `meet`');
-    const existing = await ctx.db
-      .query('athletes')
-      .withIndex('by_meet', (q) => q.eq('meet', meet))
-      .collect();
+    const existing = await readAll(
+      ctx.db
+        .query('athletes')
+        .withIndex('by_meet', (q) => q.eq('meet', meet)),
+      MEET_ROSTER_MAX,
+      'athletes of one meet',
+    );
     const stored = [...existing];
     const published = existing.some(hasSession);
     const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0, notOnStartList: 0, rejected: 0, deleted: 0 };
@@ -264,7 +275,7 @@ export const upsertEntryAthletes = internalMutation({
         }
         continue;
       }
-      const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => match[key] !== values[key]);
+      const changed = typedKeys(values).some((key) => match[key] !== values[key]);
       if (!changed) {
         counts.unchanged += 1;
         continue;

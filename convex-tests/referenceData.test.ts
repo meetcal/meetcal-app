@@ -3,14 +3,13 @@ import { computeNationalRankingsForYear, computeRecords, computeWsoList, compute
 
 type Row = Record<string, unknown>;
 
-/** Just enough of Convex's `ctx.db` for the reference readers: index equality and ranges, then `collect`. */
 function fakeCtx(tables: Record<string, Row[]>) {
   const ctx = {
     db: {
       query: (table: string) => {
         const all = tables[table] ?? [];
         return {
-          collect: async () => all,
+          take: async (count: number) => all.slice(0, count),
           withIndex: (_index: string, build: (q: unknown) => unknown) => {
             const filters: ((row: Row) => boolean)[] = [];
             const q = {
@@ -28,7 +27,7 @@ function fakeCtx(tables: Record<string, Row[]>) {
               },
             };
             build(q);
-            return { collect: async () => all.filter((row) => filters.every((f) => f(row))) };
+            return { take: async (count: number) => (all.filter((row) => filters.every((f) => f(row))).slice(0, count)) };
           },
         };
       },

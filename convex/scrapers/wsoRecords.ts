@@ -1,5 +1,6 @@
 'use node';
 
+import { errorMessage } from '../lib/json';
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -338,7 +339,7 @@ export async function syncWsoSources(
       if (result.records.length === 0) throw new Error('parsed 0 records (source layout changed?)');
       if (!dryRun) Object.assign(result, await store(source.wso, result.records));
     } catch (error) {
-      result.error = (error as Error).message;
+      result.error = errorMessage(error);
       console.error(`wso records (${source.wso}): ${result.error}`);
     }
   }

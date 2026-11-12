@@ -188,7 +188,8 @@ export function parseViewKey(key: string): ParsedViewKey | null {
   const session = MEET_SESSION_PATTERN.exec(key);
   if (session) return { family: 'session', meet: unescapeKeyPart(session[1]), sessionNumber: Number(session[2]) };
   const meetPart = MEET_PART_PATTERN.exec(key);
-  if (meetPart) return { family: 'meet', meet: unescapeKeyPart(meetPart[1]), part: meetPart[2] as MeetViewPart };
+  const part = meetPart === null ? undefined : MEET_VIEW_PARTS.find((known) => known === meetPart[2]);
+  if (meetPart && part !== undefined) return { family: 'meet', meet: unescapeKeyPart(meetPart[1]), part };
   const nat = NAT_PATTERN.exec(key);
   if (nat) return { family: 'nat', federation: unescapeKeyPart(nat[1]), ageCategory: unescapeKeyPart(nat[2]) };
   const adaptive = ADAPTIVE_PATTERN.exec(key);
@@ -235,7 +236,7 @@ export function viewDependencies(key: string): ViewDependencies | null {
       return { hints: [{ kind: 'adaptive', key: '1' }] };
     case 'wso':
       return { hints: [{ kind: 'table', key: 'wso_records' }] };
-    default: {
+    case undefined: {
       const table = REF_VIEW_TABLES[key];
       return table === undefined ? null : { hints: [{ kind: 'table', key: table }] };
     }

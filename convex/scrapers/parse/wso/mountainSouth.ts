@@ -1,3 +1,4 @@
+import { isOwnKey } from '../../../lib/json';
 import type { PdfLine } from '../../lib/pdf';
 import { recordHolder, setHolder, type RecordHolder } from '../holder';
 import { blankRecord, intOrNull, plusLast, type WsoRecord } from './common';
@@ -151,7 +152,9 @@ export function parseMountainSouth(pages: readonly (readonly (string | PdfLine)[
       const match = CLASS_LINE.exec(line);
       if (!match) throw new Error(`${wso}: unreadable class line ${JSON.stringify(line)} (layout changed?)`);
       const weightClass = plusLast(match[1]);
-      const field = FIELDS[match[2][0].toLowerCase() as keyof typeof FIELDS];
+      const initial = match[2][0].toLowerCase();
+      if (!isOwnKey(FIELDS, initial)) throw new Error(`${wso}: unknown lift in ${JSON.stringify(line)}`);
+      const field = FIELDS[initial];
       const key = JSON.stringify([section[0], section[1], weightClass]);
       const record = records.get(key) ?? blankRecord(wso, section[0], section[1], weightClass);
       records.set(key, record);

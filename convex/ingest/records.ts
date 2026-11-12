@@ -1,7 +1,7 @@
+import { RECORDS_MAX, WSO_RECORDS_MAX, readAll } from '../lib/boundedRead';
 import { v, type Infer } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
-import type { WithoutSystemFields } from 'convex/server';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Id } from '../_generated/dataModel';
 import { classKey, normalizeAgeCategory, normalizeGender } from '../lib/normalize';
 import { clearedLifts, exceedsShrink, liftCount } from '../lib/shrinkGuard';
 import { recordHolder } from '../schema';
@@ -47,10 +47,13 @@ export const upsertRecords = internalMutation({
       const doc = { recordType: row.recordType, ...recordClassDoc(row) };
       const existing = (
         await bySpellingOf(doc.gender, (gender) =>
-          ctx.db
-            .query('records')
-            .withIndex('by_type_age_gender', (q) => q.eq('recordType', doc.recordType).eq('ageCategory', doc.ageCategory).eq('gender', gender))
-            .collect(),
+          readAll(
+            ctx.db
+              .query('records')
+              .withIndex('by_type_age_gender', (q) => q.eq('recordType', doc.recordType).eq('ageCategory', doc.ageCategory).eq('gender', gender)),
+            RECORDS_MAX,
+            'records',
+          ),
         )
       ).find((r) => r.weightClass === doc.weightClass);
       pairs.push({ key: JSON.stringify([doc.recordType, doc.ageCategory, doc.gender, doc.weightClass]), doc, existing });
@@ -107,7 +110,7 @@ export const pruneRecords = internalMutation({
       throw new Error(`a ${recordType} class to keep is outside the groups pruned`);
     }
     const scope = groups === undefined ? null : new Set(groups.map(groupKey));
-    const stored = (await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect()).filter(
+    const stored = (await readAll(ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)), RECORDS_MAX, 'records')).filter(
       (row) => scope === null || scope.has(groupKey(row)),
     );
     const dropped = droppedClasses(`${recordType} record`, stored, keep, allowShrink);
@@ -124,25 +127,27 @@ type ExactSetCounts = { inserted: number; updated: number; deleted: number; unch
 
 type StoredClass = { ageCategory: string; gender: string; weightClass: string };
 
-export async function replaceExactSet<Table extends ExactSetTable>(
+export async function replaceExactSet<Stored extends StoredClass & { _id: Id<ExactSetTable> }, Incoming extends StoredClass>(
   ctx: MutationCtx,
   {
-    table,
     stored,
     docs,
     changed,
     duplicate,
+    insert,
+    replace,
     onUpdate = () => {},
   }: {
-    table: Table;
-    stored: readonly Doc<Table>[];
-    docs: readonly (WithoutSystemFields<Doc<Table>> & StoredClass)[];
-    changed: (stored: Doc<Table>, doc: WithoutSystemFields<Doc<Table>>) => boolean;
+    stored: readonly Stored[];
+    docs: readonly Incoming[];
+    changed: (stored: Stored, doc: Incoming) => boolean;
     duplicate: (key: string) => string;
-    onUpdate?: (stored: Doc<Table>, doc: WithoutSystemFields<Doc<Table>>) => void;
+    insert: (doc: Incoming) => Promise<unknown>;
+    replace: (stored: Stored, doc: Incoming) => Promise<unknown>;
+    onUpdate?: (stored: Stored, doc: Incoming) => void;
   },
 ): Promise<ExactSetCounts> {
-  const { byKey: existing, deleted: duplicates } = await onePerKey(ctx, stored as readonly (Doc<Table> & StoredClass)[], classKey);
+  const { byKey: existing, deleted: duplicates } = await onePerKey(ctx, stored, classKey);
   const counts = { inserted: 0, updated: 0, deleted: duplicates, unchanged: 0 };
   const seen = new Set<string>();
   for (const doc of docs) {
@@ -151,10 +156,10 @@ export async function replaceExactSet<Table extends ExactSetTable>(
     seen.add(key);
     const current = existing.get(key);
     if (!current) {
-      await ctx.db.insert(table, doc as never);
+      await insert(doc);
       counts.inserted += 1;
     } else if (changed(current, doc)) {
-      await ctx.db.replace(current._id, doc as never);
+      await replace(current, doc);
       counts.updated += 1;
       onUpdate(current, doc);
     } else counts.unchanged += 1;
@@ -195,8 +200,9 @@ export const replaceRecordSet = internalMutation({
     if (mistyped) throw new Error(`row of type ${mistyped.recordType} in a ${recordType} replace`);
     const changes: string[] = [];
     const counts = await replaceExactSet(ctx, {
-      table: 'records',
-      stored: await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect(),
+      insert: (doc) => ctx.db.insert('records', doc),
+      replace: (current, doc) => ctx.db.replace(current._id, doc),
+      stored: await readAll(ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)), RECORDS_MAX, 'records'),
       docs: rows.map((row) => ({ recordType, ...recordClassDoc(row) })),
       changed: recordChanged,
       duplicate: (key) => `Duplicate ${recordType} record in payload: ${key}`,
@@ -226,7 +232,7 @@ export const replaceWsoRecordSet = internalMutation({
   handler: async (ctx, { wso, rows, allowShrink }) => {
     if (!wso) throw new Error('wso is required');
     if (!rows.length) throw new Error(`refusing to replace ${wso} WSO records with an empty payload`);
-    const storedRows = await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect();
+    const storedRows = await readAll(ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)), WSO_RECORDS_MAX, 'WSO records');
     if (!allowShrink) {
       const incoming = new Map(rows.map((row) => [classKey(row), row]));
       const stored = new Map(storedRows.map((row) => [classKey(row), row]));
@@ -242,7 +248,8 @@ export const replaceWsoRecordSet = internalMutation({
       }
     }
     const counts = await replaceExactSet(ctx, {
-      table: 'wso_records',
+      insert: (doc) => ctx.db.insert('wso_records', doc),
+      replace: (current, doc) => ctx.db.replace(current._id, doc),
       stored: storedRows,
       docs: rows.map((row) => ({ wso, ...recordClassDoc(row) })),
       changed: recordChanged,

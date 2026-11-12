@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/json';
 import { fetchPdf, fetchText, retryable, withRetries, type RetryPolicy } from './http';
 
 /**
@@ -16,7 +17,7 @@ function gaveUp(url: string) {
     const detail = cause instanceof Error
       ? ` (${('code' in cause ? `${String(cause.code)}: ` : '')}${cause.message})`
       : '';
-    return Object.assign(new Error(`GET ${url} failed after ${attempts} attempt(s): ${error instanceof Error ? error.message : String(error)}${detail}`), { cause: error });
+    return Object.assign(new Error(`GET ${url} failed after ${attempts} attempt(s): ${errorMessage(error)}${detail}`), { cause: error });
   };
 }
 

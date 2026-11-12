@@ -1,3 +1,4 @@
+import { isListOf, isNumber, isPairOf, isString, parsedAs } from '../lib/json';
 import { chunks } from '../lib/concurrency';
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx } from '../_generated/server';
@@ -138,7 +139,7 @@ async function mergeShardSizes(ctx: MutationCtx, sizes: readonly { bigram: strin
   // the patched shards, so every other one would read as empty.
   const stored = await readViewJsonAnyAge(ctx, SEARCH_SHARD_SIZES_VIEW);
   if (stored === null) return;
-  const table = new Map<string, number>(JSON.parse(stored) as [string, number][]);
+  const table = new Map<string, number>(parsedAs(stored, isListOf(isPairOf(isString, isNumber)), 'the search shard sizes'));
   let changed = false;
   for (const { bigram, count } of sizes) {
     if (count > 0 && table.get(bigram) !== count) {

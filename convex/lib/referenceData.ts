@@ -1,3 +1,5 @@
+import { isRecord } from './json';
+import { ADAPTIVE_SEASON_RESULTS_MAX, DIVISION_YEAR_RESULTS_MAX, INTL_RANKINGS_MAX, QUALIFYING_TOTALS_MAX, RECORDS_MAX, STANDARDS_MAX, WSO_RECORDS_MAX, readAll } from './boundedRead';
 import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
@@ -39,7 +41,7 @@ function apiHolders(row: { snatchBy?: Infer<typeof recordHolder>; cjBy?: Infer<t
  * read these lifts as numbers and would fail the whole table on a `null`.
  */
 export async function computeRecords(ctx: QueryCtx) {
-  const rows = await ctx.db.query('records').collect();
+  const rows = await readAll(ctx.db.query('records'), RECORDS_MAX, 'records');
   return sortByWeightClass(rows, (r) => r.weightClass).map((r) => ({
     age_category: r.ageCategory,
     cj_record: r.cjRecord ?? UNSET_RECORD,
@@ -54,7 +56,7 @@ export async function computeRecords(ctx: QueryCtx) {
 
 /** `GET /data/standards` */
 export async function computeStandards(ctx: QueryCtx) {
-  const rows = await ctx.db.query('standards').collect();
+  const rows = await readAll(ctx.db.query('standards'), STANDARDS_MAX, 'standards');
   return sortByWeightClass(rows, (r) => r.weightClass).map((r) => ({
     age_category: r.ageCategory,
     gender: normalizeGender(r.gender),
@@ -66,7 +68,7 @@ export async function computeStandards(ctx: QueryCtx) {
 
 /** `GET /data/qualifying-totals` */
 export async function computeQualifyingTotals(ctx: QueryCtx) {
-  const rows = await ctx.db.query('qualifying_totals').collect();
+  const rows = await readAll(ctx.db.query('qualifying_totals'), QUALIFYING_TOTALS_MAX, 'qualifying totals');
   return sortByWeightClass(rows, (r) => r.weightClass).map((r) => ({
     event_name: r.eventName,
     gender: normalizeGender(r.gender),
@@ -79,7 +81,7 @@ export async function computeQualifyingTotals(ctx: QueryCtx) {
 /** `GET /data/intl-rankings`: complete rows, highest `ranking` first. */
 export async function computeIntlRankings(ctx: QueryCtx) {
   const complete = [];
-  for (const r of await ctx.db.query('intl_rankings').collect()) {
+  for (const r of await readAll(ctx.db.query('intl_rankings'), INTL_RANKINGS_MAX, 'international rankings')) {
     if (
       r.meet === undefined ||
       r.ranking === undefined ||
@@ -157,12 +159,15 @@ export async function computeNationalRankingsForYear(
   year: string,
 ): Promise<DatedTotal[]> {
   // One year's rows only: a class's whole history is too many reads for one query.
-  const rows = await ctx.db
-    .query('lifting_results')
-    .withIndex('by_federation_age_and_date', (q) =>
-      q.eq('federation', federation).eq('age', ageCategory).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
-    )
-    .collect();
+  const rows = await readAll(
+    ctx.db
+      .query('lifting_results')
+      .withIndex('by_federation_age_and_date', (q) =>
+        q.eq('federation', federation).eq('age', ageCategory).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
+      ),
+    DIVISION_YEAR_RESULTS_MAX,
+    'results of one division in one year',
+  );
   const ranked: DatedTotal[] = [];
   for (const row of rows) {
     if (rankable(row)) ranked.push({ name: row.name, total: row.total, date: row.date });
@@ -321,7 +326,7 @@ export async function clubNamesPage(ctx: QueryCtx, after: string | null): Promis
 
 /** `GET /data/wso/`: the WSOs with stored records that a job keeps current (`MAINTAINED_WSOS`). */
 export async function computeWsoList(ctx: QueryCtx): Promise<string[]> {
-  const rows = await ctx.db.query('wso_records').collect();
+  const rows = await readAll(ctx.db.query('wso_records'), WSO_RECORDS_MAX, 'WSO records');
   return distinctCollated(rows.map((r) => r.wso).filter(isMaintainedWso));
 }
 
@@ -338,6 +343,9 @@ export type WsoRecordRow = {
   total_by: ApiRecordHolder | null;
 };
 
+export const isWsoRecordRow = (item: unknown): item is WsoRecordRow =>
+  isRecord(item) && typeof item.wso === 'string' && typeof item.age_category === 'string' && typeof item.gender === 'string' && typeof item.weight_class === 'string';
+
 /**
  * `GET /data/wso/records` for a whole WSO, in the route's order (gender, age,
  * class, insertion; then weight class). Narrowing by age or gender filters
@@ -347,10 +355,13 @@ export async function computeWsoRows(ctx: QueryCtx, wso: string): Promise<WsoRec
   // A WSO no job maintains has no records to offer (`MAINTAINED_WSOS`).
   if (!isMaintainedWso(wso)) return [];
   const rows = (
-    await ctx.db
-      .query('wso_records')
-      .withIndex('by_wso', (q) => q.eq('wso', wso))
-      .collect()
+    await readAll(
+      ctx.db
+        .query('wso_records')
+        .withIndex('by_wso', (q) => q.eq('wso', wso)),
+      WSO_RECORDS_MAX,
+      'WSO records',
+    )
   ).sort(
     (a, b) =>
       compareCollated(normalizeGender(a.gender), normalizeGender(b.gender)) ||
@@ -415,10 +426,13 @@ export async function computeAdaptiveRecords(
   season: string,
 ): Promise<AdaptiveRecord[]> {
   // The season's results only: every adaptive result ever grows each year.
-  const rows = await ctx.db
-    .query('lifting_results')
-    .withIndex('by_adaptive_and_date', (q) => q.eq('adaptive', true).gte('date', `${season}-01-01`))
-    .collect();
+  const rows = await readAll(
+    ctx.db
+      .query('lifting_results')
+      .withIndex('by_adaptive_and_date', (q) => q.eq('adaptive', true).gte('date', `${season}-01-01`)),
+    ADAPTIVE_SEASON_RESULTS_MAX,
+    'adaptive results in one season',
+  );
 
   const byClass = new Map<string, AdaptiveRecord>();
   for (const row of rows) {

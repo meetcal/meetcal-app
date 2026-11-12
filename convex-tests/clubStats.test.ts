@@ -6,7 +6,6 @@ import { clubKey } from '../convex/lib/clubs';
 
 type Row = Record<string, unknown>;
 
-/** Just enough of Convex's `ctx.db` for the stats readers: index equality / `lt`, then `collect`. */
 function fakeCtx(tables: Record<string, Row[]>) {
   return {
     db: {
@@ -24,7 +23,7 @@ function fakeCtx(tables: Record<string, Row[]>) {
             },
           };
           build(q);
-          return { collect: async () => (tables[table] ?? []).filter((row) => filters.every((f) => f(row))) };
+          return { take: async (count: number) => ((tables[table] ?? []).filter((row) => filters.every((f) => f(row))).slice(0, count)) };
         },
       }),
     },

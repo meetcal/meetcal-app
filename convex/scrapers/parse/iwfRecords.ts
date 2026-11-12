@@ -17,7 +17,7 @@
 
 import { recordHolder, type RecordHolder } from './holder';
 import { unescapeHtml } from '../lib/html';
-import { isRecord } from '../../lib/json';
+import { isRecord, typedKeys } from '../../lib/json';
 
 export const IWF_PAGES = {
   Senior: 'List_of_world_records_in_Olympic_weightlifting',
@@ -108,8 +108,9 @@ export function parseIwfWikitext(wikitext: string, ageCategory: IwfAge): IwfReco
   if (!/^==\s*Current records\s*==\s*$/m.test(wikitext)) throw new Error(`${ageCategory}: no "Current records" section`);
   const records: IwfRecord[] = [];
   for (const section of wikitext.split(/^===\s*/m).slice(1)) {
-    const gender = /^(Men|Women)\s*===/.exec(section)?.[1] as 'Men' | 'Women' | undefined;
-    if (!gender) continue;
+    const named = /^(Men|Women)\s*===/.exec(section)?.[1];
+    if (named !== 'Men' && named !== 'Women') continue;
+    const gender = named;
     type ClassRow = { weightClass: string; lifts: Partial<Record<Lift, number>>; holders: Partial<Record<Lift, RecordHolder>> };
     const classes: ClassRow[] = [];
     let current: ClassRow | null = null;
@@ -184,7 +185,7 @@ export function parseIwfWikitext(wikitext: string, ageCategory: IwfAge): IwfReco
       const { snatchRecord, cjRecord, totalRecord } = lifts;
       if (snatchRecord === undefined || cjRecord === undefined || totalRecord === undefined) throw new Error(`${ageCategory} ${gender} ${weightClass}: missing a lift`);
       const record: IwfRecord = { ageCategory, gender, weightClass, snatchRecord, cjRecord, totalRecord };
-      for (const key of Object.keys(HOLDER_KEYS) as Lift[]) {
+      for (const key of typedKeys(HOLDER_KEYS)) {
         const holder = holders[key];
         if (holder) record[HOLDER_KEYS[key]] = holder;
       }

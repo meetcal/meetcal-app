@@ -1,3 +1,4 @@
+import { SUBMISSION_FILES_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalAction, internalMutation, internalQuery, mutation, type MutationCtx } from './_generated/server';
@@ -130,10 +131,13 @@ export const emailContent = internalQuery({
   handler: async (ctx, { submissionId }): Promise<(MeetSubmissionEmailContent & { emailedAt?: number }) | null> => {
     const submission = await ctx.db.get(submissionId);
     if (!submission) return null;
-    const rows = await ctx.db
-      .query('meet_submission_files')
-      .withIndex('by_submissionId', (q) => q.eq('submissionId', submissionId))
-      .collect();
+    const rows = await readAll(
+      ctx.db
+        .query('meet_submission_files')
+        .withIndex('by_submissionId', (q) => q.eq('submissionId', submissionId)),
+      SUBMISSION_FILES_MAX,
+      'files of one submission',
+    );
     const files = [];
     for (const row of rows) files.push({ name: row.name, size: row.size, url: await ctx.storage.getUrl(row.storageId) });
     const { meetName, startDate, endDate, contactEmail, userId, createdAt, emailedAt } = submission;

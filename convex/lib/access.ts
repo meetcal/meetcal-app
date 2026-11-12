@@ -1,3 +1,4 @@
+import { isRecord } from './json';
 import type { RegisteredQuery, UserIdentity } from 'convex/server';
 import { v, type ObjectType, type PropertyValidators } from 'convex/values';
 import { query, type QueryCtx } from '../_generated/server';
@@ -183,20 +184,19 @@ export function checkPass(fn: PremiumFunction | PremiumAction, pass: string | un
 /** The argument every premium query takes its pass in. */
 const passArg = { pass: v.optional(v.string()) };
 
-/** A public query that takes a `pass` and runs its handler only after `premiumRead` lets it through. */
+type WithPass<Args extends PropertyValidators> = ObjectType<Args & typeof passArg>;
+
 export function premiumQuery<Args extends PropertyValidators, Result>(
   fn: PremiumFunction,
-  definition: { args: Args; handler: (ctx: QueryCtx, args: ObjectType<Args>) => Promise<Result> },
-): RegisteredQuery<'public', ObjectType<Args> & { pass?: string }, Promise<Result>> {
-  const handler = async (ctx: QueryCtx, { pass, ...args }: ObjectType<Args> & { pass?: string }) => {
-    await premiumRead(ctx, fn, pass);
-    return await definition.handler(ctx, args as ObjectType<Args>);
-  };
-  // `query`'s overloads cannot follow a generic validator; the signature
-  // above is the one each call site gets.
-  return query({ args: { ...definition.args, ...passArg }, handler } as never) as unknown as RegisteredQuery<
-    'public',
-    ObjectType<Args> & { pass?: string },
-    Promise<Result>
-  >;
+  definition: { args: Args; handler: (ctx: QueryCtx, args: WithPass<Args>) => Promise<Result> },
+): RegisteredQuery<'public', WithPass<Args>, Promise<Result>> {
+  const args: Args & typeof passArg = { ...definition.args, ...passArg };
+  return query({
+    args,
+    handler: async (ctx: QueryCtx, received: WithPass<Args>): Promise<Result> => {
+      const sent: unknown = received;
+      await premiumRead(ctx, fn, isRecord(sent) && typeof sent.pass === 'string' ? sent.pass : undefined);
+      return await definition.handler(ctx, received);
+    },
+  });
 }

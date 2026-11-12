@@ -47,7 +47,8 @@ function ageSubdivision(raw: string, category: string): string {
 }
 
 export function parseOhioTab(csv: string, wso: string, tab: OhioTab): WsoRecord[] {
-  const [category, gender] = tab.split(' ') as [string, 'Men' | 'Women'];
+  const category = tab.slice(0, tab.indexOf(' '));
+  const gender = tab.endsWith(' Women') ? 'Women' : 'Men';
   const records: WsoRecord[] = [];
   const seen = new Set<string>();
   let age: string | null = category === 'Junior' || category === 'Senior' ? category : null;

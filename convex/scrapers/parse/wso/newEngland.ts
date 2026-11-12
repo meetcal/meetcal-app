@@ -63,7 +63,10 @@ export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: str
         continue;
       }
       if (line.runs[0]?.text.trim() === 'Class') {
-        columns = line.runs.flatMap((run) => (COLUMNS.includes(run.text.trim() as Column) ? [{ name: run.text.trim() as Column, centre: centre(run) }] : []));
+        columns = line.runs.flatMap((run) => {
+          const name = COLUMNS.find((column) => column === run.text.trim());
+          return name === undefined ? [] : [{ name, centre: centre(run) }];
+        });
         continue;
       }
       if (!columns?.length) continue;

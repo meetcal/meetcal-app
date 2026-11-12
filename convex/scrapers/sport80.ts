@@ -26,7 +26,7 @@ import {
 } from './parse/sport80';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { NOT_REACHED, runBudget } from './lib/budget';
-import { rowCount } from '../lib/json';
+import { errorMessage, rowCount, textOrNull } from '../lib/json';
 
 type Dict = Record<string, unknown>;
 
@@ -169,7 +169,7 @@ export const run = internalAction({
       try {
         events.push(...(await budget.orStop(api.eventIndex(y))));
       } catch (error) {
-        failures.push({ source: `event index ${y}`, error: (error as Error).message });
+        failures.push({ source: `event index ${y}`, error: errorMessage(error) });
       }
     }
     const stillFailing = only ? [] : failingEventIds(await ctx.runQuery(internal.cronStatus.failedSources, { job: RESULTS_JOB }));
@@ -209,7 +209,7 @@ export const run = internalAction({
     const seen = new Set<string>();
     for (const event of newest) {
       const eventId = eventIdOf(event);
-      const meet = nested(event, 'meet') as string | null;
+      const meet = textOrNull(nested(event, 'meet'));
       if (!eventId || !meet || seen.has(eventId)) continue;
       seen.add(eventId);
       if (!hasResultsRoute(event) || (only && !only.includes(eventId))) continue;
@@ -221,7 +221,7 @@ export const run = internalAction({
       try {
         table = await budget.orStop(api.eventResults(eventId));
       } catch (error) {
-        failures.push({ source: eventSource(meet, eventId), error: `${eventDate(event)}: ${(error as Error).message}` });
+        failures.push({ source: eventSource(meet, eventId), error: `${eventDate(event)}: ${errorMessage(error)}` });
         continue;
       }
       if (table.rows.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), table.rows), notWhole: table.notWhole });
@@ -287,7 +287,7 @@ export const run = internalAction({
         outcome.unchanged += counts.unchanged;
       }
       } catch (error) {
-        failures.push({ source, error: `not stored: ${(error as Error).message}` });
+        failures.push({ source, error: `not stored: ${errorMessage(error)}` });
         continue;
       }
       // Only a meet read in full is a safe basis for deleting what it lacks.
@@ -305,7 +305,7 @@ export const run = internalAction({
           if (pruned.remaining === 0 || pruned.deleted === 0) break;
         }
       } catch (error) {
-        failures.push({ source, error: `stale results not deleted: ${(error as Error).message}` });
+        failures.push({ source, error: `stale results not deleted: ${errorMessage(error)}` });
       }
     }
 

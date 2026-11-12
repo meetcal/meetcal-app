@@ -1,3 +1,4 @@
+import { errorMessage, isRecord, isStringList } from './json';
 import { ConvexError } from 'convex/values';
 
 /**
@@ -9,6 +10,16 @@ import { ConvexError } from 'convex/values';
  */
 export type Alerting = 'failed' | 'missed' | 'stuck';
 export type Notice = { kind: Alerting | 'recovered'; job: string; detail: string };
+const NOTICE_KINDS: readonly Notice['kind'][] = ['failed', 'missed', 'stuck', 'recovered'];
+
+export function queuedNotices(job: string, unsent: readonly { kind: string; detail: string }[] | undefined): Notice[] {
+  return (unsent ?? []).map(({ kind, detail }) => {
+    const known = NOTICE_KINDS.find((candidate) => candidate === kind);
+    if (known === undefined) throw new Error(`${job} has a queued notice of an unknown kind ${JSON.stringify(kind)}`);
+    return { job, kind: known, detail };
+  });
+}
+
 export type RunOutcome = { ok: true } | { ok: false; error: string; failedSources?: readonly string[] };
 
 /**
@@ -59,16 +70,14 @@ export function sourcesFailed(summary: string, failures: readonly SourceFailure[
 }
 
 function isSourcesFailedData(data: unknown): data is SourcesFailedData {
-  if (typeof data !== 'object' || data === null) return false;
-  const { message, failedSources } = data as Record<string, unknown>;
-  return typeof message === 'string' && Array.isArray(failedSources) && failedSources.every((s) => typeof s === 'string');
+  return isRecord(data) && typeof data.message === 'string' && isStringList(data.failedSources);
 }
 
 /** A failed run's error text, and its failed sources when the job threw `sourcesFailed` (the data survives `runAction`). */
 export function describeFailure(failure: unknown): { error: string; failedSources?: string[] } {
   const data = typeof failure === 'object' && failure !== null && 'data' in failure ? failure.data : undefined;
   if (isSourcesFailedData(data)) return { error: data.message, failedSources: data.failedSources };
-  return { error: failure instanceof Error ? failure.message : String(failure) };
+  return { error: errorMessage(failure) };
 }
 
 // A run should have started within this long of its scheduled time.
@@ -84,7 +93,7 @@ type Status = { startedAt: number; status: 'running' | 'ok' | 'error'; alerting?
  * running for over STUCK_AFTER_MS. A job that has never run is not judged
  * (a fresh deployment would otherwise report every job missed).
  */
-export function watch(job: string, status: Status | null, due: number, now: number): Notice | undefined {
+export function watch(job: string, status: Status | null, due: number, now: number): (Notice & { kind: 'missed' | 'stuck' }) | undefined {
   if (!status) return undefined;
   if (status.status === 'running' && now - status.startedAt > STUCK_AFTER_MS) {
     if (status.alerting === 'stuck') return undefined;

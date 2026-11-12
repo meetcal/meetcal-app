@@ -1,9 +1,10 @@
+import { errorMessage } from './lib/json';
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { FunctionReference } from 'convex/server';
 import { lastScheduled } from './lib/cronSchedule';
-import { describeFailure, START_MARGIN_MS, type Notice } from './lib/cronAlerts';
+import { describeFailure, queuedNotices, START_MARGIN_MS, type Notice } from './lib/cronAlerts';
 import { escapeHtml, sendEmail } from './lib/email';
 import { pingHeartbeat } from './lib/heartbeat';
 
@@ -108,7 +109,7 @@ async function finishRun(ctx: ActionCtx, job: string, failure: unknown, extra: N
     await markAllSent(ctx, notices);
     return true;
   } catch (sendError) {
-    console.error(`cron alert for ${job} could not be sent: ${(sendError as Error).message}`);
+    console.error(`cron alert for ${job} could not be sent: ${errorMessage(sendError)}`);
     return false;
   }
 }
@@ -139,7 +140,7 @@ export const run = internalAction({
       });
       watchdogQueued = await ctx.runQuery(internal.cronStatus.queuedWhileAlerting, { job: WATCHDOG_JOB });
     } catch (error) {
-      console.error(`watchdog check from ${job} failed: ${(error as Error).message}`);
+      console.error(`watchdog check from ${job} failed: ${errorMessage(error)}`);
     }
     await finishRun(ctx, job, failure, watchdogQueued);
     // Rethrown so the run also shows as failed in the Convex dashboard.
@@ -182,7 +183,7 @@ async function sweep(ctx: ActionCtx): Promise<Notice[]> {
   const statuses = new Map((await ctx.runQuery(internal.cronStatus.all, {})).map((s) => [s.job, s]));
   const pending: Notice[] = [];
   for (const [job, status] of statuses) {
-    for (const u of status.unsent ?? []) pending.push({ job, kind: u.kind as Notice['kind'], detail: u.detail });
+    pending.push(...queuedNotices(job, status.unsent));
   }
   for (const [job, { schedule }] of Object.entries(JOBS)) {
     // Judged and queued in one mutation, against the job's current row; queued

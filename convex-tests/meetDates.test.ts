@@ -69,7 +69,7 @@ describe('stored meet dates', () => {
       db: {
         query: (table: string) =>
           table === 'meets'
-            ? { collect: async () => meets }
+            ? { take: async (count: number) => meets.slice(0, count) }
             : { withIndex: () => ({ first: async () => null, unique: async () => null }) },
         patch,
         insert,
@@ -293,7 +293,7 @@ describe('scraped data problems', () => {
       meet({ name: 'Several zones', venueState: 'Canada', venueCity: 'Vancouver', timeZone: 'America/Toronto' }),
       meet({ name: 'Island', venueState: 'Spain', venueCity: 'La Laguna', timeZone: 'Atlantic/Canary' }),
     ];
-    const ctx = { db: { query: () => ({ collect: async () => meets }) } };
+    const ctx = { db: { query: () => ({ take: async (count: number) => meets.slice(0, count) }) } };
     const result = await handlerOf(meetDataProblems)(ctx, {});
     expect(result).toEqual({
       badDates: [

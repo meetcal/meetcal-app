@@ -1,3 +1,5 @@
+import { isAnything, isString, isListOf, isPairOf, isStringList, isStringOrNull, parsedAs } from './lib/json';
+import { MEET_ROSTER_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { premiumQuery } from './lib/access';
 import type { QueryCtx } from './_generated/server';
@@ -6,25 +8,7 @@ import type { Doc } from './_generated/dataModel';
 import { clubKey, clubLabels } from './lib/clubs';
 import { clubAthleteCount, clubStats, computeStatsRows, isPlaceholderMeet, meetByName, meetResultTitles, readStatsViewItems } from './lib/meetData';
 import { paddedDate, type MeetStatus } from './lib/meetStatus';
-import {
-  ADAPTIVE_RECORDS_SEASON_START,
-  clubNamesPage,
-  computeAdaptiveRecords,
-  computeIntlRankings,
-  computeNationalRankingsForYear,
-  computeQualifyingTotals,
-  computeRecords,
-  computeStandards,
-  computeWsoList,
-  computeWsoRows,
-  distinctCollated,
-  filterWsoRows,
-  nationalRankingPage,
-  requireAdaptiveGender,
-  requireKnownRankingClass,
-  wsoAgeGroups as ageGroupsOf,
-  type WsoRecordRow,
-} from './lib/referenceData';
+import { ADAPTIVE_RECORDS_SEASON_START, clubNamesPage, computeAdaptiveRecords, computeIntlRankings, computeNationalRankingsForYear, computeQualifyingTotals, computeRecords, computeStandards, computeWsoList, computeWsoRows, distinctCollated, filterWsoRows, nationalRankingPage, requireAdaptiveGender, requireKnownRankingClass, wsoAgeGroups as ageGroupsOf, type WsoRecordRow, isWsoRecordRow } from './lib/referenceData';
 import { athleteGenderLabel } from './lib/normalize';
 import { DOCUMENTS_ONE_QUERY_MAY_READ } from './lib/readBudget';
 import { compareCollated } from './lib/sort';
@@ -134,8 +118,8 @@ export const nationalRankingsByYear = premiumQuery('reference:nationalRankingsBy
 export const wsoList = premiumQuery('reference:wsoList', {
   args: { ifNoneMatch },
   handler: async (ctx, args) => {
-    const view = await readFreshView<string>(ctx, REF_VIEWS.wso_list);
-    const wsos = view ? (await view.items()).filter(isMaintainedWso) : await computeWsoList(ctx);
+    const view = await readFreshView(ctx, REF_VIEWS.wso_list);
+    const wsos = view ? (await view.items(isString)).filter(isMaintainedWso) : await computeWsoList(ctx);
     return revalidated(wsos, args.ifNoneMatch);
   },
 });
@@ -174,8 +158,8 @@ export const registrationWsos = premiumQuery('reference:registrationWsos', {
 async function wsoRows(ctx: QueryCtx, wso: string): Promise<WsoRecordRow[]> {
   // Before the views are rebuilt, an unmaintained WSO's old view is still fresh.
   if (!isMaintainedWso(wso)) return [];
-  const view = await readFreshView<WsoRecordRow>(ctx, wsoKey(wso));
-  return view ? await view.items() : await computeWsoRows(ctx, wso);
+  const view = await readFreshView(ctx, wsoKey(wso));
+  return view ? await view.items(isWsoRecordRow) : await computeWsoRows(ctx, wso);
 }
 
 /** `GET /data/wso/age-groups` */
@@ -245,7 +229,7 @@ export const clubs = premiumQuery('reference:clubs', {
 export async function clubSpellings(ctx: QueryCtx, club: string): Promise<string[]> {
   const text = await readViewJsonAnyAge(ctx, REF_VIEWS.club_spellings);
   const key = clubKey(club);
-  const group = text === null ? undefined : (JSON.parse(text) as [string, string[]][]).find(([k]) => k === key)?.[1];
+  const group = text === null ? undefined : parsedAs(text, isListOf(isPairOf(isString, isStringList)), 'the club spellings view').find(([k]) => k === key)?.[1];
   return [club, ...(group ?? []).filter((spelling) => spelling !== club)];
 }
 
@@ -382,15 +366,9 @@ function clubCursor(cursor: string | null): ClubCursor {
   if (cursor === null) return { done: [], spelling: null, cursor: null };
   try {
     const parsed: unknown = JSON.parse(cursor);
-    if (
-      Array.isArray(parsed) &&
-      parsed[0] === 'club' &&
-      Array.isArray(parsed[1]) &&
-      parsed[1].every((done) => typeof done === 'string') &&
-      typeof parsed[2] === 'string' &&
-      (typeof parsed[3] === 'string' || parsed[3] === null)
-    ) {
-      return { done: parsed[1] as string[], spelling: parsed[2], cursor: parsed[3] as string | null };
+    if (Array.isArray(parsed) && parsed.length === 4) {
+      const [family, done, spelling, cursor]: unknown[] = parsed;
+      if (family === 'club' && isStringList(done) && typeof spelling === 'string' && isStringOrNull(cursor)) return { done, spelling, cursor };
     }
   } catch {
     // A bare Convex cursor.
@@ -621,7 +599,7 @@ export const clubMeetStats = premiumQuery('reference:clubMeetStats', {
     requireNonEmpty('meet', meet);
     const statsView = await readFreshView(ctx, meetKey(meet, 'stats'));
     if (statsView) {
-      const { rows, club_counts } = readStatsViewItems(await statsView.items());
+      const { rows, club_counts } = readStatsViewItems(await statsView.items(isAnything));
       // Counts are keyed by `clubKey`; a view built before that holds one per spelling.
       const key = clubKey(club);
       const count = club_counts.filter(([name]) => clubKey(name) === key).reduce((sum, [, n]) => sum + n, 0);
@@ -631,10 +609,13 @@ export const clubMeetStats = premiumQuery('reference:clubMeetStats', {
     // first registered since the spellings view was built included.
     const [rows, roster] = await Promise.all([
       computeStatsRows(ctx, meet, club),
-      ctx.db
-        .query('athletes')
-        .withIndex('by_meet', (q) => q.eq('meet', meet))
-        .collect(),
+      readAll(
+        ctx.db
+          .query('athletes')
+          .withIndex('by_meet', (q) => q.eq('meet', meet)),
+        MEET_ROSTER_MAX,
+        'athletes of one meet',
+      ),
     ]);
     return clubStats(rows, club, clubAthleteCount(roster, club));
   },

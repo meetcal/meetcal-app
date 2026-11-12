@@ -1,3 +1,4 @@
+import { EVENT_RESULTS_MAX, MEETS_MAX, MEET_ROSTER_MAX, REFERENCE_TABLE_ROWS_MAX, USER_SAVED_SESSIONS_MAX, WSO_RECORDS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
@@ -86,7 +87,7 @@ export const normalizeReferenceCasing = internalMutation({
     ),
   },
   handler: async (ctx, { table }) => {
-    const rows = (await ctx.db.query(table).collect()).sort((a, b) => b._creationTime - a._creationTime);
+    const rows = (await readAll(ctx.db.query(table), REFERENCE_TABLE_ROWS_MAX, 'rows of one reference table')).sort((a, b) => b._creationTime - a._creationTime);
     const naturalKey = (row: Record<string, unknown>): string | null => {
       switch (table) {
         case 'standards':
@@ -97,7 +98,7 @@ export const normalizeReferenceCasing = internalMutation({
           return JSON.stringify([row.wso, row.ageCategory, row.gender, row.weightClass]);
         case 'qualifying_totals':
           return JSON.stringify([row.eventName, row.gender, row.ageCategory, row.weightClass]);
-        default:
+        case 'intl_rankings':
           return null;
       }
     };
@@ -105,7 +106,7 @@ export const normalizeReferenceCasing = internalMutation({
     let patched = 0;
     let deleted = 0;
     for (const row of rows) {
-      const normalized: Record<string, string> = {};
+      const normalized: { gender?: string; ageCategory?: string } = {};
       if (typeof row.gender === 'string') normalized.gender = normalizeGender(row.gender);
       if (typeof row.ageCategory === 'string') normalized.ageCategory = normalizeAgeCategory(row.ageCategory);
       const key = naturalKey({ ...row, ...normalized });
@@ -116,7 +117,7 @@ export const normalizeReferenceCasing = internalMutation({
       }
       if (key !== null) seen.add(key);
       if (normalized.gender !== row.gender || normalized.ageCategory !== row.ageCategory) {
-        await ctx.db.patch(row._id, normalized as never);
+        await ctx.db.patch(row._id, normalized);
         patched += 1;
       }
     }
@@ -318,7 +319,7 @@ export const duplicateMeetNames = internalQuery({
   args: {},
   handler: async (ctx) => {
     const byName = new Map<string, Doc<'meets'>[]>();
-    for (const meet of await ctx.db.query('meets').collect()) byName.set(meet.name, [...(byName.get(meet.name) ?? []), meet]);
+    for (const meet of await readAll(ctx.db.query('meets'), MEETS_MAX, 'meets')) byName.set(meet.name, [...(byName.get(meet.name) ?? []), meet]);
     return [...byName]
       .filter(([, meets]) => meets.length > 1)
       .map(([name, meets]) => ({
@@ -345,7 +346,7 @@ export const padMeetDates = internalMutation({
   handler: async (ctx) => {
     const hints: { kind: 'meet'; key: string }[] = [];
     const unreadable: string[] = [];
-    for (const meet of await ctx.db.query('meets').collect()) {
+    for (const meet of await readAll(ctx.db.query('meets'), MEETS_MAX, 'meets')) {
       const startDate = canonicalMeetDate(meet.startDate);
       const endDate = canonicalMeetDate(meet.endDate);
       if (startDate === null || endDate === null) {
@@ -423,10 +424,13 @@ export const cleanupRosterRows = internalMutation({
     const found: string[] = [];
     let count = deleted;
     for (const meet of meets) {
-      const rows = await ctx.db
-        .query('athletes')
-        .withIndex('by_meet', (q) => q.eq('meet', meet))
-        .collect();
+      const rows = await readAll(
+        ctx.db
+          .query('athletes')
+          .withIndex('by_meet', (q) => q.eq('meet', meet)),
+        MEET_ROSTER_MAX,
+        'athletes of one meet',
+      );
       const junkMeet =
         isJunkMeetName(meet) &&
         (await ctx.db
@@ -514,10 +518,13 @@ export const dedupeSavedSessions = internalMutation({
     }
     let removed = 0;
     for (const { sessionId, userId } of groups.values()) {
-      const rows = await ctx.db
-        .query('saved_sessions')
-        .withIndex('by_sessionId_and_userId', (q) => q.eq('sessionId', sessionId).eq('userId', userId))
-        .collect();
+      const rows = await readAll(
+        ctx.db
+          .query('saved_sessions')
+          .withIndex('by_sessionId_and_userId', (q) => q.eq('sessionId', sessionId).eq('userId', userId)),
+        USER_SAVED_SESSIONS_MAX,
+        'saved sessions of one user',
+      );
       if (rows.length < 2) continue;
       const kept = rows.reduce((newest, row) => (row.updatedAt > newest.updatedAt ? row : newest));
       for (const row of rows) {
@@ -595,10 +602,13 @@ export const redateEventResults = internalMutation({
     if (target === undefined) throw new Error(`no meet named ${JSON.stringify(meet)}: pass the event's "date"`);
     if (!isValidIsoDate(target)) throw new Error(`not a YYYY-MM-DD date: ${JSON.stringify(target)}`);
     const rows = (
-      await ctx.db
-        .query('lifting_results')
-        .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
-        .collect()
+      await readAll(
+        ctx.db
+          .query('lifting_results')
+          .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId)),
+        EVENT_RESULTS_MAX,
+        'results of one event',
+      )
     ).filter((row) => row.meet === meet);
     if (rows.length === 0) throw new Error(`event ${eventId} holds no results of ${JSON.stringify(meet)}`);
     const keep = new Set(keepDates);
@@ -721,7 +731,7 @@ export const deleteUnmaintainedWsoRecords = internalMutation({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }) => {
     const deleted: Record<string, number> = {};
-    for (const row of await ctx.db.query('wso_records').collect()) {
+    for (const row of await readAll(ctx.db.query('wso_records'), WSO_RECORDS_MAX, 'WSO records')) {
       if (isMaintainedWso(row.wso)) continue;
       deleted[row.wso] = (deleted[row.wso] ?? 0) + 1;
       if (!dryRun) await ctx.db.delete(row._id);

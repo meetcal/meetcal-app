@@ -1,5 +1,6 @@
 'use node';
 
+import { errorMessage } from '../lib/json';
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -64,7 +65,7 @@ export const run = internalAction({
     try {
       rows = await readAllWidgetPages((page) => fetchWidgetPage(widgetPageUrl('', page)));
     } catch (error) {
-      result.error = (error as Error).message;
+      result.error = errorMessage(error);
       console.error(`meets: fetch failed: ${result.error}`);
       throw sourcesFailed('meets', [{ source: LISTING, error: result.error }]);
     }

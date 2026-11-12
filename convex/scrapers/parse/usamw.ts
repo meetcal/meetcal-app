@@ -39,9 +39,12 @@ export function discoverRecordPdfs(page: string): { Men: string; Women: string }
     if (/[-_ ]women(?:[ _-]*\d+)?\.pdf\b/.test(lower)) urls.Women = url;
     else if (/[-_ ]men(?:[ _-]*\d+)?\.pdf\b/.test(lower)) urls.Men = url;
   }
-  const missing = (['Men', 'Women'] as const).filter((g) => !urls[g]);
-  if (missing.length) throw new Error(`Could not find national records PDFs for: ${missing.join(', ')}`);
-  return urls as { Men: string; Women: string };
+  const { Men, Women } = urls;
+  if (!Men || !Women) {
+    const missing = (['Men', 'Women'] as const).filter((gender) => !urls[gender]);
+    throw new Error(`Could not find national records PDFs for: ${missing.join(', ')}`);
+  }
+  return { Men, Women };
 }
 
 export function ageCategory(text: string): string | null {

@@ -1,3 +1,5 @@
+import { errorMessage, isRecord, isStringList } from './lib/json';
+import { MEETS_MAX, MEET_ROSTER_MAX, VIEW_HEADERS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { internalAction, internalQuery } from './_generated/server';
 import { api, internal } from './_generated/api';
@@ -47,7 +49,7 @@ import { answerBests, answerByNames, answerRecent } from './results';
 export const live = internalQuery({
   args: { endpoint: v.string(), args: v.any() },
   handler: async (ctx, { endpoint, args }): Promise<string> => {
-    const a = args as Record<string, any>;
+    const a: Record<string, any> = args;
     switch (endpoint) {
       case 'schedule':
         return JSON.stringify(await computeScheduleRows(ctx, a.meet));
@@ -84,16 +86,19 @@ export const live = internalQuery({
         return JSON.stringify(await computeAdaptiveRecords(ctx, requireAdaptiveGender(a.gender), a.excludeFederation, ADAPTIVE_RECORDS_SEASON_START));
       case 'clubMeetStats': {
         // The whole roster: the count is of every spelling of the club (`clubKey`).
-        const roster = await ctx.db
-          .query('athletes')
-          .withIndex('by_meet', (q) => q.eq('meet', a.meet))
-          .collect();
+        const roster = await readAll(
+          ctx.db
+            .query('athletes')
+            .withIndex('by_meet', (q) => q.eq('meet', a.meet)),
+          MEET_ROSTER_MAX,
+          'athletes of one meet',
+        );
         return JSON.stringify(clubStats(await computeStatsRows(ctx, a.meet, a.club), a.club, clubAthleteCount(roster, a.club)));
       }
       case 'byNames':
       case 'recent':
       case 'bests': {
-        const keys = distinctNameKeys(a.names as string[]);
+        const keys = distinctNameKeys(a.names);
         const histories = new Map(await Promise.all(keys.map(async (k) => [k, await computeHistory(ctx, k)] as const)));
         if (endpoint === 'byNames') return answerByNames(histories, a.latestOnly ?? false, a.limitPerName);
         if (endpoint === 'recent') return answerRecent(histories, a.cutoffDate);
@@ -115,8 +120,8 @@ export const live = internalQuery({
 export const sample = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const meets = [...new Set((await ctx.db.query('meets').collect()).map((m) => m.name))].sort(compareBytes);
-    const classes = (await ctx.db.query('views').collect()).flatMap((h) => {
+    const meets = [...new Set((await readAll(ctx.db.query('meets'), MEETS_MAX, 'meets')).map((m) => m.name))].sort(compareBytes);
+    const classes = (await readAll(ctx.db.query('views'), VIEW_HEADERS_MAX, 'views')).flatMap((h) => {
       const parsed = parseViewKey(h.key);
       return parsed?.family === 'nat' ? [{ federation: parsed.federation, ageCategory: parsed.ageCategory }] : [];
     });
@@ -127,10 +132,13 @@ export const sample = internalQuery({
 export const meetSample = internalQuery({
   args: { meet: v.string() },
   handler: async (ctx, { meet }) => {
-    const athletes = await ctx.db
-      .query('athletes')
-      .withIndex('by_meet', (q) => q.eq('meet', meet))
-      .collect();
+    const athletes = await readAll(
+      ctx.db
+        .query('athletes')
+        .withIndex('by_meet', (q) => q.eq('meet', meet)),
+      MEET_ROSTER_MAX,
+      'athletes of one meet',
+    );
     const sessions = [...new Set(athletes.map((a) => a.sessionNumber).filter((n): n is number => n !== undefined))];
     const platforms = [...new Set(athletes.map((a) => a.sessionPlatform).filter((p): p is string => p !== undefined))];
     const clubs = [...new Set(athletes.map((a) => a.club).filter((club) => club.trim() !== ''))].slice(0, 3);
@@ -141,10 +149,7 @@ export const meetSample = internalQuery({
 
 /** Unwraps `{ json }` / `{ etag, json }` answers into parsed values. */
 function decode(answer: unknown): unknown {
-  if (answer && typeof answer === 'object' && 'json' in answer) {
-    return JSON.parse((answer as { json: string }).json);
-  }
-  return answer;
+  return isRecord(answer) && typeof answer.json === 'string' ? JSON.parse(answer.json) : answer;
 }
 
 /**
@@ -153,11 +158,7 @@ function decode(answer: unknown): unknown {
  * Array order is compared as is.
  */
 function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, v) =>
-    v && typeof v === 'object' && !Array.isArray(v)
-      ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, (v as Record<string, unknown>)[k]]))
-      : v,
-  );
+  return JSON.stringify(value, (_key, v: unknown) => (isRecord(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, v[k]])) : v));
 }
 
 function firstDifference(a: unknown, b: unknown, path = '$'): string | null {
@@ -169,10 +170,10 @@ function firstDifference(a: unknown, b: unknown, path = '$'): string | null {
       if (d) return d;
     }
   }
-  if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+  if (isRecord(a) && isRecord(b)) {
     const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
     for (const key of keys) {
-      const d = firstDifference((a as any)[key], (b as any)[key], `${path}.${key}`);
+      const d = firstDifference(a[key], b[key], `${path}.${key}`);
       if (d) return d;
     }
   }
@@ -200,7 +201,7 @@ export const run = internalAction({
         const diff = firstDifference(decode(f), JSON.parse(l));
         if (diff) mismatches.push(`${label}: ${diff}`);
       } catch (error) {
-        mismatches.push(`${label}: threw ${(error as Error).message.slice(0, 200)}`);
+        mismatches.push(`${label}: threw ${errorMessage(error).slice(0, 200)}`);
       }
     };
 
@@ -261,11 +262,13 @@ export const run = internalAction({
     for (const gender of ['men', 'women']) {
       await compare(`adaptive ${gender}`, ctx.runQuery(api.reference.adaptiveRecords, withPass({ gender, excludeFederation: 'BWL' })), 'adaptive', { gender, excludeFederation: 'BWL' });
     }
-    const wsos = decode(await ctx.runQuery(api.reference.wsoList, withPass({}))) as string[];
+    const wsos = decode(await ctx.runQuery(api.reference.wsoList, withPass({})));
+    if (!isStringList(wsos)) throw new Error('reference:wsoList did not answer a list of names');
     for (const wso of wsos) {
       await compare(`wsoAgeGroups ${wso}`, ctx.runQuery(api.reference.wsoAgeGroups, withPass({ wso })), 'wsoAgeGroups', { wso });
       await compare(`wsoRecords ${wso}`, ctx.runQuery(api.reference.wsoRecords, withPass({ wso })), 'wsoRecords', { wso });
-      const ages = decode(await ctx.runQuery(api.reference.wsoAgeGroups, withPass({ wso }))) as string[];
+      const ages = decode(await ctx.runQuery(api.reference.wsoAgeGroups, withPass({ wso })));
+      if (!isStringList(ages)) throw new Error(`reference:wsoAgeGroups did not answer a list of age groups for ${wso}`);
       if (ages[0]) {
         await compare(`wsoRecords ${wso} ${ages[0]} Men`, ctx.runQuery(api.reference.wsoRecords, withPass({ wso, ageCategory: ages[0], gender: 'Men' })), 'wsoRecords', { wso, ageCategory: ages[0], gender: 'Men' });
       }
@@ -305,7 +308,7 @@ export const viewFreshness = internalQuery({
     const athletePending = hints.some((h) => h.kind === 'athlete');
     let fresh = 0;
     const stale: Record<string, number> = {};
-    for (const header of await ctx.db.query('views').collect()) {
+    for (const header of await readAll(ctx.db.query('views'), VIEW_HEADERS_MAX, 'views')) {
       const dependencies = viewDependencies(header.key);
       if (!header.sources || dependencies === null) continue;
       const isStale =

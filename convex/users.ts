@@ -1,3 +1,5 @@
+import { isStringList } from './lib/json';
+import { USER_SAVED_SESSIONS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
@@ -62,8 +64,8 @@ function requiredNumber(args: RawArgs, key: string): number {
 function optionalStringArray(args: RawArgs, key: string): string[] | undefined {
   const value = args[key];
   if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) throw apiError(400, `${key} must be a list of strings`);
-  return value as string[];
+  if (!isStringList(value)) throw apiError(400, `${key} must be a list of strings`);
+  return value;
 }
 
 /**
@@ -267,10 +269,13 @@ export const savedSessions = query({
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
     const rows = newestRowPerSession(
-      await ctx.db
-        .query('saved_sessions')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
+      await readAll(
+        ctx.db
+          .query('saved_sessions')
+          .withIndex('by_userId', (q) => q.eq('userId', userId)),
+        USER_SAVED_SESSIONS_MAX,
+        'saved sessions of one user',
+      ),
     );
     rows.sort(
       (a, b) =>
@@ -413,10 +418,13 @@ export const deleteSavedSessions = mutation({
       if (newerResets.has(meet ?? null) || newerResets.has(null)) return { deleted_count: 0 };
     }
     const inScope = (
-      await ctx.db
-        .query('saved_sessions')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect()
+      await readAll(
+        ctx.db
+          .query('saved_sessions')
+          .withIndex('by_userId', (q) => q.eq('userId', userId)),
+        USER_SAVED_SESSIONS_MAX,
+        'saved sessions of one user',
+      )
     ).filter((row) => (meet === undefined || row.meet === meet) && !newerResets.has(row.meet));
     const rows: Doc<'saved_sessions'>[] = [];
     for (const row of inScope) {

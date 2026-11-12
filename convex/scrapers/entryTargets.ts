@@ -1,3 +1,4 @@
+import { ENTRY_TARGETS_MAX, readAll } from '../lib/boundedRead';
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 
@@ -10,7 +11,7 @@ import { internalMutation, internalQuery } from '../_generated/server';
  */
 export const list = internalQuery({
   args: {},
-  handler: async (ctx) => (await ctx.db.query('entry_targets').collect()).map(({ label, url }) => ({ label, url })),
+  handler: async (ctx) => (await readAll(ctx.db.query('entry_targets'), ENTRY_TARGETS_MAX, 'entry targets')).map(({ label, url }) => ({ label, url })),
 });
 
 export const add = internalMutation({

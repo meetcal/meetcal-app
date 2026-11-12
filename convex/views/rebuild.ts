@@ -1,3 +1,4 @@
+import { isStringList, isTextPair, parsedAs } from '../lib/json';
 import { chunks } from '../lib/concurrency';
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery, type ActionCtx, type QueryCtx } from '../_generated/server';
@@ -282,7 +283,7 @@ export const rebuildStage = internalAction({
           resumed ? directoryNames((await ctx.runQuery(internal.views.textViewAnyAge, { key: SCAN_NAMES_VIEW })) ?? '') : [],
         );
         const classes = new Set<string>(
-          resumed ? (JSON.parse((await ctx.runQuery(internal.views.jsonViewAnyAge, { key: SCAN_CLASSES_VIEW })) ?? '[]') as string[]) : [],
+          resumed ? parsedAs((await ctx.runQuery(internal.views.jsonViewAnyAge, { key: SCAN_CLASSES_VIEW })) ?? '[]', isStringList, 'the scanned classes') : [],
         );
         let cursor: string | null = args.cursor ?? null;
         for (;;) {
@@ -341,10 +342,10 @@ export const rebuildStage = internalAction({
       }
       case 'nat': {
         const text: string | null = await ctx.runQuery(internal.views.jsonViewAnyAge, { key: REBUILD_CLASSES_VIEW });
-        const classes = JSON.parse(text ?? '[]') as string[];
+        const classes = parsedAs(text ?? '[]', isStringList, 'the classes to rebuild');
         let i = args.offset;
         for (; i < classes.length && !overBudget(); i += 1) {
-          const [federation, ageCategory] = JSON.parse(classes[i]) as [string, string];
+          const [federation, ageCategory] = parsedAs(classes[i], isTextPair, 'a class to rebuild');
           await rebuildTarget(ctx, natKey(federation, ageCategory), [{ kind: 'nat', key: classes[i] }], () =>
             ctx.runAction(internal.views.buildNat, { federation, ageCategory }),
           );

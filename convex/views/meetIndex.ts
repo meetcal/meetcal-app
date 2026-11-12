@@ -1,3 +1,4 @@
+import { isStringList, parsedAs } from '../lib/json';
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -33,18 +34,24 @@ export const rosterMeetsPage = internalQuery({
   },
 });
 
-/** Every meet row's name, as JSON text (the list may pass Convex's array limit). */
-export const meetRowNames = internalQuery({
-  args: {},
-  handler: async (ctx): Promise<string> => JSON.stringify((await ctx.db.query('meets').collect()).map((m) => m.name)),
+const MEET_ROWS_PER_PAGE = 2000;
+
+export const meetRowNamesPage = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { cursor }): Promise<{ names: string[]; cursor: string | null }> => {
+    const page = await ctx.db.query('meets').paginate({ cursor, numItems: MEET_ROWS_PER_PAGE });
+    return { names: page.page.map((meet) => meet.name), cursor: page.isDone ? null : page.continueCursor };
+  },
 });
 
-/**
- * Every meet with a meet row or a roster, sorted, read from the tables.
- * Rosters can arrive before their meet row; their start lists still resolve.
- */
 export async function discoverMeets(ctx: ActionCtx): Promise<string[]> {
-  const names = new Set(JSON.parse(await ctx.runQuery(internal.views.meetRowNames, {})) as string[]);
+  const names = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const page: { names: string[]; cursor: string | null } = await ctx.runQuery(internal.views.meetRowNamesPage, { cursor });
+    for (const name of page.names) names.add(name);
+    cursor = page.cursor;
+  } while (cursor !== null);
   let after: string | null = null;
   do {
     const page: { meets: string[]; after: string | null } = await ctx.runQuery(internal.views.rosterMeetsPage, { after });
@@ -67,7 +74,7 @@ export const patchMeetIndex = internalMutation({
   handler: async (ctx, { add, remove }) => {
     const text = await readViewJsonAnyAge(ctx, MEET_INDEX_VIEW);
     if (text === null) return;
-    const meets = new Set(JSON.parse(text) as string[]);
+    const meets = new Set(parsedAs(text, isStringList, 'the meet index'));
     for (const meet of add) meets.add(meet);
     for (const meet of remove) meets.delete(meet);
     await writeView(ctx, MEET_INDEX_VIEW, jsonChunks([...meets].sort(compareBytes)), []);
@@ -77,7 +84,7 @@ export const patchMeetIndex = internalMutation({
 /** The meet index, built from the tables the first time it is needed. */
 export async function loadMeetIndex(ctx: ActionCtx): Promise<string[]> {
   const text: string | null = await ctx.runQuery(internal.views.jsonViewAnyAge, { key: MEET_INDEX_VIEW });
-  if (text !== null) return JSON.parse(text) as string[];
+  if (text !== null) return parsedAs(text, isStringList, 'the meet index');
   const meets = await discoverMeets(ctx);
   await ctx.runMutation(internal.views.storeMeetIndex, { chunks: jsonChunks(meets) });
   return meets;

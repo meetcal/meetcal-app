@@ -1,3 +1,4 @@
+import { completeRecord, isRecord } from './json';
 import { type Gender, MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
 import { plusYears } from './dates';
 import { genderOfWord } from './gender';
@@ -149,6 +150,8 @@ export type EliteRegistration = { name: string; wso: string; gender: string; age
 
 /** A member as the lists read them: their WSO, name, gender and birth year from their registrations. */
 export type EliteMember = { name: string; wso: string; gender: Gender | null; birthYear: number | null };
+
+export const isEliteMember = (value: unknown): value is EliteMember => isRecord(value) && typeof value.name === 'string' && typeof value.wso === 'string';
 
 export const registrationGender = (value: string): Gender | null => genderOfWord(value.trim().toLowerCase(), 'registration');
 
@@ -317,17 +320,19 @@ export function rankAll(
   methods: EliteMethods,
   tables: ReadonlyMap<string, ClassTable>,
 ): Pick<EliteAnswer, 'lists' | 'rankings'> {
-  const lists = {} as EliteAnswer['lists'];
-  const rankings = {} as EliteAnswer['rankings'];
-  for (const list of ELITE_LISTS) {
-    rankings[list] = {};
+  const rankings = completeRecord(ELITE_LISTS, (list) => {
+    const byMethod: Partial<Record<EliteMethod, EliteRanking>> = {};
     for (const method of ELITE_METHOD_CHOICES[list]) {
       const { men, women } = rankList(results, list, method, tables);
-      rankings[list][method] = { men, women };
+      byMethod[method] = { men, women };
     }
-    const asked = rankings[list][methods[list]]!;
-    lists[list] = { method: methods[list], men: asked.men, women: asked.women };
-  }
+    return byMethod;
+  });
+  const lists = completeRecord(ELITE_LISTS, (list) => {
+    const asked = rankings[list][methods[list]];
+    if (asked === undefined) throw new Error(`the ${list} list was not ranked by ${methods[list]}`);
+    return { method: methods[list], men: asked.men, women: asked.women };
+  });
   return { lists, rankings };
 }
 
@@ -347,14 +352,12 @@ export function checkEliteArgs(args: EliteArgs): CheckedEliteArgs {
   if (args.to >= plusYears(args.from, MAX_LEADERBOARD_YEARS)) {
     throw apiError(400, `elite lists cover at most ${MAX_LEADERBOARD_YEARS} years: narrow the range`);
   }
-  const methods = {} as EliteMethods;
-  for (const list of ELITE_LISTS) {
+  const methods = completeRecord(ELITE_LISTS, (list) => {
     const choices = ELITE_METHOD_CHOICES[list];
     const asked = args.methods?.[list];
-    if (asked !== undefined && !(choices as readonly string[]).includes(asked)) {
-      throw apiError(400, `${list} can be scored by ${choices.join(', ')}, not "${asked}"`);
-    }
-    methods[list] = (asked as EliteMethod | undefined) ?? choices[0];
-  }
+    const chosen = asked === undefined ? choices[0] : choices.find((choice) => choice === asked);
+    if (chosen === undefined) throw apiError(400, `${list} can be scored by ${choices.join(', ')}, not "${asked}"`);
+    return chosen;
+  });
   return { wso, from: args.from, to: args.to, methods };
 }

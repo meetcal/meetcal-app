@@ -1,3 +1,4 @@
+import { isOwnKey } from '../../../lib/json';
 import { recordHolder } from '../holder';
 import type { WsoRecord } from './common';
 
@@ -106,7 +107,9 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
     const key = JSON.stringify([record.ageCategory, gender, record.weightClass]);
     const entry = grouped.get(key) ?? record;
     grouped.set(key, entry);
-    const field = LIFT_FIELDS[lift.toLowerCase().replace(/\s+/g, '') as keyof typeof LIFT_FIELDS];
+    const liftName = lift.toLowerCase().replace(/\s+/g, '');
+    if (!isOwnKey(LIFT_FIELDS, liftName)) throw new Error(`${wso}: unknown lift ${JSON.stringify(lift)}`);
+    const field = LIFT_FIELDS[liftName];
     const parsed = Number(value);
     const existing = entry[field];
     // A lift listed twice must agree, except that a real value beats a 0.
@@ -146,7 +149,7 @@ function validate(records: Parsed[], pages: readonly number[], warnings: string[
   const classes = new Map<string, { Women: number; Men: number }>();
   for (const r of records) {
     const counts = classes.get(r.ageCategory) ?? { Women: 0, Men: 0 };
-    counts[r.gender as 'Women' | 'Men'] += 1;
+    if (r.gender === 'Women' || r.gender === 'Men') counts[r.gender] += 1;
     classes.set(r.ageCategory, counts);
   }
   for (const [age, { Women, Men }] of classes) {

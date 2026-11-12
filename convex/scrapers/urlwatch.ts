@@ -1,5 +1,6 @@
 'use node';
 
+import { errorMessage } from '../lib/json';
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -42,7 +43,7 @@ export const run = internalAction({
         text = pageText(await fetchPageText(page.url, 30_000), page.selector, { pdfLinks: page.pdfLinks });
         if (!text) throw new Error(`"${page.selector}" matched nothing`);
       } catch (error) {
-        const result: PageResult = { name: page.name, url: page.url, status: 'error', error: (error as Error).message };
+        const result: PageResult = { name: page.name, url: page.url, status: 'error', error: errorMessage(error) };
         results.push(result);
         if (!previous?.error) report.push(result);
         saves.push({ url: page.url, error: result.error });

@@ -1,3 +1,4 @@
+import { isListOf, isRecord } from './json';
 import type { Doc } from '../_generated/dataModel';
 import { normalizeName } from './names';
 import { compareBytes } from './sort';
@@ -6,6 +7,9 @@ import { compareBytes } from './sort';
  * One `lifting_results` row as the Rust API serializes it
  * (`lifting_result_columns!`): nullable numbers and text read as `0` / `''`.
  */
+export const isApiLiftingResults = (value: unknown): value is ApiLiftingResult[] =>
+  isListOf((row: unknown): row is ApiLiftingResult => isRecord(row) && typeof row.name === 'string' && typeof row.meet === 'string' && typeof row.date === 'string')(value);
+
 export type ApiLiftingResult = {
   id: number;
   event_id: string;
