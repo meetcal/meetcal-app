@@ -1,5 +1,6 @@
 import { daysBetween } from '../../convex/lib/dates';
-import { halvesOf, MAX_RANKINGS_RANGES, RANKINGS_PAGE_ATTEMPTS, RANKINGS_PAGE_ROWS, RANKINGS_UNSPLIT_DAYS, Sport80 } from '../../convex/scrapers/lib/sport80Api';
+import { halvesOf, MAX_RANKINGS_RANGES, RANKINGS_PAGE_ROWS, RANKINGS_UNSPLIT_DAYS, Sport80 } from '../../convex/scrapers/lib/sport80Api';
+import { TRANSIENT_RETRY } from '../../convex/scrapers/lib/transientFetch';
 
 type Request = { start: string; end: string; rows: number; page: string | null };
 
@@ -176,13 +177,15 @@ describe('a connection Sport80 drops part way through an answer', () => {
     const requests = fakeSport80((request) => (request.start === '1963-06-09' && request.end === '2026-11-12' ? droppedMidBody() : rowsFor(request)));
     const rows = await (await Sport80.connect()).rankings(767, '1963-06-09', '2026-11-12', { retryDroppedConnections: true });
     expect(rows).toEqual([{ lifter: '1963-06-09..1995-02-24' }, { lifter: '1995-02-25..2026-11-12' }]);
-    expect(askedFor(requests, '1963-06-09', '2026-11-12')).toBe(RANKINGS_PAGE_ATTEMPTS);
+    expect(askedFor(requests, '1963-06-09', '2026-11-12')).toBe(TRANSIENT_RETRY.attempts);
   });
 
-  it('fails the class naming the range when even a year keeps dropping', async () => {
+  it('fails the class naming the range, the tries and the socket error when even a year keeps dropping', async () => {
     const requests = fakeSport80(() => droppedMidBody());
-    await expect((await Sport80.connect()).rankings(767, '2026-01-01', '2026-11-12', { retryDroppedConnections: true })).rejects.toThrow('2026-01-01 to 2026-11-12: terminated');
-    expect(requests).toHaveLength(RANKINGS_PAGE_ATTEMPTS);
+    await expect((await Sport80.connect()).rankings(767, '2026-01-01', '2026-11-12', { retryDroppedConnections: true })).rejects.toThrow(
+      `2026-01-01 to 2026-11-12: POST /api/categories/all/rankings/table/data failed after ${TRANSIENT_RETRY.attempts} attempt(s): terminated (UND_ERR_SOCKET: other side closed)`,
+    );
+    expect(requests).toHaveLength(TRANSIENT_RETRY.attempts);
   });
 
   it('asks no page again once the backfill’s time is spent', async () => {

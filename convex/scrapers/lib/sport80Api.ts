@@ -3,6 +3,7 @@ import { errorMessage } from '../../lib/errors';
 import { rowCount } from '../../lib/json';
 import { pageRows, readSport80Env, readTablePage, USAW_DOMAIN, type Sport80Env } from '../parse/sport80';
 import { retryable, withRetries } from './http';
+import { gaveUp, TRANSIENT_RETRY } from './transientFetch';
 
 type Dict = Record<string, unknown>;
 
@@ -13,16 +14,16 @@ const TABLE_PAGE_ROWS = 2000;
 export const RANKINGS_PAGE_ROWS = [2000, 1000, 500] as const;
 export const RANKINGS_UNSPLIT_DAYS = 366;
 export const MAX_RANKINGS_RANGES = 64;
-export const RANKINGS_PAGE_ATTEMPTS = 3;
-export const RANKINGS_RETRY_DELAY_MS = 2_000;
 
 export type DateRange = readonly [start: string, end: string];
 
 export type RankingsReading = { deadline?: number; wholeTables?: boolean; retryDroppedConnections?: boolean };
 
-type PageRetry = { attempts: number; retryIf: (error: unknown) => boolean };
+type PageRetry = { attempts: number; delayMs: (attempt: number) => number; retryIf: (error: unknown) => boolean };
 
-const ONE_TRY: PageRetry = { attempts: 1, retryIf: () => false };
+const ONE_TRY: PageRetry = { attempts: 1, delayMs: () => 0, retryIf: () => false };
+
+const droppedConnection = (error: unknown) => retryable(error) || (error instanceof Error && retryable(error.cause));
 
 type TableRead = { rows: Dict[]; notWhole?: string; shifted?: boolean };
 
@@ -94,7 +95,8 @@ export class Sport80 {
     };
   }
 
-  private async request(method: 'GET' | 'POST', url: string, payload?: Dict, { attempts, retryIf }: PageRetry = ONE_TRY): Promise<Dict> {
+  private async request(method: 'GET' | 'POST', url: string, payload?: Dict, retry: PageRetry = ONE_TRY): Promise<Dict> {
+    const path = new URL(url).pathname;
     return await withRetries(
       async () => {
         const response = await fetch(url, {
@@ -103,10 +105,11 @@ export class Sport80 {
           body: payload === undefined ? undefined : JSON.stringify(payload),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
-        if (!response.ok) throw new Sport80HttpError(method, new URL(url).pathname, response.status);
+        if (!response.ok) throw new Sport80HttpError(method, path, response.status);
         return readTablePage(await response.json());
       },
-      { attempts, retryIf, delayMs: (attempt) => attempt * RANKINGS_RETRY_DELAY_MS },
+      retry,
+      (error, attempts) => (attempts > 1 && retryable(error) ? gaveUp(path, method)(error, attempts) : error),
     );
   }
 
@@ -159,8 +162,8 @@ export class Sport80 {
     end: string,
     { deadline = Infinity, wholeTables = false, retryDroppedConnections = false }: RankingsReading = {},
   ): Promise<Dict[]> {
-    const dropped = (error: unknown) => retryDroppedConnections && retryable(error);
-    const retry: PageRetry = retryDroppedConnections ? { attempts: RANKINGS_PAGE_ATTEMPTS, retryIf: (error) => retryable(error) && Date.now() < deadline } : ONE_TRY;
+    const dropped = (error: unknown) => retryDroppedConnections && droppedConnection(error);
+    const retry: PageRetry = retryDroppedConnections ? { ...TRANSIENT_RETRY, retryIf: (error) => retryable(error) && Date.now() < deadline } : ONE_TRY;
     const pending: DateRange[] = [[start, end]];
     const parts: Dict[][] = [];
     for (let asked = 0; asked < MAX_RANKINGS_RANGES; asked++) {
