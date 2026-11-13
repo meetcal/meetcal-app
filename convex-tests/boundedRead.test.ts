@@ -98,9 +98,9 @@ describe('values are narrowed where they are read', () => {
   });
 
   it('reads a compact result row, a missing number as not a number, and refuses a row that is not one', () => {
-    const row = ['USAW', 'Meet', '2026-01-01', 'A Lifter', "Open Men's 89kg", 88.5, 100, 105, -110, 105, 130, 135, 0, 135, 240, false];
+    const row = ['USAW', 'Meet', '2026-01-01', 'A Lifter', "Open Men's 89kg", 88.5, 100, 105, -110, 105, 130, 135, 0, 135, 240, false, '30001', ''];
     expect(readCompactRow(row)).toEqual(row);
-    const withNull = readCompactRow([...row.slice(0, 14), null, true]);
+    const withNull = readCompactRow([...row.slice(0, 14), null, true, '', '30002']);
     expect([Number.isNaN(withNull[14]), withNull[15]]).toEqual([true, true]);
     expect(() => readCompactRow(row.slice(1))).toThrow('not a compact row');
     expect(() => readCompactRow([1, ...row.slice(1)])).toThrow('not a compact row');

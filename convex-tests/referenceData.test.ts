@@ -28,7 +28,8 @@ function fakeCtx(tables: Record<string, Row[]>) {
               },
             };
             build(q);
-            return { take: async (count: number) => (all.filter((row) => filters.every((f) => f(row))).slice(0, count)) };
+            const matching = () => all.filter((row) => filters.every((f) => f(row)));
+            return { take: async (count: number) => matching().slice(0, count), first: async () => matching()[0] ?? null, unique: async () => matching()[0] ?? null };
           },
         };
       },

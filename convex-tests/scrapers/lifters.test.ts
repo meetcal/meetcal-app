@@ -468,7 +468,7 @@ describe('the lifter backfill', () => {
     jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 12));
     const { ctx } = fakeCtx();
     await handlerOf<Dict, void>(backfill)(ctx, {});
-    expect(mockApi.rankings.mock.calls).toEqual([[0, '1900-01-01', '2026-11-12', { deadline: Date.UTC(2026, 10, 12) + BACKFILL_READ_STOP_MS, wholeTables: true }]]);
+    expect(mockApi.rankings.mock.calls).toEqual([[0, '1900-01-01', '2026-11-12', { deadline: Date.UTC(2026, 10, 12) + BACKFILL_READ_STOP_MS, wholeTables: true, retryDroppedConnections: true }]]);
   });
 
   describe('against a Sport80 that cannot answer a range reaching from before 2000 to after 2010', () => {
@@ -477,7 +477,17 @@ describe('the lifter backfill', () => {
     const tooWide = (start: string, end: string) => start < '2000-01-01' && end > '2010-01-01';
     const actual = jest.requireActual<typeof import('../../convex/scrapers/lib/sport80Api')>('../../convex/scrapers/lib/sport80Api');
 
-    function backfillClass863(ctx: ReturnType<typeof fakeCtx>['ctx'], fails: (start: string, end: string) => boolean): Promise<void> {
+    const droppedMidBody = () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"data":['));
+            controller.error(new TypeError('terminated', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) }));
+          },
+        }),
+      );
+
+    function backfillClass863(ctx: ReturnType<typeof fakeCtx>['ctx'], fails: (start: string, end: string) => boolean | 'drop'): Promise<void> {
       jest.mocked(Sport80.connect).mockImplementationOnce(async () => (await actual.Sport80.connect()) as never);
       jest.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
         const url = new URL(String(input));
@@ -485,7 +495,9 @@ describe('the lifter backfill', () => {
         if (url.pathname === '/api/categories/rankings/table') return Response.json({ filters: [{ name: 'weight_class', items: mockClassItems }] });
         if (url.pathname !== RANKINGS_PATH) throw new Error(`unexpected fetch ${url.toString()}`);
         const { date_range_start: start, date_range_end: end } = JSON.parse(String(init?.body)) as { date_range_start: string; date_range_end: string };
-        if (fails(start, end)) return new Response('', { status: 500 });
+        const failure = fails(start, end);
+        if (failure === 'drop') return droppedMidBody();
+        if (failure) return new Response('', { status: 500 });
         const inRange = rows.filter((row) => String(row.lift_date) >= start && String(row.lift_date) <= end);
         return Response.json({ data: inRange, total: inRange.length });
       });
@@ -497,6 +509,30 @@ describe('the lifter backfill', () => {
 
     beforeEach(() => {
       mockClassItems = [{ text: "Women's 11 Under Age Group 61+kg", value: 863 }];
+      jest.spyOn(globalThis, 'setTimeout').mockImplementation(((resume: () => void) => {
+        resume();
+        return 0;
+      }) as never);
+    });
+
+    it('reads a class whose connection Sport80 drops once, and moves on to linking', async () => {
+      let dropped = false;
+      const { ctx, mutations, scheduled } = fakeCtx();
+      await backfillClass863(ctx, () => {
+        if (dropped) return false;
+        dropped = true;
+        return 'drop';
+      });
+      expect(storedAthletes(mutations).sort()).toEqual(['1', '2']);
+      expect(scheduled).toEqual([{ name: 'scrapers/lifters:backfill', args: expect.objectContaining({ stage: 'link', after: '', failures: [] }), delay: 0 }]);
+    });
+
+    it('leaves a class unread when Sport80 keeps dropping a range, so the backfill stops before linking', async () => {
+      const { ctx, scheduled } = fakeCtx();
+      const failure = await backfillClass863(ctx, (start, end) => (start <= '2015-03-01' && end >= '2015-03-01' ? 'drop' : false)).catch((error: unknown) => error);
+      expect(scheduled).toEqual([]);
+      expect(String(failure)).toContain(JSON.stringify({ links: { history: 0, fit: 0, unlinked: 0, changed: 0 }, stage: 'rankings', classIds: [863] }));
+      expect(jest.mocked(console.warn).mock.calls.flat().join('\n')).toContain('terminated');
     });
 
     it('reads the class in ranges it can answer, stores the rows of every range, and moves on to linking', async () => {

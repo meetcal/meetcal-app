@@ -3,6 +3,7 @@ import { MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFi
 import type { Gender } from './gender';
 import { plusYears } from './dates';
 import { genderOfWord } from './gender';
+import { countedLifterOf, entriesOfLifter } from './lifterKeys';
 import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import { compareBytes } from './sort';
@@ -238,6 +239,19 @@ export type EliteAnswer = {
 
 /** A result of a member's, with what its scores need. */
 export type MemberResult = { row: RankedFields; member: EliteMember };
+
+export type LinkedMember = { memberKey: string; member: EliteMember; lifter: string | null };
+
+export const isLinkedMemberOrNull = (value: unknown): value is { member: EliteMember; lifter: string | null } | null =>
+  value === null || (isRecord(value) && isEliteMember(value.member) && (value.lifter === null || typeof value.lifter === 'string'));
+
+export const ownerOfResult = (
+  members: readonly LinkedMember[],
+  row: Pick<RankedFields, 'lifter_id' | 'sole_lifter_id'>,
+  soleLifter: string | null,
+  nameHasLinkedResults: boolean,
+): LinkedMember | null =>
+  entriesOfLifter(members, countedLifterOf(row), soleLifter, (member) => member.lifter, !nameHasLinkedResults && members.length === 1)[0] ?? null;
 
 /** What a result scores by `method` in `list`, or null when it scores nothing there. */
 export function scoreResult(

@@ -23,6 +23,8 @@ function fakeCtx(tables: Record<string, Row[]>) {
           };
           build(q);
           return {
+            first: async () => (tables[table] ?? []).find((row) => filters.every((f) => f(row))) ?? null,
+            unique: async () => (tables[table] ?? []).find((row) => filters.every((f) => f(row))) ?? null,
             take: async (count: number) => {
               const rows = (tables[table] ?? []).filter((row) => filters.every((f) => f(row)));
               if (ranged) reads.resultsBefore += 1;
