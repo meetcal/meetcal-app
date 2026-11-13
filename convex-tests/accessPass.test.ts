@@ -1,6 +1,7 @@
 import { ConvexError } from 'convex/values';
 import { getFunctionName } from 'convex/server';
-import { ACCESS_PASS_ROTATION_MS, pass, rotate, store } from '../convex/accessPass';
+import { ACCESS_PASS_ROTATION_MS, partnerPass, pass, rotate, store } from '../convex/accessPass';
+import { checkPass, setPremiumModeForTests } from '../convex/lib/access';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 /**
@@ -43,6 +44,66 @@ describe('accessPass:pass', () => {
 
   it('answers 503 before the first rotation', async () => {
     expect(await statusOf(passFor(clerk(A), subscriber))).toBe(503);
+  });
+});
+
+describe('accessPass:partnerPass', () => {
+  const SECRET = 'a'.repeat(64);
+  let previous: string | undefined;
+
+  beforeEach(() => {
+    previous = process.env.ATLAS_ACCESS_PASS_SECRET;
+    process.env.ATLAS_ACCESS_PASS_SECRET = SECRET;
+  });
+
+  afterEach(() => {
+    setPremiumModeForTests(null);
+    if (previous === undefined) delete process.env.ATLAS_ACCESS_PASS_SECRET;
+    else process.env.ATLAS_ACCESS_PASS_SECRET = previous;
+  });
+
+  function partnerPassFor(secret: string, seed: Record<string, Record<string, unknown>[]> = passes) {
+    const db = fakeMutationCtx(seed);
+    return handlerOf<{ secret: string }, { pass: string; rotatesAt: number }>(partnerPass)(
+      { ...db.ctx, auth: { getUserIdentity: async () => null } },
+      { secret },
+    );
+  }
+
+  it('gives the shared secret the current pass and when to ask again, with no signed-in user', async () => {
+    expect(await partnerPassFor(SECRET)).toEqual({ pass: 'today', rotatesAt: NOW + ACCESS_PASS_ROTATION_MS });
+  });
+
+  it('refuses a wrong secret of the same length with 401', async () => {
+    expect(await statusOf(partnerPassFor('b'.repeat(64)))).toBe(401);
+  });
+
+  it('refuses a secret of another length with 401', async () => {
+    expect(await statusOf(partnerPassFor(SECRET.slice(1)))).toBe(401);
+    expect(await statusOf(partnerPassFor(`${SECRET}a`))).toBe(401);
+    expect(await statusOf(partnerPassFor(''))).toBe(401);
+  });
+
+  it('answers 503 while the secret is unset or empty, whatever is sent', async () => {
+    delete process.env.ATLAS_ACCESS_PASS_SECRET;
+    expect(await statusOf(partnerPassFor(SECRET))).toBe(503);
+    expect(await statusOf(partnerPassFor(''))).toBe(503);
+    process.env.ATLAS_ACCESS_PASS_SECRET = '';
+    expect(await statusOf(partnerPassFor(''))).toBe(503);
+  });
+
+  it('answers 503 before the first rotation', async () => {
+    expect(await statusOf(partnerPassFor(SECRET, {}))).toBe(503);
+  });
+
+  it('hands out a pass the gate lets through in enforce mode', async () => {
+    setPremiumModeForTests('enforce');
+    const { pass: given } = await partnerPassFor(SECRET);
+    const stored = { current: 'today', previous: 'yesterday' };
+    expect(() => checkPass('results:byNames', given, stored)).not.toThrow();
+    expect(() => checkPass('reference:qualifyingTotals', given, stored)).not.toThrow();
+    expect(() => checkPass('reference:qualifyingTotals', given, { current: 'tomorrow', previous: given })).not.toThrow();
+    expect(() => checkPass('reference:qualifyingTotals', given, { current: 'later', previous: 'tomorrow' })).toThrow();
   });
 });
 

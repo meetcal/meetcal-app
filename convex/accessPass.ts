@@ -1,8 +1,9 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalAction, internalMutation, internalQuery, query } from './_generated/server';
+import { internalAction, internalMutation, internalQuery, query, type QueryCtx } from './_generated/server';
 import { callerOf, currentPasses, type Passes } from './lib/access';
 import { apiError } from './lib/validation';
+import { secretsMatch } from './lib/webhookSignature';
 
 /**
  * The access pass premium queries are read with (`lib/access.ts`). Every
@@ -20,6 +21,14 @@ import { apiError } from './lib/validation';
 /** How long after a rotation clients should ask for the new pass. */
 export const ACCESS_PASS_ROTATION_MS = 24 * 60 * 60 * 1000;
 
+type PassAnswer = { pass: string; rotatesAt: number };
+
+async function currentPassAnswer(ctx: QueryCtx): Promise<PassAnswer> {
+  const passes = await currentPasses(ctx);
+  if (!passes) throw apiError(503, 'no access pass yet');
+  return { pass: passes.current, rotatesAt: passes.rotatedAt + ACCESS_PASS_ROTATION_MS };
+}
+
 /**
  * The current pass, for a subscriber signed in with Clerk or a MeetCal-issued
  * token: `{ pass, rotatesAt }`, `rotatesAt` being when to ask again. 401
@@ -28,13 +37,21 @@ export const ACCESS_PASS_ROTATION_MS = 24 * 60 * 60 * 1000;
  */
 export const pass = query({
   args: {},
-  handler: async (ctx): Promise<{ pass: string; rotatesAt: number }> => {
+  handler: async (ctx): Promise<PassAnswer> => {
     const caller = await callerOf(ctx);
     if (caller.kind === 'anonymous') throw apiError(401, 'unauthorized');
     if (caller.kind === 'free') throw apiError(403, 'subscription required');
-    const passes = await currentPasses(ctx);
-    if (!passes) throw apiError(503, 'no access pass yet');
-    return { pass: passes.current, rotatesAt: passes.rotatedAt + ACCESS_PASS_ROTATION_MS };
+    return await currentPassAnswer(ctx);
+  },
+});
+
+export const partnerPass = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }): Promise<PassAnswer> => {
+    const expected = process.env.ATLAS_ACCESS_PASS_SECRET;
+    if (!expected) throw apiError(503, 'partner access not configured');
+    if (!(await secretsMatch(secret, expected))) throw apiError(401, 'unauthorized');
+    return await currentPassAnswer(ctx);
   },
 });
 
