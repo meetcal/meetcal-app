@@ -411,6 +411,28 @@ describe('results:leaderboard', () => {
     expect(women.rows).toEqual([]);
   });
 
+  it('ranks two lifters of one name apart, and an unlinked result as the sole lifter it is marked with', async () => {
+    const results = (adaLee: Record<string, unknown>) => [
+      stored('John Smith', '2026-02-01', 130, 170, { nameKey: 'john smith', lifterId: 'L1' }),
+      stored('John Smith', '2026-03-01', 120, 160, { nameKey: 'john smith', lifterId: 'L2' }),
+      stored('Ada Lee', '2026-02-01', 90, 110, { nameKey: 'ada lee', lifterId: 'L3' }),
+      stored('Ada Lee', '2026-04-01', 95, 115, { nameKey: 'ada lee', ...adaLee }),
+    ];
+    const ranked = async (adaLee: Record<string, unknown>) =>
+      (await run(actionCtx({ access_passes: PASSES, lifting_results: results(adaLee) }).ctx, { pass: 'today' })).rows.map((r) => [r.name, r.lifter_id ?? null, r.value]);
+    expect(await ranked({ soleLifterId: 'L3' })).toEqual([
+      ['John Smith', 'L1', 300],
+      ['John Smith', 'L2', 280],
+      ['Ada Lee', null, 210],
+    ]);
+    expect(await ranked({})).toEqual([
+      ['John Smith', 'L1', 300],
+      ['John Smith', 'L2', 280],
+      ['Ada Lee', null, 210],
+      ['Ada Lee', 'L3', 200],
+    ]);
+  });
+
   it('reads more than one page of a month, and every month, keeping each athlete once', async () => {
     const many = Array.from({ length: LEADERBOARD_PAGE_SIZE + 150 }, (_, i) => stored(`Lifter ${i % 1200}`, '2026-03-02', 50 + (i % 70), 60 + (i % 90)));
     const { ctx, runQuery } = actionCtx({

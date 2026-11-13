@@ -1,6 +1,6 @@
 import { plusYears } from './dates';
 import { genderNamedByWords, type Gender } from './gender';
-import { normalizeName } from './names';
+import { countedRowKey } from './lifterKeys';
 import { isPlausibleResult, LEADERBOARD_GUARD, totalAddsUp } from './plausible';
 import type { ApiLiftingResult } from './results';
 import { compareBytes } from './sort';
@@ -164,6 +164,8 @@ export type RankedFields = Pick<
   | 'cj_best'
   | 'total'
   | 'adaptive'
+  | 'lifter_id'
+  | 'sole_lifter_id'
 >;
 
 export const consistentTotal = (row: RankedFields): boolean => totalAddsUp(row.total, row.snatch_best, row.cj_best, LEADERBOARD_GUARD.total);
@@ -264,31 +266,18 @@ export type Candidate = { row: RankedFields; value: number };
 /** Whether `next` replaces `current` as an athlete's best: higher, or as high and earlier. */
 const beats = (next: Candidate, current: Candidate) => next.value > current.value || (next.value === current.value && next.row.date < current.row.date);
 
-/**
- * Folds `rows` into `best`, each athlete's (folded name's) best row by
- * `metric` among those passing `filters`. On a full tie (same value, same
- * date) the row seen first stays, so the rows of one date must be folded in
- * the order they are stored; rows of different dates may come in any order.
- */
 export function addBests(best: Map<string, Candidate>, rows: Iterable<RankedFields>, metric: LeaderboardMetric, filters: LeaderboardFilters): void {
   for (const row of rows) {
     if (!keeps(filters, row)) continue;
     const value = metricValue(metric, row);
     if (value === null) continue;
-    const key = normalizeName(row.name);
+    const key = countedRowKey(row);
     const current = best.get(key);
     const next = { row, value };
     if (current === undefined || beats(next, current)) best.set(key, next);
   }
 }
 
-/**
- * Drops the athletes whose best is strictly below the `limit`-th best in
- * `best` (ties kept), so a long read holds about `limit` athletes plus a
- * page's. The answer cannot change: the `limit`-th best only rises as rows
- * are folded in, and an athlete's best only goes up, so a dropped athlete
- * could never have reached the top `limit`.
- */
 export function pruneBests(best: Map<string, Candidate>, limit: number): void {
   if (best.size <= limit) return;
   const values = [...best.values()].map(({ value }) => value).sort((a, b) => b - a);
@@ -297,11 +286,6 @@ export function pruneBests(best: Map<string, Candidate>, limit: number): void {
   for (const [key, { value }] of best) if (value < threshold) best.delete(key);
 }
 
-/**
- * A result as `results:leaderboardPage` sends it: only what ranking,
- * filtering and the answer read, as a tuple (`RankedFields` in this order),
- * so a page of 2,000 is about 300 KB of JSON.
- */
 export type CompactRow = [
   federation: string,
   meet: string,
@@ -319,10 +303,12 @@ export type CompactRow = [
   cjBest: number,
   total: number,
   adaptive: boolean,
+  lifterId: string,
+  soleLifterId: string,
 ];
 
 export function readCompactRow(row: unknown): CompactRow {
-  if (!Array.isArray(row) || row.length !== 16) throw new Error('leaderboard page row is not a compact row');
+  if (!Array.isArray(row) || row.length !== 18) throw new Error('leaderboard page row is not a compact row');
   const cells: unknown[] = row;
   const text = (index: number): string => {
     const cell = cells[index];
@@ -333,7 +319,7 @@ export function readCompactRow(row: unknown): CompactRow {
     const cell = cells[index];
     return typeof cell === 'number' ? cell : Number.NaN;
   };
-  return [text(0), text(1), text(2), text(3), text(4), number(5), number(6), number(7), number(8), number(9), number(10), number(11), number(12), number(13), number(14), cells[15] === true];
+  return [text(0), text(1), text(2), text(3), text(4), number(5), number(6), number(7), number(8), number(9), number(10), number(11), number(12), number(13), number(14), cells[15] === true, text(16), text(17)];
 }
 
 export function toCompactRow(row: RankedFields): CompactRow {
@@ -354,18 +340,24 @@ export function toCompactRow(row: RankedFields): CompactRow {
     row.cj_best,
     row.total,
     row.adaptive,
+    row.lifter_id ?? '',
+    row.sole_lifter_id ?? '',
   ];
 }
 
-/** The rows of a `results:leaderboardPage` answer; throws on anything but a list of 16-field rows. */
 export function parseCompactRows(json: string): RankedFields[] {
   const parsed: unknown = JSON.parse(json);
   if (!Array.isArray(parsed)) throw new Error('leaderboard page is not a list');
   return parsed.map((row: unknown) => fromCompactRow(readCompactRow(row)));
 }
 
-export function fromCompactRow([federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive]: CompactRow): RankedFields {
-  return { federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive };
+export function fromCompactRow([federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive, lifterId, soleLifterId]: CompactRow): RankedFields {
+  const fields = { federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive };
+  return {
+    ...fields,
+    ...(lifterId === '' ? {} : { lifter_id: lifterId }),
+    ...(soleLifterId === '' ? {} : { sole_lifter_id: soleLifterId }),
+  };
 }
 
 /** The athletes' bests, best first (ties: the earlier result, then the name), at most `limit`. */
@@ -375,19 +367,17 @@ export function rankBests(bests: Iterable<Candidate>, limit: number): Candidate[
     .slice(0, limit);
 }
 
-/** Each athlete once by their best `metric` among `rows` (in date order) passing `filters`: the CLI's `rank`. */
 export function rank(rows: Iterable<RankedFields>, metric: LeaderboardMetric, filters: LeaderboardFilters, limit: number): Candidate[] {
   const best = new Map<string, Candidate>();
   addBests(best, rows, metric, filters);
   return rankBests(best.values(), limit);
 }
 
-/** A leaderboard row as `results:leaderboard` answers it: what the CLI's table prints. */
 export type LeaderboardRow = {
   name: string;
+  lifter_id?: string;
   date: string;
   meet: string;
-  /** The division. */
   age: string;
   federation: string;
   body_weight: number;
@@ -396,13 +386,13 @@ export type LeaderboardRow = {
   total: number;
   sinclair: number | null;
   qpoints: number | null;
-  /** What it was ranked by. */
   value: number;
 };
 
 export function leaderboardRow({ row, value }: Candidate): LeaderboardRow {
   return {
     name: row.name,
+    ...(row.lifter_id === undefined ? {} : { lifter_id: row.lifter_id }),
     date: row.date,
     meet: row.meet,
     age: row.age,

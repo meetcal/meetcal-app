@@ -11,14 +11,13 @@ import { errorMessage } from '../../lib/errors';
  */
 export const TRANSIENT_RETRY: RetryPolicy = { attempts: 3, delayMs: (attempt) => 1_000 * attempt, retryIf: retryable };
 
-/** The error thrown once the tries run out: the URL, the tries and the socket error's code. */
-function gaveUp(url: string) {
+export function gaveUp(url: string, method = 'GET') {
   return (error: unknown, attempts: number) => {
     const cause = error instanceof Error && 'cause' in error ? error.cause : undefined;
     const detail = cause instanceof Error
       ? ` (${('code' in cause ? `${String(cause.code)}: ` : '')}${cause.message})`
       : '';
-    return Object.assign(new Error(`GET ${url} failed after ${attempts} attempt(s): ${errorMessage(error)}${detail}`), { cause: error });
+    return Object.assign(new Error(`${method} ${url} failed after ${attempts} attempt(s): ${errorMessage(error)}${detail}`), { cause: error });
   };
 }
 
