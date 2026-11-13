@@ -196,7 +196,7 @@ async function clickHeaderLink(page: Page, name: string) {
 const markDocument = (page: Page) => page.evaluate(() => Object.assign(window, { __sameDocument: true }));
 const isSameDocument = (page: Page) => page.evaluate(() => "__sameDocument" in window);
 const loadedWasm = (page: Page) =>
-  page.evaluate(() => performance.getEntriesByType("resource").map(({ name }) => new URL(name).pathname).filter((path) => path.endsWith("_bg.wasm")));
+  page.evaluate(() => [...new Set(performance.getEntriesByType("resource").map(({ name }) => new URL(name).pathname))].filter((path) => path.endsWith("_bg.wasm")));
 
 test("the Schedule Builder is its own app: links into it and out of it load a whole page", async ({ page }) => {
   await mockAuth(page, { signedIn: false });
