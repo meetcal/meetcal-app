@@ -1,0 +1,41 @@
+{
+  "total": "1",
+  "page": 0,
+  "items_per_page": 20,
+  "next_page_url": null,
+  "previous_page_url": null,
+  "no_data_message": "No records found please try a different search/filter.",
+  "data": [
+    {
+      "id": "15084",
+      "is_event": true,
+      "name": "Turkey Cup",
+      "subtitle": "11/21/2026 - 11/21/2026",
+      "subtitle_icon": null,
+      "address": "5400 King Hill Ave, Saint Joseph, Missouri, United States of America, 64504-1503",
+      "actions": [
+        {
+          "type": "internal",
+          "url": "https://usaweightlifting.sport80.com/public/wizard/e/15084",
+          "text": "Enter Now",
+          "icon": "fa fa-trophy",
+          "style": null,
+          "disabled": false,
+          "confirmation_message": null,
+          "default_table_row_action": false
+        },
+        {
+          "type": "internal",
+          "url": "https://usaweightlifting.sport80.com/public/events/15084/entries/21962?bl=",
+          "text": "Entry List",
+          "icon": "fa fa-users",
+          "style": null,
+          "disabled": false,
+          "confirmation_message": null,
+          "default_table_row_action": false
+        }
+      ]
+    }
+  ],
+  "breadcrumbs": null
+}

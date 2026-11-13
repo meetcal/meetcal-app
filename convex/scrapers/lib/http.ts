@@ -2,27 +2,22 @@
 export const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-async function send(url: string, timeoutMs: number, headers: Record<string, string> = {}, body?: string): Promise<Response> {
-  const method = body === undefined ? 'GET' : 'POST';
+async function get(url: string, timeoutMs: number, headers: Record<string, string> = {}): Promise<Response> {
   const response = await fetch(url, {
-    method,
     headers: { 'User-Agent': USER_AGENT, ...headers },
-    body,
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!response.ok) throw new HttpStatusError(url, response.status, method);
+  if (!response.ok) throw new HttpStatusError(url, response.status);
   return response;
 }
 
-const get = (url: string, timeoutMs: number, headers: Record<string, string> = {}): Promise<Response> => send(url, timeoutMs, headers);
-
+/** A response with an error status, which keeps the status for `throttledOrTransient`. */
 export class HttpStatusError extends Error {
   constructor(
     readonly url: string,
     readonly status: number,
-    readonly method: 'GET' | 'POST' = 'GET',
   ) {
-    super(`${method} ${url} failed with ${status}`);
+    super(`GET ${url} failed with ${status}`);
     this.name = 'HttpStatusError';
   }
 }
@@ -30,11 +25,6 @@ export class HttpStatusError extends Error {
 /** A JSON body, unchecked (`unknown`: the caller reads it); `headers` add to or replace the defaults. */
 export async function fetchJson(url: string, { timeoutMs = DEFAULT_TIMEOUT_MS, headers = {} }: { timeoutMs?: number; headers?: Record<string, string> } = {}): Promise<unknown> {
   return (await (await get(url, timeoutMs, { accept: 'application/json', ...headers })).json()) as unknown;
-}
-
-export async function postJson(url: string, payload: unknown, { timeoutMs = DEFAULT_TIMEOUT_MS }: { timeoutMs?: number } = {}): Promise<unknown> {
-  const response = await send(url, timeoutMs, { accept: 'application/json', 'content-type': 'application/json' }, JSON.stringify(payload));
-  return (await response.json()) as unknown;
 }
 
 export async function fetchText(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string> {

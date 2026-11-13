@@ -7,21 +7,18 @@ import type { Id } from './_generated/dataModel';
 import { apiError } from './lib/validation';
 import { errorMessage } from './lib/errors';
 import { fetchEntriesMeet, readEntries } from './scrapers/entries';
-import { fetchLocatorPage, fetchWidgetPage } from './scrapers/meets';
+import { fetchWidgetPage } from './scrapers/meets';
 import { canonicalEntriesUrl, entriesEventId, meetPageEventId } from './scrapers/parse/entries';
 import { runBudget } from './scrapers/lib/budget';
 import {
-  findLocatorRow,
   isAdaptiveListing,
-  locatorPageUrl,
   parseAddress,
   parseDateRange,
   readAllWidgetPages,
-  readLocatorPage,
+  readWidgetPage,
   transformMeets,
   WIDGET_PAGE_SIZE,
   widgetPageUrl,
-  type LocatorRow,
   type WidgetRow,
 } from './scrapers/parse/meets';
 
@@ -39,10 +36,17 @@ type StoredMeet = { name: string; status: string; endDate: string };
 
 export type Sport80Link = { eventId: string; entriesUrl: string | null };
 
+const HAS_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
+
+function pastedUrl(text: string): URL {
+  const trimmed = text.trim();
+  return new URL(HAS_SCHEME.test(trimmed) ? trimmed : `https://${trimmed}`);
+}
+
 export function sport80LinkOf(url: string): Sport80Link {
   let parsed: URL;
   try {
-    parsed = new URL(url.trim());
+    parsed = pastedUrl(url);
   } catch {
     throw apiError(400, "paste the meet's Sport80 link, like https://usaweightlifting.sport80.com/public/events/12345, or its entries list");
   }
@@ -88,13 +92,12 @@ function upcomingListing(fromSport80: Sport80Read): Listing {
   return () => (rows ??= fromSport80(readAllWidgetPages((page) => fetchWidgetPage(widgetPageUrl('', page)))));
 }
 
-async function entriesUrlOf(link: Sport80Link, listing: Listing, fromSport80: Sport80Read): Promise<string> {
+async function entriesUrlOf(link: Sport80Link, listing: Listing): Promise<string> {
   if (link.entriesUrl !== null) return link.entriesUrl;
   const listed = (await listing()).find((row) => row.id === link.eventId);
   if (!listed) throw apiError(422, NOT_UPCOMING);
-  const row = await fromSport80(findLocatorRow(link.eventId, (page) => fetchLocatorPage(locatorPageUrl(listed.name, page))));
-  if (!row?.entriesUrl) throw apiError(422, NO_ENTRY_LIST);
-  return row.entriesUrl;
+  if (listed.entriesUrl === null) throw apiError(422, NO_ENTRY_LIST);
+  return listed.entriesUrl;
 }
 
 async function storeMeet(ctx: ActionCtx, eventId: string, title: string, listing: Listing): Promise<StoredMeet> {
@@ -116,7 +119,7 @@ export const load = action({
     if ('recentMeet' in claimed) return { meet: claimed.recentMeet, refreshed: false };
     const fromSport80 = sport80Within(LOAD_BUDGET_MS, 'load');
     const listing = upcomingListing(fromSport80);
-    const entriesUrl = await entriesUrlOf(link, listing, fromSport80);
+    const entriesUrl = await entriesUrlOf(link, listing);
     const title = await fromSport80(fetchEntriesMeet(entriesUrl));
     const meet = await storeMeet(ctx, link.eventId, title, listing);
     if (meet.status === 'completed') throw apiError(409, 'this meet is over, so its schedule can no longer be built');
@@ -146,15 +149,25 @@ export function searchQueryOf(query: string): string {
 
 const KNOWN = (part: string) => part !== '' && part !== 'Unknown';
 
-export function meetMatchOf(row: LocatorRow): MeetMatch {
-  const dates = parseDateRange(row.subtitle);
-  const { city, state } = parseAddress(row.address);
+type ListedEvent = WidgetRow & { id: string };
+
+const isListedEvent = (row: WidgetRow): row is ListedEvent => row.isEvent && row.id !== null;
+
+function placeOf(address: string | null): string {
+  const trimmed = address?.trim() ?? '';
+  if (trimmed === '') return '';
+  const { city, state } = parseAddress(trimmed);
+  return [city, state].filter(KNOWN).join(', ');
+}
+
+export function meetMatchOf(row: ListedEvent): MeetMatch {
+  const dates = row.subtitle === null ? null : parseDateRange(row.subtitle);
   return {
     eventId: row.id,
     name: row.name,
     startDate: dates?.startDate ?? '',
     endDate: dates?.endDate ?? '',
-    place: row.address === '' ? '' : [city, state].filter(KNOWN).join(', '),
+    place: placeOf(row.address),
     entriesUrl: row.entriesUrl,
   };
 }
@@ -164,9 +177,9 @@ export async function upcomingMatches(fetchPage: (page: number) => Promise<unkno
   let read = 0;
   let more = false;
   for (let page = 0; page < MAX_SEARCH_PAGES && matches.length <= MAX_SEARCH_RESULTS; page++) {
-    const { total, rows } = readLocatorPage(await fetchPage(page));
+    const { total, rows } = readWidgetPage(await fetchPage(page));
     read += rows.length;
-    matches.push(...rows.filter((row) => row.isEvent).map(meetMatchOf));
+    matches.push(...rows.filter(isListedEvent).map(meetMatchOf));
     more = read < total && rows.length === WIDGET_PAGE_SIZE;
     if (!more) break;
   }

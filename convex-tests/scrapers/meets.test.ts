@@ -1,16 +1,11 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  findLocatorRow,
   listedMeetTitle,
-  LOCATOR_PAGE_SIZE,
-  locatorPageUrl,
-  MAX_LOCATOR_PAGES,
   MAX_WIDGET_PAGES,
   parseAddress,
   parseDateRange,
   readAllWidgetPages,
-  readLocatorPage,
   readWidgetPage,
   transformMeets,
   WIDGET_PAGE_SIZE,
@@ -28,7 +23,7 @@ const WSO_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/spor
 // addresses whose city or state reads like a country, and the live online
 // qualifier row, whose address is the country alone.
 const ABROAD_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-meet-widget-abroad.json'), 'utf8'));
-const TURKEY_CUP_LOCATOR: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-event-locator-turkey-cup-20261112.json'), 'utf8'));
+const TURKEY_CUP_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-meet-widget-turkey-cup-20261112.json'), 'utf8'));
 
 describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meets.js)', () => {
   it('parses Sport80 addresses the way the Node scripts did', () => {
@@ -159,8 +154,8 @@ describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meet
     expect(() => readWidgetPage({ total: '1' })).toThrow('no data array');
     expect(() => readWidgetPage({ total: 1, data: [{ subtitle: '10/01/2026' }] })).toThrow('row 0 has no name');
     // A missing address or date is told apart from a blank one.
-    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: ' A ' }] }).rows).toEqual([{ id: '7', name: 'A', address: null, subtitle: null }]);
-    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: 'A', address: '', subtitle: '' }] }).rows).toEqual([{ id: '7', name: 'A', address: '', subtitle: '' }]);
+    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: ' A ' }] }).rows).toEqual([{ id: '7', name: 'A', address: null, subtitle: null, isEvent: true, entriesUrl: null }]);
+    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: 'A', address: '', subtitle: '' }] }).rows).toEqual([{ id: '7', name: 'A', address: '', subtitle: '', isEvent: true, entriesUrl: null }]);
   });
 
   it('fails a meet with no dates field rather than wait for its dates', () => {
@@ -312,31 +307,19 @@ describe('US states and time zones', () => {
   });
 });
 
-describe("Sport80's event locator", () => {
+describe("the upcoming listing's entries pages", () => {
   const ENTRIES = 'https://usaweightlifting.sport80.com/public/events/15084/entries/21962';
-  const row = (id: string | number, actions: unknown) => ({ id, name: 'Turkey Cup', actions });
-  const entryList = (id: number, stage: number) => ({ type: 'external', url: `https://usaweightlifting.sport80.com/public/events/${id}/entries/${stage}?bl=locator`, text: 'Entry List' });
+  const row = (id: string | number | null, actions: unknown) => ({ id, name: 'Turkey Cup', actions });
+  const entryList = (id: number, stage: number) => ({ type: 'internal', url: `https://usaweightlifting.sport80.com/public/events/${id}/entries/${stage}?bl=`, text: 'Entry List' });
 
-  it('searches by name, a page at a time', () => {
-    expect(locatorPageUrl('Turkey Cup & Open', 2)).toBe('https://usaweightlifting.sport80.com/api/public/events/locator/data?p=2&l=20&s=Turkey%20Cup%20%26%20Open');
-  });
-
-  it("reads each event's id and its entries page, from Sport80's answer", () => {
-    expect(readLocatorPage(TURKEY_CUP_LOCATOR)).toEqual({
-      total: 13,
+  it("reads each event's entries page from Sport80's answer", () => {
+    expect(readWidgetPage(TURKEY_CUP_PAGE)).toEqual({
+      total: 1,
       rows: [
-        {
-          id: '14189',
-          name: 'Turkey Cup',
-          subtitle: 'November 22nd 2025 - S Joseph, Missouri',
-          address: '5400 King Hill Ave, S Joseph, Missouri, United States of America, 64504',
-          isEvent: true,
-          entriesUrl: 'https://usaweightlifting.sport80.com/public/events/14189/entries/21081',
-        },
         {
           id: '15084',
           name: 'Turkey Cup',
-          subtitle: 'November 21st 2026 - Saint Joseph, Missouri',
+          subtitle: '11/21/2026 - 11/21/2026',
           address: '5400 King Hill Ave, Saint Joseph, Missouri, United States of America, 64504-1503',
           isEvent: true,
           entriesUrl: ENTRIES,
@@ -345,65 +328,33 @@ describe("Sport80's event locator", () => {
     });
   });
 
-  it('reads a row as an event unless Sport80 says it is not one, and trims its text', () => {
-    const page = { total: 3, data: [{ ...row('1', []), is_event: false }, { ...row('2', []), name: ' Open ', subtitle: ' May 1st ' }, { id: '3' }] };
-    expect(readLocatorPage(page).rows.map(({ id, name, subtitle, isEvent }) => [id, name, subtitle, isEvent])).toEqual([
-      ['1', 'Turkey Cup', '', false],
-      ['2', 'Open', 'May 1st', true],
-      ['3', '', '', true],
+  it('takes the entries page of an event whose id Sport80 sends as a number', () => {
+    expect(readWidgetPage({ total: 1, data: [row(15084, [entryList(15084, 21962)])] }).rows[0]?.entriesUrl).toBe(ENTRIES);
+  });
+
+  it('reads a row as an event unless Sport80 says it is not one', () => {
+    const page = { total: 3, data: [{ ...row('1', []), is_event: false }, { ...row('2', []), is_event: true }, row('3', [])] };
+    expect(readWidgetPage(page).rows.map(({ id, isEvent }) => [id, isEvent])).toEqual([
+      ['1', false],
+      ['2', true],
+      ['3', true],
     ]);
   });
 
-  it('gives no entries page for an event without one, or whose only one is another event’s or another site’s', () => {
+  it("gives no entries page for an event without one, whose only one is another event's or another site's, or whose actions Sport80 sends in another shape", () => {
     const wizard = { url: 'https://usaweightlifting.sport80.com/public/wizard/e/15084', text: 'Enter Now' };
     const elsewhere = { url: 'https://example.com/public/events/15084/entries/21962', text: 'Entry List' };
-    const page = { total: 4, data: [row(15084, [wizard]), row('15084', [entryList(999, 1), elsewhere, 'junk', { url: 7 }]), row('15084', []), row('15084', null)] };
-    expect(readLocatorPage(page).rows.map(({ id, entriesUrl }) => ({ id, entriesUrl }))).toEqual([
-      { id: '15084', entriesUrl: null },
-      { id: '15084', entriesUrl: null },
-      { id: '15084', entriesUrl: null },
-      { id: '15084', entriesUrl: null },
-    ]);
-  });
-
-  it.each([
-    [null, 'locator: response is not an object'],
-    [{ total: 'many', data: [] }, 'locator: no match count (total "many")'],
-    [{ total: 1 }, 'locator: no data array'],
-    [{ total: 1, data: ['x'] }, 'locator: row 0 is not an object'],
-    [{ total: 1, data: [{ name: 'Turkey Cup', actions: [] }] }, 'locator: row 0 has no event id'],
-    [{ total: 1, data: [row('15084', { url: 'x' })] }, 'locator: row 0 has actions that are not a list'],
-  ])('refuses a malformed answer %j', (body, message) => {
-    expect(() => readLocatorPage(body)).toThrow(message);
-  });
-
-  describe('finding one event', () => {
-    const events = (total: number, target: number | null) => {
-      const pages: number[] = [];
-      const fetchPage = async (page: number) => {
-        pages.push(page);
-        const ids = Array.from({ length: total }, (_, i) => 1000 + i).slice(page * LOCATOR_PAGE_SIZE, (page + 1) * LOCATOR_PAGE_SIZE);
-        return { total: String(total), data: ids.map((id) => row(String(id), id === target ? [entryList(id, 7)] : [])) };
-      };
-      return { pages, fetchPage };
+    const page = {
+      total: 6,
+      data: [
+        row('15084', [wizard]),
+        row('15084', [entryList(999, 1), elsewhere, 'junk', { url: 7 }]),
+        row('15084', []),
+        row('15084', null),
+        row('15084', entryList(15084, 21962)),
+        row(null, [entryList(15084, 21962)]),
+      ],
     };
-
-    it('stops at the page that has it', async () => {
-      const { pages, fetchPage } = events(45, 1021);
-      expect(await findLocatorRow('1021', fetchPage)).toMatchObject({ id: '1021', entriesUrl: 'https://usaweightlifting.sport80.com/public/events/1021/entries/7' });
-      expect(pages).toEqual([0, 1]);
-    });
-
-    it('answers null once every match is read', async () => {
-      const { pages, fetchPage } = events(25, null);
-      expect(await findLocatorRow('15084', fetchPage)).toBeNull();
-      expect(pages).toEqual([0, 1]);
-    });
-
-    it(`reads at most ${MAX_LOCATOR_PAGES} pages`, async () => {
-      const { pages, fetchPage } = events(1000, 1999);
-      expect(await findLocatorRow('1999', fetchPage)).toBeNull();
-      expect(pages).toHaveLength(MAX_LOCATOR_PAGES);
-    });
+    expect(readWidgetPage(page).rows.map(({ entriesUrl }) => entriesUrl)).toEqual([null, null, null, null, null, null]);
   });
 });
