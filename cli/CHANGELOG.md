@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased
+## 4.0.0
 
 ### Breaking changes
 
+- `search`, `progress` and `qualify` show one lifter's results, not every result under a name.
+  When more than one lifter has the name, they exit 1 with each lifter's id, age, WSO, club, result
+  count and latest meet, instead of a combined history; run again with `--lifter <id>`, or
+  `--other` for the name's results no one lifter holds. `h2h` takes `--first-lifter` and
+  `--second-lifter`. They read MeetCal's `results:athlete`, which is on production.
 - `meetcal wso` shows what `club-results` shows, from MeetCal's own answer
   (`reference:wsoMeetStats`) instead of ranking the meet itself. Its export is now the tables
   `summary` (`wso`, `meet`, `athletes`, `results`), `results` (`total_weight_lifted`,
@@ -40,6 +45,8 @@
 
 ### Fixed
 
+- `search` and `progress` mark PRs with MeetCal's rule, the one the app and meetcal.app use,
+  instead of working them out from the rows.
 - `meet-results` counts a lifter entered in two divisions once in its summary, bomb-outs, make
   rates and top-score tables; the results table still lists every row.
 - `wsos` and `wso-records` report a failed lookup instead of answering with part of the data, and

@@ -33,6 +33,13 @@ describe("parseSeenVersions", () => {
 });
 
 describe("getAnnouncementForVersion", () => {
+  it("shows the 6.3.0 announcement on every platform", () => {
+    const message =
+      "Better results for athletes with the same name\n\nBug fixes and performance improvements";
+    expect(getAnnouncementForVersion("6.3.0", "ios")?.message).toBe(message);
+    expect(getAnnouncementForVersion("6.3.0", "android")?.message).toBe(message);
+  });
+
   it("shows an announcement without platforms everywhere", () => {
     expect(getAnnouncementForVersion("6.1.0", "ios")).not.toBeNull();
     expect(getAnnouncementForVersion("6.1.0", "android")).not.toBeNull();
