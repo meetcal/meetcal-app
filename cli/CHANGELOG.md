@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Club and WSO reports (`club-wrapped`, `wso-wrapped`, `club-compare`, `wso-compare`,
+  `club-trends`, `wso-trends`, and `leaderboard --club`/`--wso`) and `attendance` count each lifter
+  once: two lifters who share a name count as two, and a lifter's PRs in the trends are read from
+  their own results. The all-athletes leaderboard, `nat-rankings`, `elite`, `club-results` and
+  `wso` follow MeetCal's answers, which count the same way.
+
 ## 4.0.0
 
 ### Breaking changes

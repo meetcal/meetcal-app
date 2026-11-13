@@ -4,6 +4,8 @@ import { ATHLETE_RESULTS_MAX, readAll } from './boundedRead';
 import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
+import { lifterOfMembership } from './lifterHistory';
+import { apiRowOf, entriesOfLifter, rosterPersonKey, soleLiftersAmong } from './lifterKeys';
 import { normalizeName } from './names';
 import { bareWeightClass, classNamedIn } from './weightClass';
 import { normalizeGender } from './normalize';
@@ -114,19 +116,16 @@ export function rankOf(value: LiftKey, group: readonly LiftKey[]): Placing {
   return better + 1;
 }
 
-type StatsEntry = { key: string; row: Doc<'lifting_results'>; athlete: Doc<'athletes'>; group: string };
+type StatsEntry = { key: string; lifter: string | null; row: Doc<'lifting_results'>; athlete: Doc<'athletes'>; group: string };
 
 type StatsGroups = Map<string, { snatch: LiftKey[]; cj: LiftKey[]; total: LiftKey[] }>;
 
-/**
- * An athlete's previous best total before a date: the best of their earlier
- * results with a total above 0, BWL excluded; null when there is none.
- */
-export type PreviousBest = { key: string; before: string; best: number | null };
+export type PreviousBestWanted = { key: string; before: string; lifter?: string | null };
 
-/** How `computeStatsRows` finds a `PreviousBest` it was handed. */
-function previousBestId(key: string, before: string): string {
-  return `${key}\u0000${before}`;
+export type PreviousBest = PreviousBestWanted & { best: number | null };
+
+function previousBestId({ key, before, lifter }: PreviousBestWanted): string {
+  return `${key}\u0000${before}\u0000${lifter ?? ''}`;
 }
 
 /** `DISTINCT ON (key) ORDER BY key, total DESC, date DESC, id DESC`: whether `row` comes before `current`. */
@@ -140,17 +139,12 @@ function isBetterResult(row: Doc<'lifting_results'>, current: Doc<'lifting_resul
   );
 }
 
-/**
- * The meet's finishers joined to the roster, and each ranking group's lifts.
- * Groups hold every finisher of the meet, one result per folded name, so a
- * finisher missing from the roster (a late entry, a misspelt name) still
- * places ahead of the athletes they beat; only joined finishers get a row.
- */
 async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: StatsEntry[]; groups: StatsGroups }> {
   const [athletes, results] = await Promise.all([rosterDocs(ctx, meet), meetResultDocs(ctx, meet)]);
+  const lifterOfMember = await liftersOfMembers(ctx, athletes);
+  const sole = soleLiftersAmong(results.map(apiRowOf));
+  const lifterOfEntry = (entry: Doc<'athletes'>) => lifterOfMember.get(entry.memberId) ?? null;
 
-  // Every roster entry under each folded name, in the order DISTINCT ON
-  // (key) ORDER BY key, name, weight_class, club kept the first of.
   const roster = new Map<string, Doc<'athletes'>[]>();
   for (const athlete of [...athletes].sort(
     (a, b) =>
@@ -160,16 +154,16 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
     roster.set(key, [...(roster.get(key) ?? []), athlete]);
   }
 
-  // The best result per lifter (folded name and roster entry), overall (the
-  // one reported) and within each ranking group (the ones ranked).
-  const best = new Map<string, { key: string; row: Doc<'lifting_results'>; athlete: Doc<'athletes'> | undefined }>();
+  const best = new Map<string, { key: string; lifter: string | null; row: Doc<'lifting_results'>; athlete: Doc<'athletes'> | undefined }>();
   const members = new Map<string, Map<string, Doc<'lifting_results'>>>();
   for (const row of results) {
     const key = normalizeName(row.name);
-    const entries = roster.get(key);
+    const soleLifter = sole.get(key) ?? null;
+    const rowLifter = row.lifterId ?? soleLifter;
+    const entries = entriesOfLifter(roster.get(key) ?? [], rowLifter, soleLifter, lifterOfEntry, true);
     const athlete = rosterEntryFor(entries, row.age);
-    const lifter = `${key}\u0000${athlete ? entries!.indexOf(athlete) : -1}`;
-    if (isBetterResult(row, best.get(lifter)?.row)) best.set(lifter, { key, row, athlete });
+    const lifter = rowLifter === null ? `${key}\u0000${athlete ? entries.indexOf(athlete) : -1}` : `lifter:${rowLifter}`;
+    if (isBetterResult(row, best.get(lifter)?.row)) best.set(lifter, { key, lifter: rowLifter, row, athlete });
     const group = rankingGroup(row.age, athlete);
     if (group === null) continue;
     const inGroup = members.get(group) ?? new Map<string, Doc<'lifting_results'>>();
@@ -178,8 +172,8 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
   }
 
   const joined: StatsEntry[] = [];
-  for (const { key, row, athlete } of best.values()) {
-    if (athlete) joined.push({ key, row, athlete, group: rankingGroup(row.age, athlete)! });
+  for (const { key, lifter, row, athlete } of best.values()) {
+    if (athlete) joined.push({ key, lifter, row, athlete, group: rankingGroup(row.age, athlete)! });
   }
   const groups: StatsGroups = new Map();
   for (const [group, rows] of members) {
@@ -193,39 +187,46 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
   return { joined, groups };
 }
 
-function rosterEntryFor(entries: readonly Doc<'athletes'>[] | undefined, age: string | undefined): Doc<'athletes'> | undefined {
-  if (!entries || entries.length <= 1) return entries?.[0];
+async function liftersOfMembers(ctx: QueryCtx, athletes: readonly Doc<'athletes'>[]): Promise<Map<string, string>> {
+  const members = [...new Set(athletes.flatMap((athlete) => (athlete.memberId ? [athlete.memberId] : [])))];
+  const lifters = await Promise.all(members.map(async (memberId) => [memberId, await lifterOfMembership(ctx, memberId)] as const));
+  return new Map(lifters.flatMap(([memberId, lifter]) => (lifter === null ? [] : [[memberId, lifter] as const])));
+}
+
+function rosterEntryFor(entries: readonly Doc<'athletes'>[], age: string | undefined): Doc<'athletes'> | undefined {
+  if (entries.length <= 1) return entries[0];
   const weightClass = age === undefined ? null : classNamedIn(age, 'atTheEnd');
   const inClass = weightClass === null ? [] : entries.filter((entry) => bareWeightClass(entry.weightClass) === weightClass);
   return new Set(inClass.map((entry) => clubKey(entry.club))).size === 1 ? inClass[0] : entries[0];
 }
 
-/**
- * The previous bests the meet's stats need, without their values: what the
- * stats view builder reads in batches (`previousBests`) before it builds.
- */
-export async function statsPreviousBestKeys(ctx: QueryCtx, meet: string): Promise<{ key: string; before: string }[]> {
+const wantedOf = ({ key, lifter, row }: StatsEntry): PreviousBestWanted => ({ key, before: row.date, lifter });
+
+export async function statsPreviousBestKeys(ctx: QueryCtx, meet: string): Promise<PreviousBestWanted[]> {
   const { joined } = await statsEntries(ctx, meet);
-  return joined.map(({ key, row }) => ({ key, before: row.date }));
+  return joined.map(wantedOf);
 }
 
-/** Previous bests of `wanted`, TIMELINE_READ_BATCH athletes' reads in flight at a time. */
-export async function previousBests(
-  ctx: QueryCtx,
-  wanted: readonly { key: string; before: string }[],
-): Promise<PreviousBest[]> {
+export async function previousBests(ctx: QueryCtx, wanted: readonly PreviousBestWanted[]): Promise<PreviousBest[]> {
   const out: PreviousBest[] = [];
   for (let i = 0; i < wanted.length; i += TIMELINE_READ_BATCH) {
     out.push(
       ...(await Promise.all(
-        wanted.slice(i, i + TIMELINE_READ_BATCH).map(async ({ key, before }) => ({ key, before, best: await previousBest(ctx, key, before) })),
+        wanted.slice(i, i + TIMELINE_READ_BATCH).map(async (one) => ({ ...one, best: await previousBest(ctx, one.key, one.before, one.lifter ?? null) })),
       )),
     );
   }
   return out;
 }
 
-async function previousBest(ctx: QueryCtx, key: string, before: string): Promise<number | null> {
+export function sameLifterRows<Row extends { lifterId?: string }>(rows: readonly Row[], lifter: string | null): Row[] {
+  const lifters = new Set(rows.flatMap((row) => (row.lifterId ? [row.lifterId] : [])));
+  if (lifter !== null) lifters.add(lifter);
+  if (lifters.size <= 1) return [...rows];
+  return rows.filter((row) => (lifter === null ? !row.lifterId : row.lifterId === lifter));
+}
+
+async function previousBest(ctx: QueryCtx, key: string, before: string, lifter: string | null): Promise<number | null> {
   const previous = await readAll(
     ctx.db
       .query('lifting_results')
@@ -234,9 +235,7 @@ async function previousBest(ctx: QueryCtx, key: string, before: string): Promise
     'results of one athlete',
   );
   let best: number | null = null;
-  for (const p of previous) {
-    // A bomb-out (a total of 0) is no previous best: a first real total
-    // after one is not a PR, as it is not for a first-timer (#248).
+  for (const p of sameLifterRows(previous, lifter)) {
     if (p.federation === 'BWL' || p.total === undefined || !(p.total > 0)) continue;
     best = best === null ? p.total : Math.max(best, p.total);
   }
@@ -262,11 +261,6 @@ export async function computeStatsRows(
   return (await computeStats(ctx, meet, onlyClub, known)).rows;
 }
 
-/**
- * `computeStatsRows`, and the latest date among the meet's finishers ('' with
- * none): no result dated on or after it can change any of their previous
- * bests (`lib/viewKeys.ts`, `athleteChangeAffects`).
- */
 export async function computeStats(
   ctx: QueryCtx,
   meet: string,
@@ -275,13 +269,11 @@ export async function computeStats(
 ): Promise<{ rows: StatsRow[]; latest: string }> {
   const { joined, groups } = await statsEntries(ctx, meet);
   const wanted = onlyClub === undefined ? joined : joined.filter(({ athlete }) => sameClub(athlete.club, onlyClub));
-  const found = new Map(known.map((p) => [previousBestId(p.key, p.before), p.best]));
-  const missing = wanted
-    .filter(({ key, row }) => !found.has(previousBestId(key, row.date)))
-    .map(({ key, row }) => ({ key, before: row.date }));
-  for (const p of await previousBests(ctx, missing)) found.set(previousBestId(p.key, p.before), p.best);
+  const found = new Map(known.map((p) => [previousBestId(p), p.best]));
+  const missing = wanted.map(wantedOf).filter((one) => !found.has(previousBestId(one)));
+  for (const p of await previousBests(ctx, missing)) found.set(previousBestId(p), p.best);
   const latest = joined.reduce((max, { row }) => (row.date > max ? row.date : max), '');
-  return { rows: wanted.map((entry) => statsRow(entry, groups, found.get(previousBestId(entry.key, entry.row.date)) ?? null)), latest };
+  return { rows: wanted.map((entry) => statsRow(entry, groups, found.get(previousBestId(wantedOf(entry))) ?? null)), latest };
 }
 
 /**
@@ -400,7 +392,7 @@ export function clubStats(rows: readonly StatsRow[], club: string, totalAthletes
   };
 }
 
-type WsoRosterEntry = { name: string; club: string; weightClass: string; wso?: string };
+type WsoRosterEntry = { name: string; club: string; weightClass: string; wso?: string; memberId?: string };
 
 export function registeredWithWso(entry: { wso?: string }, wso: string): boolean {
   return entry.wso !== undefined && normalizeName(entry.wso) === normalizeName(wso);
@@ -433,33 +425,28 @@ export function wsoStats(rows: readonly StatsRow[], roster: readonly WsoRosterEn
       return entry !== undefined && registeredWithWso(entry, wso);
     })
     .map((row) => ({ ...row, club: EVERY_ROW_IN_ONE_CLUB }));
-  const distinctMembers = new Set(members.map((entry) => normalizeName(entry.name))).size;
+  const distinctMembers = new Set(members.map(rosterPersonKey)).size;
   return clubStats(memberRows, EVERY_ROW_IN_ONE_CLUB, distinctMembers);
 }
 
 export async function computeStatsRowsOfWso(ctx: QueryCtx, meet: string, wso: string): Promise<StatsRow[]> {
   const { joined, groups } = await statsEntries(ctx, meet);
   const wanted = joined.filter(({ athlete }) => registeredWithWso(athlete, wso));
-  const bests = await previousBests(
-    ctx,
-    wanted.map(({ key, row }) => ({ key, before: row.date })),
-  );
-  const found = new Map(bests.map((best) => [previousBestId(best.key, best.before), best.best]));
-  return wanted.map((entry) => statsRow(entry, groups, found.get(previousBestId(entry.key, entry.row.date)) ?? null));
+  const bests = await previousBests(ctx, wanted.map(wantedOf));
+  const found = new Map(bests.map((best) => [previousBestId(best), best.best]));
+  return wanted.map((entry) => statsRow(entry, groups, found.get(previousBestId(wantedOf(entry))) ?? null));
 }
 
-/** `COUNT(DISTINCT folded name)` of the club's entries at the meet, under any spelling of it (`clubKey`). */
-export function clubAthleteCount(roster: readonly { name: string; club: string }[], club: string): number {
-  return new Set(roster.filter((a) => sameClub(a.club, club)).map((a) => normalizeName(a.name))).size;
+export function clubAthleteCount(roster: readonly { name: string; club: string; memberId?: string }[], club: string): number {
+  return new Set(roster.filter((a) => sameClub(a.club, club)).map(rosterPersonKey)).size;
 }
 
-/** Each club's `COUNT(DISTINCT folded name)` at the meet, as `[clubKey, count]` pairs. */
-export function clubAthleteCounts(roster: readonly { name: string; club: string }[]): [string, number][] {
+export function clubAthleteCounts(roster: readonly { name: string; club: string; memberId?: string }[]): [string, number][] {
   const byClub = new Map<string, Set<string>>();
   for (const athlete of roster) {
     const key = clubKey(athlete.club);
     const keys = byClub.get(key) ?? new Set<string>();
-    keys.add(normalizeName(athlete.name));
+    keys.add(rosterPersonKey(athlete));
     byClub.set(key, keys);
   }
   return [...byClub.entries()].map(([club, keys]): [string, number] => [club, keys.size]).sort((a, b) => compareBytes(a[0], b[0]));

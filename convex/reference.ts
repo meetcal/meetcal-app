@@ -18,7 +18,8 @@ import {
   wsoStats,
 } from './lib/meetData';
 import { paddedDate, type MeetStatus } from './lib/meetStatus';
-import { ADAPTIVE_RECORDS_SEASON_START, clubNamesPage, computeAdaptiveRecords, computeIntlRankings, computeNationalRankingsForYear, computeQualifyingTotals, computeRecords, computeStandards, computeWsoList, computeWsoRows, distinctCollated, filterWsoRows, nationalRankingPage, requireAdaptiveGender, requireKnownRankingClass, wsoAgeGroups as ageGroupsOf, type WsoRecordRow, isWsoRecordRow } from './lib/referenceData';
+import { ADAPTIVE_RECORDS_SEASON_START, clubNamesPage, computeAdaptiveRecords, computeIntlRankings, computeNationalRankingsForYear, computeQualifyingTotals, computeRecords, computeStandards, computeWsoList, computeWsoRows, distinctCollated, filterWsoRows, bestTotalPerAthlete, nationalRankingPage, rankedTotalOf, requireAdaptiveGender, requireKnownRankingClass, wsoAgeGroups as ageGroupsOf, type WsoRecordRow, isWsoRecordRow } from './lib/referenceData';
+import { soleLiftersAmong } from './lib/lifterKeys';
 import { athleteGenderLabel } from './lib/normalize';
 import { DOCUMENTS_ONE_QUERY_MAY_READ } from './lib/readBudget';
 import { compareCollated } from './lib/sort';
@@ -168,7 +169,8 @@ export const nationalRankings = premiumQuery('reference:nationalRankings', {
     return await viewAnyAgeOrBounded(ctx, natKey(args.federation, args.ageCategory), args.ifNoneMatch, async () => {
       // A class with no view has no results, or is new: one page answers it.
       const page = await nationalRankingPage(ctx, args.federation, args.ageCategory, null);
-      return page.isDone ? page.rows : null;
+      if (!page.isDone) return null;
+      return bestTotalPerAthlete(page.rows, soleLiftersAmong(page.rows)).map(rankedTotalOf);
     });
   },
 });

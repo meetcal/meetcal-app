@@ -57,6 +57,15 @@ describe('storing lifters from rankings sightings', () => {
     expect(rows('lifter_memberships').map((m) => m.membership).sort()).toEqual(['100', '200']);
   });
 
+  it('marks the meets a member registered for stale when their membership is first recorded, and not again', async () => {
+    const { ctx, rows } = fakeMutationCtx({ athletes: [{ name: 'Taylor Johnson', memberId: '100', meet: 'Kentucky Open', club: 'X', gender: 'M', weightClass: '85' }] });
+    await upsert(ctx, { sightings: [sighting()] });
+    const meetHints = () => rows('view_hints').filter((hint) => hint.kind === 'meet').map((hint) => [hint.key, hint.seq]);
+    expect(meetHints()).toEqual([['Kentucky Open', 0]]);
+    await upsert(ctx, { sightings: [sighting()] });
+    expect(meetHints()).toEqual([['Kentucky Open', 0]]);
+  });
+
   it('queues every name it reports, once, until a relink of that name succeeds', async () => {
     const { ctx, rows } = fakeMutationCtx();
     await upsert(ctx, { sightings: [sighting(), sighting({ athleteId: '22081' })] });
@@ -136,9 +145,44 @@ describe('linking a name’s results to its lifters', () => {
       ],
     }));
 
-  it('links each row by its Sport80 history, and other federations by fit, with no hints while the answers are unchanged', async () => {
+  it('links each row by its Sport80 history, and other federations by fit, marking the views those rows feed stale once', async () => {
     const { ctx, rows } = await twoLifters();
-    const answer = await link(ctx, {
+    const names = [
+      {
+        nameKey: 'taylor johnson',
+        histories: [history('20730', [sourceRow()]), history('24655', [sourceRow({ date: '2019-08-04', age: "Open Women's 71kg", total: 133, snatchBest: 58, cjBest: 75 })])],
+      },
+    ];
+    const answer = await link(ctx, { names });
+    expect(answer).toEqual({ history: 2, fit: 1, unlinked: 0, changed: 3, stale: [] });
+    expect(rows('lifting_results').map((r) => [r.meet, r.lifterId, r.lifterMatch])).toEqual([
+      ['Kentucky Open', '20730', 'history'],
+      ['CT Open', '24655', 'history'],
+      ['Masters Worlds', '24655', 'fit'],
+    ]);
+    const hinted = () => rows('view_hints').map((hint) => [hint.kind, hint.key, hint.seq]);
+    expect(hinted()).toEqual(expect.arrayContaining([
+      ['meet', 'Kentucky Open', 0],
+      ['meet', 'CT Open', 0],
+      ['meet', 'Masters Worlds', 0],
+      ['athlete', 'taylor johnson', 0],
+    ]));
+    const before = hinted();
+    expect(rows('data_versions').map((r) => r.table)).toContain('lifting_results');
+    expect(await link(ctx, { names })).toMatchObject({ changed: 0 });
+    expect(hinted()).toEqual(before);
+  });
+
+  it('marks an unchanged unlinked row’s views stale when its name gains a second lifter', async () => {
+    const { ctx, rows } = await withHistories(fakeMutationCtx({
+      lifters: [lifter('20730', { gender: 'Men', birthYear: 1989 }), lifter('24655', { gender: 'Women', birthYear: 1990 })],
+      lifting_results: [
+        result({ lifterId: '20730', lifterMatch: 'history' }),
+        result({ eventId: '400', meet: 'Unmatched Open', date: '2018-03-03', total: 99, snatchBest: 44, cjBest: 55 }),
+        result({ eventId: '200', meet: 'CT Open', date: '2019-08-04', age: "Open Women's 71kg", total: 133, snatchBest: 58, cjBest: 75 }),
+      ],
+    }));
+    await link(ctx, {
       names: [
         {
           nameKey: 'taylor johnson',
@@ -146,14 +190,14 @@ describe('linking a name’s results to its lifters', () => {
         },
       ],
     });
-    expect(answer).toEqual({ history: 2, fit: 1, unlinked: 0, changed: 3, stale: [] });
-    expect(rows('lifting_results').map((r) => [r.meet, r.lifterId, r.lifterMatch])).toEqual([
-      ['Kentucky Open', '20730', 'history'],
-      ['CT Open', '24655', 'history'],
-      ['Masters Worlds', '24655', 'fit'],
+    expect(rows('lifting_results').map((r) => [r.meet, r.lifterId ?? null])).toEqual([
+      ['Kentucky Open', '20730'],
+      ['Unmatched Open', null],
+      ['CT Open', '24655'],
     ]);
-    expect(rows('view_hints')).toEqual([]);
-    expect(rows('data_versions')).toEqual([]);
+    const meets = rows('view_hints').filter((hint) => hint.kind === 'meet').map((hint) => hint.key);
+    expect(meets).toEqual(expect.arrayContaining(['Unmatched Open', 'CT Open']));
+    expect(meets).not.toContain('Kentucky Open');
   });
 
   it('rewrites the name’s history with each row’s lifter, which every surface reads', async () => {

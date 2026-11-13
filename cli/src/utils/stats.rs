@@ -569,6 +569,7 @@ pub(crate) mod tests {
             cj_best: cb,
             total: if sb > 0.0 && cb > 0.0 { sb + cb } else { 0.0 },
             adaptive: false,
+            lifter_id: None,
         }
     }
 

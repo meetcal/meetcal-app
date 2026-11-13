@@ -1,15 +1,16 @@
-import { isAnything, isListOf, isNumber, isPairOf, isString, isStringList, parsedAs, itemAt } from './lib/json';
+import { isAnything, isListOf, isNumber, isPairOf, isRecord, isString, isStringList, parsedAs, itemAt } from './lib/json';
 import { MEMBER_REGISTRATIONS_MAX, STANDARDS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { checkPass, premiumQuery, premiumRead } from './lib/access';
 import { chunks, mapLimited } from './lib/concurrency';
 import { revalidated, revalidatedText } from './lib/etag';
-import { action, internalQuery, query, type QueryCtx } from './_generated/server';
+import { action, type ActionCtx, internalQuery, query, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { latestMeetBests, readHistories, readSummaries, type Mark, type Summary } from './lib/history';
-import { addBests, type Candidate, checkLeaderboardArgs, fromCompactRow, type LeaderboardRow, leaderboardRow, monthSlices, parseCompactRows, pruneBests, rankBests, toCompactRow, readCompactRow } from './lib/leaderboard';
-import { checkEliteArgs, type EliteAnswer, type EliteMember, type EliteRegistration, type EliteStandard, isMemberOf, latestRegistration, type MemberResult, rankAll, standardTables, isEliteMember } from './lib/elite';
+import { addBests, type Candidate, checkLeaderboardArgs, fromCompactRow, joinSoleLifters, type LeaderboardRow, leaderboardRow, monthSlices, parseCompactRows, pruneBests, rankBests, toCompactRow, readCompactRow, unlinkedBestNames } from './lib/leaderboard';
+import { soleLifter, soleLiftersOf, type SoleLifters } from './lib/lifterKeys';
+import { checkEliteArgs, type EliteAnswer, type EliteMember, type EliteRegistration, type EliteStandard, isLinkedMemberOrNull, isMemberOf, latestRegistration, type LinkedMember, type MemberResult, ownerOfResult, rankAll, standardTables } from './lib/elite';
 import { byNameThenNewest, computeMeetResults, meetResultTitles } from './lib/meetData';
 import { editionSummaries, newestEditionFirst, type EditionSummary } from './lib/meetSummary';
 import { editionMedals, needsRoster, type EditionMedals, type RosterEntry } from './lib/placings';
@@ -90,6 +91,20 @@ export const leaderboardPage = internalQuery({
   },
 });
 
+export const SOLE_LIFTER_NAMES_PER_READ = 50;
+
+export const soleLifters = internalQuery({
+  args: { nameKeys: v.array(v.string()) },
+  handler: async (ctx, { nameKeys }): Promise<[string, string][]> => [...(await soleLiftersOf(ctx, nameKeys.slice(0, SOLE_LIFTER_NAMES_PER_READ)))],
+});
+
+export async function readSoleLifters(ctx: ActionCtx, nameKeys: readonly string[]): Promise<SoleLifters> {
+  const answers = await mapLimited(chunks(nameKeys, SOLE_LIFTER_NAMES_PER_READ), LEADERBOARD_CONCURRENCY, (batch) =>
+    ctx.runQuery(internal.results.soleLifters, { nameKeys: batch }),
+  );
+  return new Map(answers.flat());
+}
+
 /** A leaderboard: `rows` best first, and the federations in the range (`federations`, sorted, non-blank). */
 export type LeaderboardAnswer = { rows: LeaderboardRow[]; federations: string[] };
 
@@ -136,8 +151,9 @@ export const leaderboard = action({
       throw apiError(500, `results from ${start} to ${end} did not finish within ${LEADERBOARD_MAX_PAGES} pages`);
     };
     await mapLimited(slices, LEADERBOARD_CONCURRENCY, readSlice);
+    const sole = await readSoleLifters(ctx, unlinkedBestNames(best));
     return {
-      rows: rankBests(best.values(), limit).map(leaderboardRow),
+      rows: rankBests(joinSoleLifters(best, sole).values(), limit).map(leaderboardRow),
       federations: [...federations].filter((federation) => federation.trim() !== '').sort(compareBytes),
     };
   },
@@ -170,7 +186,6 @@ export const eliteRegistrations = internalQuery({
   },
 });
 
-/** Each member, from their registrations (`latestRegistration`), as JSON text of `[memberId, member]` pairs. */
 export const eliteMembers = internalQuery({
   args: { memberIds: v.array(v.string()) },
   handler: async (ctx, { memberIds }): Promise<string> => {
@@ -188,7 +203,7 @@ export const eliteMembers = internalQuery({
       return date;
     };
     const members = await Promise.all(
-      memberIds.map(async (memberId): Promise<[string, EliteMember | null]> => {
+      memberIds.map(async (memberId): Promise<[string, { member: EliteMember; lifter: string | null } | null]> => {
         const rows = await readAll(
           ctx.db
             .query('athletes')
@@ -207,25 +222,30 @@ export const eliteMembers = internalQuery({
             created: row._creationTime,
           })),
         );
-        return [memberId, latestRegistration(registrations)];
+        const member = latestRegistration(registrations);
+        return [memberId, member === null ? null : { member, lifter: await lifterOfMembership(ctx, memberId) }];
       }),
     );
     return JSON.stringify(members);
   },
 });
 
-/**
- * The USAW results dated `from` to `to` of each folded name, as JSON text of
- * `[key, CompactRow[]]` pairs, from the athletes' histories. Reads no pass:
- * the action checks it.
- */
+export type EliteNameResults = { sole: string | null; linked: boolean; rows: unknown[] };
+
+const isEliteNameResults = (value: unknown): value is EliteNameResults =>
+  isRecord(value) && (value.sole === null || typeof value.sole === 'string') && typeof value.linked === 'boolean' && Array.isArray(value.rows);
+
 export const eliteResults = internalQuery({
   args: { keys: v.array(v.string()), from: v.string(), to: v.string() },
   handler: async (ctx, { keys, from, to }): Promise<string> => {
     const histories = await readHistories(ctx, keys);
-    const pairs = [...histories].map(([key, rows]) => [
+    const pairs = [...histories].map(([key, rows]): [string, EliteNameResults] => [
       key,
-      rows.filter((row) => row.federation === 'USAW' && row.date >= from && row.date <= to).map(toCompactRow),
+      {
+        sole: soleLifter(rows),
+        linked: rows.some((row) => row.lifter_id !== undefined),
+        rows: rows.filter((row) => row.federation === 'USAW' && row.date >= from && row.date <= to).map(toCompactRow),
+      },
     ]);
     return JSON.stringify(pairs);
   },
@@ -238,7 +258,6 @@ export const eliteStandards = internalQuery({
     (await readAll(ctx.db.query('standards'), STANDARDS_MAX, 'standards')).map(({ ageCategory, gender, weightClass, standardA }) => ({ ageCategory, gender, weightClass, standardA })),
 });
 
-const isEliteMemberOrNull = (value: unknown): value is EliteMember | null => value === null || isEliteMember(value);
 
 const eliteMethodArg = v.union(v.literal('percentA'), v.literal('qpoints'), v.literal('qmasters'), v.literal('sinclair'));
 
@@ -284,28 +303,31 @@ export const wsoElite = action({
     if (memberIds.size === 0) throw apiError(404, `No registrations found for WSO "${wso}"`);
 
     const looked = await mapLimited(chunks([...memberIds], ELITE_MEMBER_BATCH), ELITE_CONCURRENCY, async (ids) =>
-      parsedAs(await ctx.runQuery(internal.results.eliteMembers, { memberIds: ids }), isListOf(isPairOf(isString, isEliteMemberOrNull)), 'a batch of members'),
+      parsedAs(await ctx.runQuery(internal.results.eliteMembers, { memberIds: ids }), isListOf(isPairOf(isString, isLinkedMemberOrNull)), 'a batch of members'),
     );
-    // Results are matched by folded name; two members of one name share their results.
-    const membersByKey = new Map<string, { memberKey: string; member: EliteMember }>();
+    const membersByKey = new Map<string, LinkedMember[]>();
     let members = 0;
-    for (const [memberId, member] of looked.flat()) {
-      if (member === null || !isMemberOf(member, wso)) continue;
+    for (const [memberKey, linked] of looked.flat()) {
+      if (linked === null || !isMemberOf(linked.member, wso)) continue;
       members += 1;
-      const key = normalizeName(member.name);
-      if (!membersByKey.has(key)) membersByKey.set(key, { memberKey: memberId, member });
+      const key = normalizeName(linked.member.name);
+      membersByKey.set(key, [...(membersByKey.get(key) ?? []), { memberKey, ...linked }]);
     }
 
     const [standards, read] = await Promise.all([
       ctx.runQuery(internal.results.eliteStandards, {}),
       mapLimited(chunks([...membersByKey.keys()], ELITE_HISTORY_BATCH), ELITE_CONCURRENCY, async (keys) =>
-        parsedAs(await ctx.runQuery(internal.results.eliteResults, { keys, from, to }), isListOf(isPairOf(isString, isListOf(isAnything))), 'a batch of results'),
+        parsedAs(await ctx.runQuery(internal.results.eliteResults, { keys, from, to }), isListOf(isPairOf(isString, isEliteNameResults)), 'a batch of results'),
       ),
     ]);
     const results: (MemberResult & { memberKey: string })[] = [];
-    for (const [key, rows] of read.flat()) {
-      const owner = membersByKey.get(key);
-      if (owner) for (const row of rows) results.push({ row: fromCompactRow(readCompactRow(row)), ...owner });
+    for (const [key, { sole, linked, rows }] of read.flat()) {
+      const named = membersByKey.get(key) ?? [];
+      for (const compact of rows) {
+        const row = fromCompactRow(readCompactRow(compact));
+        const owner = ownerOfResult(named, row, sole, linked);
+        if (owner) results.push({ row, memberKey: owner.memberKey, member: owner.member });
+      }
     }
 
     return { wso, from, to, members, ...rankAll(results, methods, standardTables(standards)) };
