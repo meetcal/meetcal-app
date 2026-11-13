@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { builderEditValidator, builderOptionsValidator } from './lib/scheduleBuilderOptions';
 
 /**
  * The Convex data model as it stood before the Rust port, extended (never
@@ -330,6 +331,20 @@ export default defineSchema({
   meet_submission_upload_urls: defineTable({ userId: v.string(), createdAt: v.number() })
     .index('by_userId_and_createdAt', ['userId', 'createdAt'])
     .index('by_createdAt', ['createdAt']),
+
+  schedule_drafts: defineTable({
+    userId: v.string(),
+    meet: v.string(),
+    options: builderOptionsValidator,
+    edits: v.array(builderEditValidator),
+    updatedAt: v.number(),
+  })
+    .index('by_userId_and_meet', ['userId', 'meet'])
+    .index('by_userId_and_updatedAt', ['userId', 'updatedAt']),
+
+  schedule_builder_loads: defineTable({ eventId: v.string(), meet: v.string(), loadedAt: v.number() })
+    .index('by_eventId_and_loadedAt', ['eventId', 'loadedAt'])
+    .index('by_loadedAt', ['loadedAt']),
 
   // A user's `Subscriptions` entitlement as RevenueCat's API last reported it
   // (`convex/entitlements.ts`), one row per Clerk user id (RevenueCat's app

@@ -22,6 +22,11 @@ export function entriesEndpoint(pageUrl: string): string {
   return `${SPORT80}/api/public/events/datatable/${event}/entries/${stage}`;
 }
 
+export function canonicalEntriesUrl(pageUrl: string): string {
+  const { event, stage } = entriesPage(pageUrl);
+  return `${SPORT80}/public/events/${event}/entries/${stage}`;
+}
+
 /** The Sport80 event id of a public entries page URL: the id the meet sync stores as the meet's `sourceId`. */
 export function entriesEventId(pageUrl: string): string {
   return entriesPage(pageUrl).event;

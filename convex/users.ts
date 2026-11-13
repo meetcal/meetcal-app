@@ -478,24 +478,10 @@ export const USER_DATA_DELETE_BATCH = 500;
 /** A user's meet submissions one `deleteUserData` call deletes, each with up to 10 files. */
 export const MEET_SUBMISSION_DELETE_BATCH = 50;
 
-/**
- * Deletes everything stored under a user id: saved sessions (with their
- * notes and athlete names), preferences, the saved-session revisions and
- * reset markers, the stored entitlement, MeetCal-issued tokens, and meet
- * submissions with their files. Keeps the id alone (`deleted_users`), so a request still
- * carrying a valid token for the account is refused rather than storing its
- * data again. Called by Clerk's `user.deleted` webhook (`convex/http.ts`),
- * so an account deleted in Clerk leaves nothing behind (#250). At most
- * USER_DATA_DELETE_BATCH rows per table a call; a call that hit the limit
- * schedules the next. Idempotent: a user with no rows is a no-op.
- *
- *   npx convex run users:deleteUserData '{"userId":"user_…"}'
- */
 export const deleteUserData = internalMutation({
   args: { userId: v.string() },
   handler: async (ctx, { userId }) => {
     if (userId.trim() === '') throw new Error('userId is required');
-    // First, so no request of this user stores anything from here on.
     const tombstone = await ctx.db
       .query('deleted_users')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -510,9 +496,9 @@ export const deleteUserData = internalMutation({
       ctx.db.query('entitlement_syncs').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('api_tokens').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('meet_submission_upload_urls').withIndex('by_userId_and_createdAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('schedule_drafts').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
     ]);
     for (const rows of batches) for (const row of rows) await ctx.db.delete(row._id);
-    // Each with its files, so fewer a call.
     const submissions = await ctx.db
       .query('meet_submissions')
       .withIndex('by_userId_and_createdAt', (q) => q.eq('userId', userId))
@@ -520,7 +506,7 @@ export const deleteUserData = internalMutation({
     for (const submission of submissions) await deleteMeetSubmission(ctx, submission._id);
     const more = batches.some((rows) => rows.length === USER_DATA_DELETE_BATCH) || submissions.length === MEET_SUBMISSION_DELETE_BATCH;
     if (more) await ctx.scheduler.runAfter(0, internal.users.deleteUserData, { userId });
-    const [sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens, meetSubmissionUploadUrls] = batches.map((rows) => rows.length);
+    const [sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens, meetSubmissionUploadUrls, scheduleDrafts] = batches.map((rows) => rows.length);
     return {
       sessions,
       preferences,
@@ -531,6 +517,7 @@ export const deleteUserData = internalMutation({
       apiTokens,
       meetSubmissions: submissions.length,
       meetSubmissionUploadUrls,
+      scheduleDrafts,
       more,
     };
   },
