@@ -35,7 +35,7 @@ export function timesOf(session: RowTimes, group: Pick<BuiltGroup, 'times'>): Ro
 type ShownGroup = Pick<BuiltGroup, 'gender' | 'weightClasses' | 'split' | 'ageGroup' | 'publishedRows' | 'times'>;
 
 export function rowsOf(session: RowTimes, group: ShownGroup): PublishedPart[] {
-  return group.publishedRows && group.publishedRows.length > 0 ? group.publishedRows : [{ ...timesOf(session, group), weightClass: labelOf(group) }];
+  return group.publishedRows ?? [{ ...timesOf(session, group), weightClass: labelOf(group) }];
 }
 
 export function lockedEditProblem(locked: readonly LockedPlace[]): string | null {
@@ -63,8 +63,7 @@ export function publishedSchedule(schedule: BuiltSchedule): PublishedSchedule {
   for (const session of schedule.sessions) {
     for (const group of session.groups) {
       const platform = writtenPlatform(group);
-      const written = group.publishedRows?.length === 0 ? [] : rowsOf(session, group);
-      for (const row of written) rows.push({ ...row, sessionId: session.number, platform: row.platform ?? platform });
+      for (const row of rowsOf(session, group)) rows.push({ ...row, sessionId: session.number, platform: row.platform ?? platform });
       for (const athlete of group.athletes) {
         const seated = athlete.seat && athlete.seat.session === session.number && athlete.seat.platform.trim() === group.platform ? athlete.seat.platform : platform;
         const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: seated };

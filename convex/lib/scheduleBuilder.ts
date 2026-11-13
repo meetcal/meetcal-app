@@ -71,7 +71,7 @@ export type BuilderWarning = { code: BuilderWarningCode; message: string };
 
 export type BuiltSchedule = { athletes: number; sessions: BuiltSession[]; warnings: BuilderWarning[] };
 
-type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean; moved?: boolean; gained?: boolean; origin?: number; published?: { slot: number; rows: PublishedPart[] } };
+type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean; moved?: boolean; origin?: number; published?: { slot: number; rows: PublishedPart[] } };
 
 type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group>; published?: Map<string, PublishedPart[]>; storedPlatforms?: Map<string, string>; retimed?: boolean };
 
@@ -311,12 +311,11 @@ function targetGroup(slots: readonly Slot[], options: BuilderOptions, session: n
   return created;
 }
 
-function markMoved(source: Group, target: Group): void {
-  for (const group of [source, target]) {
+function markMoved(...groups: Group[]): void {
+  for (const group of groups) {
     group.edited = true;
     group.moved = true;
   }
-  target.gained = true;
 }
 
 function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions, bench: Bench | null): EditOutcome {
@@ -330,7 +329,6 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions, be
       bench.unplaced.splice(index, 1);
       target.athletes.push(athlete);
       target.edited = true;
-      target.gained = true;
       return 'applied';
     }
     case 'removeAthlete': {
@@ -420,7 +418,7 @@ export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinute
   sessions.forEach((session, i) => {
     for (const later of sessions.slice(i + 1)) {
       for (const group of session.groups) {
-        const other = later.groups.find((g) => g.platform === group.platform);
+        const other = later.groups.find((g) => samePlatform(g.platform, group.platform));
         if (!other || (!rules.warnsOf(session, group) && !rules.warnsOf(later, other))) continue;
         if (!overlapping(windowsOf(session, group, sessionMinutes, rules), windowsOf(later, other, sessionMinutes, rules))) continue;
         warnings.push({ code: 'overlap', message: `Sessions ${session.number} and ${later.number} use the ${group.platform} platform at the same time.` });
@@ -443,8 +441,9 @@ function publishedOverlapRules(slots: readonly Slot[], kept: readonly { slot: Sl
       for (const row of rows) {
         const start = minutesOfStoredClock(row.startTime);
         if (start === null || row.date === '') continue;
-        const lane = firsts.get(`${row.date}|${platform}`) ?? new Map<number, number>();
-        firsts.set(`${row.date}|${platform}`, lane);
+        const key = `${row.date}|${platform.toLowerCase()}`;
+        const lane = firsts.get(key) ?? new Map<number, number>();
+        firsts.set(key, lane);
         lane.set(slot.id, Math.min(start, lane.get(slot.id) ?? start));
       }
     }
@@ -452,7 +451,7 @@ function publishedOverlapRules(slots: readonly Slot[], kept: readonly { slot: Sl
   return {
     warnsOf: (session, group) => touched.has(placeKey(session.id, group.platform)),
     nextStart: (session, group, date) => {
-      const lane = firsts.get(`${date}|${group.platform}`);
+      const lane = firsts.get(`${date}|${group.platform.toLowerCase()}`);
       const own = lane?.get(session.id);
       if (!lane || own === undefined) return Number.POSITIVE_INFINITY;
       return Math.min(Number.POSITIVE_INFINITY, ...[...lane].filter(([slot, start]) => slot !== session.id && start > own).map(([, start]) => start));
@@ -510,7 +509,8 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       const own = slot.retimed ? undefined : (earliest(slot.published?.get(platform) ?? []) ?? sessionRow);
       const times = own ? timesOfPart(own) : undefined;
       const origin = group.edited ? undefined : group.published;
-      const loadedWithoutRows = !group.gained && !slot.retimed && group.origin === slot.id && group.published === undefined;
+      const gained = group.athletes.some((athlete) => !athlete.seat || athlete.seat.session !== slot.id || athlete.seat.platform.trim() !== platform);
+      const loadedWithoutRows = !gained && !slot.retimed && group.origin === slot.id && group.published === undefined;
       if (!origin) return { ...built, ...(times ? { times } : {}), ...(loadedWithoutRows ? { publishedRows: [] } : {}) };
       const inPlace = origin.slot === slot.id && !slot.retimed;
       const relabelled = !locked && group.splitOf !== '' && editedSplits.has(group.splitOf);
@@ -556,7 +556,12 @@ export type LockedPlace = { session: number; platform: string };
 
 export type PublishedBuild = BuiltSchedule & { unplaced: BuiltAthlete[]; removed: BuiltAthlete[]; locked: LockedPlace[] };
 
-const lockedName = (slot: Slot | undefined, platform: string) => [...(slot?.published ?? [])].find(([name, rows]) => rows.length > 1 && name.toLowerCase() === platform.toLowerCase())?.[0];
+const samePlatform = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+function lockedName(slot: Slot | undefined, platform: string): string | undefined {
+  const named = [...(slot?.published ?? [])].filter(([name]) => samePlatform(name, platform));
+  return named.reduce((count, [, rows]) => count + rows.length, 0) > 1 ? named[0]?.[0] : undefined;
+}
 
 const isLocked = (slot: Slot | undefined, platform: string) => lockedName(slot, platform) !== undefined;
 
@@ -782,7 +787,7 @@ function publishedSessionMinutes(rows: readonly PublishedRow[], fallback: number
   for (const row of rows) {
     const start = minutesOfStoredClock(row.startTime);
     if (row.date === '' || start === null) continue;
-    const lane = `${row.date}|${row.platform.trim()}`;
+    const lane = `${row.date}|${row.platform.trim().toLowerCase()}`;
     const key = `${lane}|${row.sessionId}`;
     const first = firstStarts.get(key);
     if (!first || start < first.start) firstStarts.set(key, { lane, start });

@@ -1113,6 +1113,92 @@ describe('reviewing a publication the schedule moved on from', () => {
   });
 });
 
+describe('one platform loaded as two rows that differ only by case', () => {
+  const rows = () => [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'red', '10:00:00', '08:00:00', 'W 63'), handRow(2, 'Red', '12:00:00', '10:00:00', 'M 89')];
+  const caseVariants = () => server({ ...organizer, athletes: [rostered(ann, 1), rostered(gia, 1, { sessionPlatform: 'red' }), rostered(cal, 2)], session_schedule: rows() });
+  const retime = { kind: 'setSessionTime', session: 1, date: '2027-03-06', startTime: '08:00' };
+
+  it('is locked: a retime of its session is skipped and refused, and both names are answered as locked', async () => {
+    const store = caseVariants();
+    const answer = await board(store, [retime]);
+    expect(answer.warnings.map((w) => w.code)).toContain('lockedEdit');
+    expect((answer.sessions as { lockedPlatforms?: string[] }[]).map((session) => session.lockedPlatforms)).toEqual([['Red', 'red'], undefined]);
+    expect(await failure(publishAs(store, 'user_a', 'published', null, [retime]))).toEqual({
+      status: 400,
+      error: "Session 1 · Red has several published rows, so it can't be changed here. Use Rebuild From Scratch to regroup it.",
+    });
+  });
+
+  it('is written back exactly by a republish with no edits', async () => {
+    const store = caseVariants();
+    await publishAs(store, 'user_a', 'published', null);
+    expect(sortedRows(store)).toEqual(inRowOrder(rows()));
+  });
+});
+
+describe('an add or a move into a platform the schedule has no row for, undone by a later edit', () => {
+  const rosterOnly = () =>
+    server({
+      ...organizer,
+      athletes: [rostered(ann, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(dan, 1, { sessionPlatform: 'Blue' }), rostered(gia, 2)],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Red', '11:00:00', '09:00:00', 'W 63')],
+    });
+  const seats = (store: ReturnType<typeof server>) => store.rows('athletes').map((a) => [a.name, a.sessionNumber, a.sessionPlatform]);
+  const loaded = [
+    ['Ann Lee', 1, 'Red'],
+    ['Cal Diaz', 1, 'Blue'],
+    ['Dan Fox', 1, 'Blue'],
+    ['Gia Hu', 2, 'Red'],
+  ];
+
+  it('writes no row for it when an added lifter is taken off again', async () => {
+    const store = rosterOnly();
+    await store.record([listed(ann), listed(cal), listed(dan), listed(gia), listed(fay)]);
+    await publishAs(store, 'user_a', 'published', null, [
+      { kind: 'addAthlete', athlete: keyOf(fay), toSession: 1, toPlatform: 'Blue' },
+      { kind: 'removeAthlete', athlete: keyOf(fay), fromSession: 1, fromPlatform: 'Blue', occurrence: 0 },
+    ]);
+    expect(sortedRows(store).filter((row) => row.platform === 'Blue')).toEqual([]);
+    expect(seats(store)).toEqual(loaded);
+  });
+
+  it('writes no row for it when a lifter moved in is moved back', async () => {
+    const store = rosterOnly();
+    await publishAs(store, 'user_a', 'published', null, [
+      { kind: 'moveAthlete', athlete: keyOf(ann), fromSession: 1, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'Blue' },
+      { kind: 'moveAthlete', athlete: keyOf(ann), fromSession: 1, fromPlatform: 'Blue', occurrence: 0, toSession: 1, toPlatform: 'Red' },
+    ]);
+    expect(sortedRows(store).filter((row) => row.platform === 'Blue')).toEqual([]);
+    expect(seats(store)).toEqual(loaded);
+  });
+});
+
+describe('the export and the email of a platform the schedule has no row for', () => {
+  it('list no row for it, and give its lifters empty times in the Start List, as MeetCal does', () => {
+    const published: PublishedBase = {
+      rows: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Red', '11:00:00', '09:00:00', 'W 63')],
+      roster: [
+        { ...rostered(ann, 1), _id: 'ann' },
+        { ...rostered(cal, 1, { sessionPlatform: 'Blue' }), _id: 'cal' },
+        { ...rostered(dan, 1, { sessionPlatform: 'Blue' }), _id: 'dan' },
+        { ...rostered(gia, 2), _id: 'gia' },
+      ],
+      sport80: null,
+    };
+    const schedule = buildFromPublished(published, sport80Diff(published), { ...defaultBuilderOptions(meetRow), platforms: ['Red', 'Blue'] });
+    expect(sessionRows(schedule).map((row) => [row[0], row[1]])).toEqual([
+      [1, 'Red'],
+      [2, 'Red'],
+    ]);
+    expect(startListRows(schedule).filter((row) => row[1] === 'Blue').map((row) => [row[6], row[2], row[3], row[4]])).toEqual([
+      ['Cal Diaz', '', '', ''],
+      ['Dan Fox', '', '', ''],
+    ]);
+    const { html } = renderPublicationEmail({ meet: MEET, status: 'live', userId: 'u', schedule, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: true });
+    expect(html).not.toContain('Blue');
+  });
+});
+
 describe('a platform spelled two ways in one session', () => {
   it('writes each row and each athlete back with their own spelling', async () => {
     const rows = [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Red ', '10:00:00', '08:00:00', 'W 63'), handRow(2, 'Red', '12:00:00', '10:00:00', 'M 89')];
