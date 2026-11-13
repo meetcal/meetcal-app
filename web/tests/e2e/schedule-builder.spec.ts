@@ -84,7 +84,7 @@ function publishedBoard(edits: Edit[], checkedAt: number, locked = false) {
       const ownTimes = session.id === 2 ? FLIGHT_TIMES : null;
       return { ...group, ownTimes, locked: locked && session.id === 2, athletes: add?.toSession === session.id ? [...kept, newcomer] : kept };
     });
-    return { ...session, locked: locked && session.id === 2, date: "2026-11-21", startTime: session.startTime || "11:00:00", weighInTime: session.weighInTime || "09:00:00", groups };
+    return { ...session, lockedPlatforms: locked && session.id === 2 ? ["Red"] : [], date: "2026-11-21", startTime: session.startTime || "11:00:00", weighInTime: session.weighInTime || "09:00:00", groups };
   });
   const withdrawn = removed ? [] : [{ athlete: { ...athlete("2|ava smith", "Ava Smith", "53", 90), withdrawn: true }, place: { session: 1, number: 1, platform: "Red" }, occurrence: 0 }];
   return {
@@ -95,8 +95,8 @@ function publishedBoard(edits: Edit[], checkedAt: number, locked = false) {
       checkedAt,
       added: add ? [] : [{ athlete: newcomer, suggestion: { session: 1, number: 1, platform: "Red" } }],
       withdrawn,
-      addedNote: add ? "No new lifters." : "1 new lifter isn’t placed, so they stay off the start list when you publish.",
-      withdrawnNote: removed ? "Every published lifter is still on Sport80." : "1 lifter is marked on the board. Remove takes them off the start list when you publish.",
+      addedNote: add ? "Every new lifter is placed." : "1 new lifter isn’t placed, so they stay off the start list when you publish.",
+      withdrawnNote: removed ? "1 lifter comes off the start list when you publish." : "1 lifter is marked on the board. Remove takes them off the start list when you publish.",
     },
   };
 }
@@ -758,10 +758,10 @@ test("a published meet opens on its schedule, folds in Sport80's changes, and as
 
   await changes.getByRole("button", { name: "Ella Late: Add to Session 1 · Red" }).click();
   await expect(sessionCard(page, 1)).toContainText("Ella Late");
-  await expect(changes).toContainText("No new lifters.");
+  await expect(changes).toContainText("Every new lifter is placed.");
   await page.getByRole("button", { name: "Ava Smith: Remove" }).click();
   await expect(sessionCard(page, 1)).not.toContainText("Ava Smith");
-  await expect(changes).toContainText("Every published lifter is still on Sport80.");
+  await expect(changes).toContainText("1 lifter comes off the start list when you publish.");
   expect(calls.previews.at(-1)?.args.edits).toEqual([
     { kind: "addAthlete", athlete: "9|ella late", toSession: 1, toPlatform: "Red" },
     { kind: "removeAthlete", athlete: "2|ava smith", fromSession: 1, fromPlatform: "Red", occurrence: 0 },

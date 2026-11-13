@@ -758,6 +758,7 @@ mod tests {
             start_time: "09:00:00".to_owned(),
             weigh_in_time: "07:00:00".to_owned(),
             groups: Vec::new(),
+            locked_platforms: Vec::new(),
         };
         assert_eq!(
             session_times(&session),

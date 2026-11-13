@@ -187,7 +187,7 @@ export const preview = query({
     const row = await requireMeet(ctx, meet);
     const built = await buildOn(ctx, row, base ?? 'entries', options, edits);
     if (built.base === 'entries') return withGroupLabels(built.schedule);
-    return { ...withGroupLabels(built.schedule), changes: sport80Changes(built.schedule, built.published.checkedAt, options.separateAgeGroups) };
+    return { ...withGroupLabels(built.schedule), changes: sport80Changes(built.schedule, built.published.checkedAt, options.separateAgeGroups, built.changes.add.length) };
   },
 });
 
@@ -196,7 +196,7 @@ export const changes = query({
   handler: async (ctx, { meet }) => {
     const row = await requireMeet(ctx, meet);
     const published = await publishedMeetOf(ctx, row);
-    if (!published) return { checkedAt: null, added: [], withdrawn: [], addedNote: addedNote(0), withdrawnNote: withdrawnNote(0, 0) };
+    if (!published) return { checkedAt: null, added: [], withdrawn: [], addedNote: addedNote(0, 0), withdrawnNote: withdrawnNote(0, 0, 0) };
     return sport80Changes(buildFromPublished(published.base, published.diff, published.options), published.checkedAt, published.options.separateAgeGroups);
   },
 });

@@ -138,11 +138,13 @@ pub(crate) struct BuiltSession {
     pub start_time: String,
     pub weigh_in_time: String,
     pub groups: Vec<BuiltGroup>,
+    #[serde(default)]
+    pub locked_platforms: Vec<String>,
 }
 
 impl BuiltSession {
     pub(crate) fn is_locked(&self) -> bool {
-        self.groups.iter().any(|group| group.locked)
+        !self.locked_platforms.is_empty()
     }
 
     pub(crate) fn is_scheduled(&self) -> bool {
@@ -520,12 +522,7 @@ pub(crate) fn place_targets(sessions: &[BuiltSession], platforms: &[String]) -> 
         .flat_map(|session| {
             platforms
                 .iter()
-                .filter(move |platform| {
-                    !session
-                        .groups
-                        .iter()
-                        .any(|group| group.locked && &group.platform == *platform)
-                })
+                .filter(move |platform| !session.locked_platforms.contains(platform))
                 .map(move |platform| MoveTarget {
                     session: session.id,
                     platform: platform.clone(),
@@ -1089,7 +1086,22 @@ mod tests {
             start_time: "09:00:00".to_owned(),
             weigh_in_time: "07:00:00".to_owned(),
             groups: Vec::new(),
+            locked_platforms: Vec::new(),
         }
+    }
+
+    #[test]
+    fn no_target_opens_onto_a_platform_convex_answers_as_locked() {
+        let locked = BuiltSession {
+            locked_platforms: vec!["Red".to_owned(), "red".to_owned()],
+            ..session(1, 1)
+        };
+        let platforms = ["Red".to_owned(), "red".to_owned()];
+        let labels = place_targets(&[locked, session(2, 2)], &platforms)
+            .into_iter()
+            .map(|target| target.label)
+            .collect::<Vec<_>>();
+        assert_eq!(labels, ["Session 2 · Red", "Session 2 · red"]);
     }
 
     #[test]

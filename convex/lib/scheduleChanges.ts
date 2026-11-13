@@ -56,24 +56,27 @@ function withdrawnOf(session: BuiltSession, group: BuiltGroup): WithdrawnAthlete
   );
 }
 
-export function addedNote(count: number): string {
-  if (count === 0) return 'No new lifters.';
-  return `${count} new ${count === 1 ? 'lifter isn’t' : 'lifters aren’t'} placed, so they stay off the start list when you publish.`;
+export function addedNote(unplaced: number, placed: number): string {
+  if (unplaced > 0) return `${unplaced} new ${unplaced === 1 ? 'lifter isn’t' : 'lifters aren’t'} placed, so they stay off the start list when you publish.`;
+  return placed > 0 ? 'Every new lifter is placed.' : 'No new lifters.';
 }
 
-export function withdrawnNote(removable: number, locked: number): string {
-  if (removable === 0) return locked === 0 ? 'Every published lifter is still on Sport80.' : 'No lifter marked on the board can be removed here.';
-  return `${removable} ${removable === 1 ? 'lifter is' : 'lifters are'} marked on the board. Remove takes them off the start list when you publish.`;
+export function withdrawnNote(removable: number, locked: number, removed: number): string {
+  const marked = removable > 0 ? `${removable} ${removable === 1 ? 'lifter is' : 'lifters are'} marked on the board. Remove takes them off the start list when you publish.` : '';
+  const leaving = removed > 0 ? `${removed} ${removed === 1 ? 'lifter comes' : 'lifters come'} off the start list when you publish.` : '';
+  const note = [marked, leaving].filter((sentence) => sentence !== '').join(' ');
+  if (note !== '') return note;
+  return locked === 0 ? 'Every published lifter is still on Sport80.' : 'No lifter marked on the board can be removed here.';
 }
 
-export function sport80Changes(build: PublishedBuild, checkedAt: number | null, separateAgeGroups: boolean): Sport80Changes {
+export function sport80Changes(build: PublishedBuild, checkedAt: number | null, separateAgeGroups: boolean, placedAdded = 0): Sport80Changes {
   const withdrawn = build.sessions.flatMap((session) => session.groups.flatMap((group) => withdrawnOf(session, group).map((entry) => ({ entry, locked: group.locked === true }))));
   const locked = withdrawn.filter((w) => w.locked).length;
   return {
     checkedAt,
     added: build.unplaced.map((athlete) => ({ athlete, suggestion: suggestedPlace(athlete, build.sessions, separateAgeGroups) })),
     withdrawn: withdrawn.map((w) => w.entry),
-    addedNote: addedNote(build.unplaced.length),
-    withdrawnNote: withdrawnNote(withdrawn.length - locked, locked),
+    addedNote: addedNote(build.unplaced.length, placedAdded),
+    withdrawnNote: withdrawnNote(withdrawn.length - locked, locked, build.removed.filter((athlete) => athlete.withdrawn).length),
   };
 }

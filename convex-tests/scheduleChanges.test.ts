@@ -1035,6 +1035,84 @@ describe('a platform the roster uses but the schedule has no row for', () => {
   });
 });
 
+describe('a removal or a move out of a platform the schedule has no row for', () => {
+  const rosterOnly = () =>
+    server({
+      ...organizer,
+      athletes: [rostered(ann, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(dan, 1, { sessionPlatform: 'Blue' }), rostered(gia, 2)],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Red', '11:00:00', '09:00:00', 'W 63')],
+    });
+  const seats = (store: ReturnType<typeof server>) => store.rows('athletes').map((a) => [a.name, a.sessionNumber, a.sessionPlatform]);
+
+  it('writes no row for it when a lifter is removed', async () => {
+    const store = rosterOnly();
+    const rows = sortedRows(store);
+    await publishAs(store, 'user_a', 'published', null, [{ kind: 'removeAthlete', athlete: keyOf(dan), fromSession: 1, fromPlatform: 'Blue', occurrence: 0 }]);
+    expect(sortedRows(store)).toEqual(rows);
+    expect(seats(store)).toEqual([
+      ['Ann Lee', 1, 'Red'],
+      ['Cal Diaz', 1, 'Blue'],
+      ['Gia Hu', 2, 'Red'],
+    ]);
+  });
+
+  it('writes no row for it when a lifter moves out', async () => {
+    const store = rosterOnly();
+    const rows = sortedRows(store);
+    await publishAs(store, 'user_a', 'published', null, [{ kind: 'moveAthlete', athlete: keyOf(cal), fromSession: 1, fromPlatform: 'Blue', occurrence: 0, toSession: 2, toPlatform: 'Red' }]);
+    expect(sortedRows(store).filter((row) => row.platform === 'Blue')).toEqual([]);
+    expect(sortedRows(store).filter((row) => row.sessionId === 1)).toEqual(rows.filter((row) => row.sessionId === 1));
+    expect(seats(store)).toEqual([
+      ['Ann Lee', 1, 'Red'],
+      ['Cal Diaz', 2, 'Red'],
+      ['Dan Fox', 1, 'Blue'],
+      ['Gia Hu', 2, 'Red'],
+    ]);
+  });
+});
+
+describe("the Sport80 panel's notes after edits", () => {
+  it('say every new lifter is placed and how many withdrawn lifters come off', async () => {
+    const store = server();
+    await store.record(sport80Today());
+    const before = (await board(store)).changes as { addedNote?: string; withdrawnNote?: string };
+    expect([before.addedNote, before.withdrawnNote]).toEqual([
+      '2 new lifters aren’t placed, so they stay off the start list when you publish.',
+      '1 lifter is marked on the board. Remove takes them off the start list when you publish.',
+    ]);
+    const after = (await board(store, [...foldIn, { kind: 'addAthlete', athlete: keyOf(gus), toSession: 2, toPlatform: 'Red' }])).changes as { addedNote?: string; withdrawnNote?: string };
+    expect([after.addedNote, after.withdrawnNote]).toEqual(['Every new lifter is placed.', '1 lifter comes off the start list when you publish.']);
+  });
+});
+
+describe('the platforms preview answers as locked', () => {
+  it('name every platform of a session that matches a locked one but for case', async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(bea, 1), rostered(gia, 2, { sessionPlatform: 'red' })],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Red', '10:00:00', '08:00:00', 'W 58 B'), handRow(2, 'red', '12:00:00', '10:00:00', 'W 63')],
+    });
+    const sessions = (await board(store)).sessions as { lockedPlatforms?: string[] }[];
+    expect(sessions.map((session) => session.lockedPlatforms)).toEqual([['Red', 'red'], undefined]);
+  });
+});
+
+describe('reviewing a publication the schedule moved on from', () => {
+  it('says it is stale on the review page, and both approvals refuse it as stale, before building it', async () => {
+    const store = server(organizer);
+    await publishAs(store, 'user_b', 'published', null);
+    const waiting = pendingId(store);
+    await store.as(null)(replaceMeetSchedule, { meet: MEET, rows: publishedRows().map((row) => ({ ...row, platform: 'RED' })) });
+    await store.as(null)(replaceMeetAthletes, { meet: MEET, rows: roster().map((row) => ({ ...row, sessionPlatform: 'RED' })), allowUnchecked: true });
+    const { version } = await opened(store);
+    await publishAs(store, 'user_a', 'published', version);
+    const token = await withReviewToken(store, waiting);
+    expect(await store.as(null)(reviewByToken, token)).toMatchObject({ problem: STALE_APPROVAL });
+    expect(await failure(store.as(null)(decideByToken, { ...token, decision: 'approve' }))).toEqual({ status: 409, error: STALE_APPROVAL });
+    expect(await failure(store.as(null)(approve, { publicationId: waiting }))).toEqual({ status: 409, error: STALE_APPROVAL });
+    expect(store.docs('schedule_publications').find((p) => String(p._id) === waiting)?.status).toBe('pending');
+  });
+});
+
 describe('a platform spelled two ways in one session', () => {
   it('writes each row and each athlete back with their own spelling', async () => {
     const rows = [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Red ', '10:00:00', '08:00:00', 'W 63'), handRow(2, 'Red', '12:00:00', '10:00:00', 'M 89')];

@@ -62,6 +62,7 @@ export type BuiltSession = {
   weighInTime: string;
   groups: BuiltGroup[];
   locked?: boolean;
+  lockedPlatforms?: string[];
 };
 
 export type BuilderWarningCode = 'noEntrants' | 'unscheduled' | 'overCapacity' | 'mixedGroup' | 'overlap' | 'skippedEdit' | 'lockedEdit' | 'lockedWithdrawn';
@@ -70,7 +71,7 @@ export type BuilderWarning = { code: BuilderWarningCode; message: string };
 
 export type BuiltSchedule = { athletes: number; sessions: BuiltSession[]; warnings: BuilderWarning[] };
 
-type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean; moved?: boolean; origin?: number; published?: { slot: number; rows: PublishedPart[] } };
+type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean; moved?: boolean; gained?: boolean; origin?: number; published?: { slot: number; rows: PublishedPart[] } };
 
 type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group>; published?: Map<string, PublishedPart[]>; storedPlatforms?: Map<string, string>; retimed?: boolean };
 
@@ -310,11 +311,12 @@ function targetGroup(slots: readonly Slot[], options: BuilderOptions, session: n
   return created;
 }
 
-function markMoved(...groups: Group[]): void {
-  for (const group of groups) {
+function markMoved(source: Group, target: Group): void {
+  for (const group of [source, target]) {
     group.edited = true;
     group.moved = true;
   }
+  target.gained = true;
 }
 
 function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions, bench: Bench | null): EditOutcome {
@@ -328,6 +330,7 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions, be
       bench.unplaced.splice(index, 1);
       target.athletes.push(athlete);
       target.edited = true;
+      target.gained = true;
       return 'applied';
     }
     case 'removeAthlete': {
@@ -507,7 +510,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       const own = slot.retimed ? undefined : (earliest(slot.published?.get(platform) ?? []) ?? sessionRow);
       const times = own ? timesOfPart(own) : undefined;
       const origin = group.edited ? undefined : group.published;
-      const loadedWithoutRows = !group.edited && !slot.retimed && group.origin === slot.id && group.published === undefined;
+      const loadedWithoutRows = !group.gained && !slot.retimed && group.origin === slot.id && group.published === undefined;
       if (!origin) return { ...built, ...(times ? { times } : {}), ...(loadedWithoutRows ? { publishedRows: [] } : {}) };
       const inPlace = origin.slot === slot.id && !slot.retimed;
       const relabelled = !locked && group.splitOf !== '' && editedSplits.has(group.splitOf);
@@ -517,6 +520,8 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
     const own = slot.published && !slot.retimed && scheduled ? earliest(builtGroups.flatMap((group) => (group.times ? [group.times] : []))) : undefined;
     const session: BuiltSession = { id: slot.id, number, ...(own ?? computed), groups: builtGroups };
     if (builtGroups.some((group) => group.locked)) session.locked = true;
+    const lockedPlatforms = options.platforms.filter((platform) => isLocked(slot, platform));
+    if (lockedPlatforms.length > 0) session.lockedPlatforms = lockedPlatforms;
     return session;
   });
   warnings.push(...overlapWarnings(sessions, options.sessionMinutes, numbering === 'asPublished' ? publishedOverlapRules(slots, kept) : EVERY_PAIR));

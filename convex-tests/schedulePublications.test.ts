@@ -250,6 +250,13 @@ describe('review', () => {
     expect(await store.as(null)(decideByToken, { id: publicationId, tokenHash: await sha256Hex('secret'), decision: 'approve' })).toBeNull();
   });
 
+  it('shows a plain page, not a server error, when the review cannot be read', async () => {
+    const failing = { runQuery: async () => Promise.reject(new ConvexError({ status: 400, error: 'the platform name is too long' })) };
+    const page = await handlerOf<Request, Response>(reviewPageHttp)(failing, new Request('https://x.convex.site/schedule-builder/review?id=p1&token=secret'));
+    expect(page.status).toBe(409);
+    expect(await page.text()).toContain("This schedule can't be reviewed: the platform name is too long");
+  });
+
   it('shows a review page for a valid link, and acts only on a posted decision', async () => {
     const store = server();
     const publicationId = await pendingPublication(store);
