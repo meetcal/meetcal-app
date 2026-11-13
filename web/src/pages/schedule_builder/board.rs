@@ -1,7 +1,7 @@
 use super::browser::focus_element;
 use super::models::{
     BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, MoveTarget, is_clock, move_targets,
-    session_when,
+    place_label, session_when,
 };
 use crate::pages::comp_data::format::{
     display_weight_class, format_us_date, format_us_time, reference_value,
@@ -284,6 +284,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
     let start = StoredValue::new((session.date.clone(), session.start_time.clone()));
     let swap_trigger = StoredValue::new(format!("builder-swap-{id}"));
     let time_trigger = StoredValue::new(format!("builder-time-{id}"));
+    let whose = format!("Session {number}: ");
     view! {
         <article class="builder-session" class:builder-session-unscheduled=unscheduled>
             <header class="builder-session-head">
@@ -297,7 +298,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                         open_menu=actions.open_menu
                         trigger_id=swap_trigger.get_value()
                         label="Swap With…"
-                        whose=format!("Session {number}: ")
+                        whose=whose.clone()
                         title="Swap With…"
                     >
                         {move || {
@@ -311,10 +312,9 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                                                 <MenuItem
                                                     actions
                                                     trigger_id=swap_trigger.get_value()
-                                                    label=format!(
-                                                        "Session {} · {}",
+                                                    label=place_label(
                                                         other.number,
-                                                        session_when(other),
+                                                        &session_when(other),
                                                     )
                                                     edit=BuilderEdit::SwapSessions {
                                                         session: id,
@@ -332,7 +332,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                         open_menu=actions.open_menu
                         trigger_id=time_trigger.get_value()
                         label="Edit Time"
-                        whose=format!("Session {number}: ")
+                        whose=whose
                         title="Edit Time"
                         kind=MenuKind::Dialog
                     >

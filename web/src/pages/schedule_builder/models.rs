@@ -91,8 +91,12 @@ pub(crate) struct BoardPlace {
 
 impl BoardPlace {
     pub(crate) fn label(&self) -> String {
-        format!("Session {} · {}", self.number, self.platform)
+        place_label(self.number, &self.platform)
     }
+}
+
+pub(crate) fn place_label(number: u32, place: &str) -> String {
+    format!("Session {number} · {place}")
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -522,7 +526,7 @@ pub(crate) fn place_targets(sessions: &[BuiltSession], platforms: &[String]) -> 
                 .map(move |platform| MoveTarget {
                     session: session.id,
                     platform: platform.clone(),
-                    label: format!("Session {} · {platform}", session.number),
+                    label: place_label(session.number, platform),
                 })
         })
         .collect()
