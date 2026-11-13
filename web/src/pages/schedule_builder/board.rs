@@ -477,13 +477,14 @@ fn GroupView(
 ) -> impl IntoView {
     let platform = StoredValue::new(group.platform.clone());
     let count = athlete_count(group.athletes.len());
+    let same_times = own_times.is_none();
     view! {
         <section class="builder-group">
             <h4 class="builder-group-head">
                 <span class="builder-platform">{group.platform.clone()}</span>
                 <span class="builder-group-label">{group.label.clone()}</span>
                 <span class="builder-group-count">{count}</span>
-                <span class="builder-group-time" hidden=own_times.is_none()>
+                <span class="builder-group-time" hidden=same_times>
                     {own_times}
                 </span>
             </h4>
