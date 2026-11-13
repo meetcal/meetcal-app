@@ -245,8 +245,13 @@ export type LinkedMember = { memberKey: string; member: EliteMember; lifter: str
 export const isLinkedMemberOrNull = (value: unknown): value is { member: EliteMember; lifter: string | null } | null =>
   value === null || (isRecord(value) && isEliteMember(value.member) && (value.lifter === null || typeof value.lifter === 'string'));
 
-export const ownerOfResult = (members: readonly LinkedMember[], row: Pick<RankedFields, 'lifter_id'>, soleLifter: string | null): LinkedMember | null =>
-  entriesOfLifter(members, row.lifter_id ?? soleLifter, soleLifter, (member) => member.lifter, false)[0] ?? null;
+export const ownerOfResult = (
+  members: readonly LinkedMember[],
+  row: Pick<RankedFields, 'lifter_id'>,
+  soleLifter: string | null,
+  nameHasLinkedResults: boolean,
+): LinkedMember | null =>
+  entriesOfLifter(members, row.lifter_id ?? soleLifter, soleLifter, (member) => member.lifter, !nameHasLinkedResults && members.length === 1)[0] ?? null;
 
 /** What a result scores by `method` in `list`, or null when it scores nothing there. */
 export function scoreResult(

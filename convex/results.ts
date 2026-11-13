@@ -230,10 +230,10 @@ export const eliteMembers = internalQuery({
   },
 });
 
-export type EliteNameResults = { sole: string | null; rows: unknown[] };
+export type EliteNameResults = { sole: string | null; linked: boolean; rows: unknown[] };
 
 const isEliteNameResults = (value: unknown): value is EliteNameResults =>
-  isRecord(value) && (value.sole === null || typeof value.sole === 'string') && Array.isArray(value.rows);
+  isRecord(value) && (value.sole === null || typeof value.sole === 'string') && typeof value.linked === 'boolean' && Array.isArray(value.rows);
 
 export const eliteResults = internalQuery({
   args: { keys: v.array(v.string()), from: v.string(), to: v.string() },
@@ -243,6 +243,7 @@ export const eliteResults = internalQuery({
       key,
       {
         sole: soleLifter(rows),
+        linked: rows.some((row) => row.lifter_id !== undefined),
         rows: rows.filter((row) => row.federation === 'USAW' && row.date >= from && row.date <= to).map(toCompactRow),
       },
     ]);
@@ -320,11 +321,11 @@ export const wsoElite = action({
       ),
     ]);
     const results: (MemberResult & { memberKey: string })[] = [];
-    for (const [key, { sole, rows }] of read.flat()) {
+    for (const [key, { sole, linked, rows }] of read.flat()) {
       const named = membersByKey.get(key) ?? [];
       for (const compact of rows) {
         const row = fromCompactRow(readCompactRow(compact));
-        const owner = ownerOfResult(named, row, sole);
+        const owner = ownerOfResult(named, row, sole, linked);
         if (owner) results.push({ row, memberKey: owner.memberKey, member: owner.member });
       }
     }

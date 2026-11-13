@@ -108,15 +108,20 @@ describe('WSO elite results by lifter', () => {
 
   it('gives a linked result to the member of that lifter, and no one when the lifter is not a member', () => {
     const members = [member('M1', 'L1'), member('M2', 'L2')];
-    expect(ownerOfResult(members, { lifter_id: 'L2' }, null)?.memberKey).toBe('M2');
-    expect(ownerOfResult(members, { lifter_id: 'L9' }, null)).toBeNull();
+    expect(ownerOfResult(members, { lifter_id: 'L2' }, null, true)?.memberKey).toBe('M2');
+    expect(ownerOfResult(members, { lifter_id: 'L9' }, null, true)).toBeNull();
   });
 
   it('gives an unlinked result to the name’s only lifter, else to a member with no known lifter', () => {
-    expect(ownerOfResult([member('M1', 'L1')], {}, 'L1')?.memberKey).toBe('M1');
-    expect(ownerOfResult([member('M1', null)], { lifter_id: 'L1' }, 'L1')?.memberKey).toBe('M1');
-    expect(ownerOfResult([member('M1', 'L1'), member('M2', null)], {}, null)?.memberKey).toBe('M2');
-    expect(ownerOfResult([member('M1', 'L1')], {}, null)).toBeNull();
+    expect(ownerOfResult([member('M1', 'L1')], {}, 'L1', true)?.memberKey).toBe('M1');
+    expect(ownerOfResult([member('M1', null)], { lifter_id: 'L1' }, 'L1', true)?.memberKey).toBe('M1');
+    expect(ownerOfResult([member('M1', 'L1'), member('M2', null)], {}, null, true)?.memberKey).toBe('M2');
+    expect(ownerOfResult([member('M1', 'L1')], {}, null, true)).toBeNull();
+  });
+
+  it('gives a name’s results to its one member when no lifter holds any of them, and to no one of several namesakes', () => {
+    expect(ownerOfResult([member('M1', 'L1')], {}, null, false)?.memberKey).toBe('M1');
+    expect(ownerOfResult([member('M1', 'L1'), member('M2', 'L2')], {}, null, false)).toBeNull();
   });
 });
 
