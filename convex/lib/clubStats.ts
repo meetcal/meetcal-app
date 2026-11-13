@@ -5,7 +5,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
 import { lifterOfMembership } from './lifterHistory';
-import { soleLiftersOf } from './lifterKeys';
+import { apiRowOf, soleLiftersAmong } from './lifterKeys';
 import { normalizeName } from './names';
 import { bareWeightClass, classNamedIn } from './weightClass';
 import { normalizeGender } from './normalize';
@@ -141,13 +141,8 @@ function isBetterResult(row: Doc<'lifting_results'>, current: Doc<'lifting_resul
 
 async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: StatsEntry[]; groups: StatsGroups }> {
   const [athletes, results] = await Promise.all([rosterDocs(ctx, meet), meetResultDocs(ctx, meet)]);
-  const [lifterOfMember, sole] = await Promise.all([
-    liftersOfMembers(ctx, athletes),
-    soleLiftersOf(
-      ctx,
-      results.filter((row) => !row.lifterId).map((row) => normalizeName(row.name)),
-    ),
-  ]);
+  const lifterOfMember = await liftersOfMembers(ctx, athletes);
+  const sole = soleLiftersAmong(results.map(apiRowOf));
   const lifterOfEntry = (entry: Doc<'athletes'>) => lifterOfMember.get(entry.memberId) ?? null;
 
   const roster = new Map<string, Doc<'athletes'>[]>();

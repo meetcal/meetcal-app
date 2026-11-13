@@ -164,6 +164,33 @@ describe('linking a name’s results to its lifters', () => {
     expect(hinted()).toEqual(before);
   });
 
+  it('marks an unchanged unlinked row’s views stale when its name gains a second lifter', async () => {
+    const { ctx, rows } = await withHistories(fakeMutationCtx({
+      lifters: [lifter('20730', { gender: 'Men', birthYear: 1989 }), lifter('24655', { gender: 'Women', birthYear: 1990 })],
+      lifting_results: [
+        result({ lifterId: '20730', lifterMatch: 'history' }),
+        result({ eventId: '400', meet: 'Unmatched Open', date: '2018-03-03', total: 99, snatchBest: 44, cjBest: 55 }),
+        result({ eventId: '200', meet: 'CT Open', date: '2019-08-04', age: "Open Women's 71kg", total: 133, snatchBest: 58, cjBest: 75 }),
+      ],
+    }));
+    await link(ctx, {
+      names: [
+        {
+          nameKey: 'taylor johnson',
+          histories: [history('20730', [sourceRow()]), history('24655', [sourceRow({ date: '2019-08-04', age: "Open Women's 71kg", total: 133, snatchBest: 58, cjBest: 75 })])],
+        },
+      ],
+    });
+    expect(rows('lifting_results').map((r) => [r.meet, r.lifterId ?? null])).toEqual([
+      ['Kentucky Open', '20730'],
+      ['Unmatched Open', null],
+      ['CT Open', '24655'],
+    ]);
+    const meets = rows('view_hints').filter((hint) => hint.kind === 'meet').map((hint) => hint.key);
+    expect(meets).toEqual(expect.arrayContaining(['Unmatched Open', 'CT Open']));
+    expect(meets).not.toContain('Kentucky Open');
+  });
+
   it('rewrites the name’s history with each row’s lifter, which every surface reads', async () => {
     const { ctx, rows } = await twoLifters();
     const lifterIds = () => (JSON.parse(String(itemAt(rows('athlete_history'), 0).json)) as Row[]).map((r) => [r.meet, r.lifter_id]);

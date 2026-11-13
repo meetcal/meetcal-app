@@ -98,7 +98,7 @@ async fn run(title: &str, memberships: &[ClubMembership], with_medals: bool) -> 
     let names = distinct_names(memberships);
     let by_name = histories(&names).await?;
 
-    let mut pr_totals: HashSet<(String, String, String)> = HashSet::new();
+    let mut pr_totals: HashSet<PrKey> = HashSet::new();
     let mut all_rows: Vec<LiftingResults> = Vec::new();
     for rows in by_name.values() {
         for mut sorted in rows_by_lifter(rows).into_values() {
@@ -135,8 +135,15 @@ fn rows_by_lifter(rows: &[LiftingResults]) -> HashMap<String, Vec<&LiftingResult
     by_lifter
 }
 
-fn pr_key(row: &LiftingResults) -> (String, String, String) {
-    (fold(&row.name), fold(&row.meet), row.date.clone())
+type PrKey = (String, String, String, Option<String>);
+
+fn pr_key(row: &LiftingResults) -> PrKey {
+    (
+        fold(&row.name),
+        fold(&row.meet),
+        row.date.clone(),
+        row.lifter_id.clone(),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -239,7 +246,7 @@ type LifterEntry<'a> = (
 pub(crate) fn report(
     title: &str,
     group_rows: &[LiftingResults],
-    pr_totals: &HashSet<(String, String, String)>,
+    pr_totals: &HashSet<PrKey>,
     medals: Option<&BTreeMap<String, [usize; 3]>>,
 ) -> Report {
     let sole = sole_lifters(group_rows);
@@ -420,6 +427,27 @@ pub(crate) fn report(
 mod tests {
     use super::*;
     use crate::utils::stats::tests::row;
+
+    #[test]
+    fn prs_are_judged_per_lifter_and_kept_apart_for_namesakes_at_one_meet() {
+        let lifted = |lifter: &str, total: f64| {
+            let mut result = row(
+                "John Smith",
+                "2026-03-01",
+                "Meet",
+                "Open Men's 89kg",
+                88.0,
+                [total * 0.45, 0.0, 0.0],
+                [total * 0.55, 0.0, 0.0],
+            );
+            result.lifter_id = Some(lifter.to_owned());
+            result
+        };
+        let rows = [lifted("L1", 300.0), lifted("L2", 250.0)];
+        let groups = rows_by_lifter(&rows);
+        assert_eq!(groups.len(), 2);
+        assert_ne!(pr_key(&rows[0]), pr_key(&rows[1]));
+    }
 
     #[test]
     fn a_meets_members_are_those_registered_at_the_same_event() {

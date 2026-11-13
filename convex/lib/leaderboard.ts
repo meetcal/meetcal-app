@@ -1,7 +1,6 @@
 import { plusYears } from './dates';
 import { genderNamedByWords, type Gender } from './gender';
 import { countedRowKey, isUnlinkedKey, NO_SOLE_LIFTERS, unlinkedNameKeys, type SoleLifters } from './lifterKeys';
-import { normalizeName } from './names';
 import { isPlausibleResult, LEADERBOARD_GUARD, totalAddsUp } from './plausible';
 import type { ApiLiftingResult } from './results';
 import { compareBytes } from './sort';
@@ -280,19 +279,10 @@ export function addBests(best: Map<string, Candidate>, rows: Iterable<RankedFiel
 
 export function pruneBests(best: Map<string, Candidate>, limit: number): void {
   if (best.size <= limit) return;
-  const values = [...bestOfEachName(best.values()).values()].sort((a, b) => b - a);
+  const values = [...best].flatMap(([key, { value }]) => (isUnlinkedKey(key) ? [] : [value])).sort((a, b) => b - a);
   const threshold = values[limit - 1];
   if (threshold === undefined) return;
   for (const [key, { value }] of best) if (value < threshold) best.delete(key);
-}
-
-function bestOfEachName(candidates: Iterable<Candidate>): Map<string, number> {
-  const best = new Map<string, number>();
-  for (const { row, value } of candidates) {
-    const key = normalizeName(row.name);
-    best.set(key, Math.max(best.get(key) ?? value, value));
-  }
-  return best;
 }
 
 export const unlinkedBestNames = (best: ReadonlyMap<string, Candidate>): string[] =>

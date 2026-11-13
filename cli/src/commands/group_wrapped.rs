@@ -710,6 +710,22 @@ mod tests {
     }
 
     #[test]
+    fn group_stats_count_two_lifters_of_one_name_as_two() {
+        let lifted = |date: &str, lifter: Option<&str>| LiftingResults {
+            lifter_id: lifter.map(str::to_owned),
+            ..result("Jane Doe", "Meet One", date, 170.0)
+        };
+        let results = vec![
+            lifted("2026-01-01", Some("L1")),
+            lifted("2026-02-01", Some("L2")),
+            lifted("2026-03-01", None),
+        ];
+        assert_eq!(calculate_group_stats(&results).athlete_count, 3);
+        let one = vec![lifted("2026-01-01", Some("L1")), lifted("2026-03-01", None)];
+        assert_eq!(calculate_group_stats(&one).athlete_count, 1);
+    }
+
+    #[test]
     fn group_comparison_adds_athlete_percent_difference() {
         let previous = calculate_group_stats(&[result("Jane", "Meet", "2025-01-01", 170.0)]);
         let current = calculate_group_stats(&[

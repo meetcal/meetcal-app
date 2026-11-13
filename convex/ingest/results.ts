@@ -12,6 +12,7 @@ import { normalizeName } from '../lib/names';
 import { clearedColumns, exceedsShrink, RESULT_COLUMNS } from '../lib/shrinkGuard';
 import { liftingResultsFields } from '../schema';
 import { type WriteHint, recordWrite } from './hints';
+import { soleLifter } from '../lib/lifterKeys';
 
 type ResultFields = Pick<Doc<'lifting_results'>, 'federation' | 'age' | 'meet' | 'name' | 'adaptive' | 'date'>;
 
@@ -436,13 +437,21 @@ export const linkLifterResults = internalMutation({
         sources = given;
       }
       const hints: WriteHint[] = [];
-      for (const row of rows) {
-        const link = linkFor(row, lifters, sources);
+      const links = rows.map((row) => linkFor(row, lifters, sources));
+      const soleBefore = soleLifter(rows.map((row) => ({ lifter_id: row.lifterId })));
+      const soleAfter = soleLifter(links.map((link) => ({ lifter_id: link?.lifterId })));
+      rows.forEach((row, index) => {
+        const link = links[index] ?? null;
         counts[link?.lifterMatch ?? 'unlinked'] += 1;
-        if (sameLink(row, link)) continue;
-        counts.changed += 1;
-        hints.push(...resultHints(row));
-        if (!dryRun) await ctx.db.patch(row._id, { lifterId: link?.lifterId, lifterMatch: link?.lifterMatch });
+        const changed = !sameLink(row, link);
+        if (changed) counts.changed += 1;
+        if (changed || (link === null && soleBefore !== soleAfter)) hints.push(...resultHints(row));
+      });
+      if (!dryRun) {
+        for (const [index, row] of rows.entries()) {
+          const link = links[index] ?? null;
+          if (!sameLink(row, link)) await ctx.db.patch(row._id, { lifterId: link?.lifterId, lifterMatch: link?.lifterMatch });
+        }
       }
       if (dryRun) continue;
       await writeHistories(ctx, [nameKey]);

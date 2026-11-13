@@ -1,8 +1,8 @@
 import { clubKey } from '../convex/lib/clubs';
 import { clubAthleteCount, clubAthleteCounts, entriesOfLifter, sameLifterRows } from '../convex/lib/clubStats';
 import { ownerOfResult, type LinkedMember } from '../convex/lib/elite';
-import { addBests, joinSoleLifters, pruneBests, rank, type Candidate, type RankedFields } from '../convex/lib/leaderboard';
-import { countedKey, countedRowKey, soleLifter, unlinkedNameKeys } from '../convex/lib/lifterKeys';
+import { addBests, joinSoleLifters, pruneBests, rank, rankBests, type Candidate, type RankedFields } from '../convex/lib/leaderboard';
+import { countedKey, countedRowKey, soleLifter, soleLiftersAmong, unlinkedNameKeys } from '../convex/lib/lifterKeys';
 import { bestTotalPerAthlete } from '../convex/lib/referenceData';
 
 function ranked(name: string, total: number, lifter?: string, date = '2026-03-01'): RankedFields {
@@ -41,6 +41,11 @@ describe('the key each result counts under', () => {
     expect(soleLifter([{ lifter_id: 'L1' }, { lifter_id: 'L2' }])).toBeNull();
   });
 
+  it('names each name’s only lifter among the rows at hand', () => {
+    const rows = [{ name: 'Ada Lee', lifter_id: 'L1' }, { name: 'ada lee' }, { name: 'Jo Day', lifter_id: 'L2' }, { name: 'Jo Day', lifter_id: 'L3' }, { name: 'Bo' }];
+    expect([...soleLiftersAmong(rows)]).toEqual([['ada lee', 'L1']]);
+  });
+
   it('lists the names of the unlinked rows once', () => {
     expect(unlinkedNameKeys([{ name: 'Ada' }, { name: 'ADA' }, { name: 'Bo', lifter_id: 'L1' }])).toEqual(['ada']);
   });
@@ -67,13 +72,14 @@ describe('the leaderboard by lifter', () => {
     expect(rank(rows, 'total', filters, 10).map(({ value }) => value)).toEqual([210, 200, 190]);
   });
 
-  it('prunes no athlete who could still place once unlinked rows join their lifter', () => {
-    const rows = [ranked('Ada Lee', 300, 'L1'), ranked('Ada Lee', 290), ranked('Bo Day', 280), ranked('Cy Fox', 270)];
+  it('prunes no athlete who could still place once unlinked rows join their lifter, under any of their names', () => {
+    const rows = [ranked('Ada Lee', 300, 'L1'), ranked('Ada Fox', 290), ranked('Bo Day', 280, 'L2'), ranked('Cy Fox', 270, 'L3'), ranked('Di Ray', 260, 'L4')];
     const best = new Map<string, Candidate>();
     addBests(best, rows, 'total', filters);
-    pruneBests(best, 2);
-    const joined = joinSoleLifters(best, new Map([['ada lee', 'L1']]));
-    expect([...joined.values()].map(({ row }) => row.name).sort()).toEqual(['Ada Lee', 'Bo Day']);
+    pruneBests(best, 3);
+    const joined = joinSoleLifters(best, new Map([['ada fox', 'L1']]));
+    expect(rankBests(joined.values(), 3).map(({ row }) => row.name)).toEqual(['Ada Lee', 'Bo Day', 'Cy Fox']);
+    expect([...best.values()].map(({ row }) => row.name)).not.toContain('Di Ray');
   });
 });
 

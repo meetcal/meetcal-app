@@ -184,13 +184,6 @@ struct WsoDashboardData {
     rows: Vec<WsoAthleteRow>,
 }
 
-fn person_key(athlete: &Athlete) -> String {
-    match athlete.member_id.as_deref().filter(|id| !id.is_empty()) {
-        Some(id) => format!("member:{id}"),
-        None => format!("name:{}", normalize(&athlete.name)),
-    }
-}
-
 fn build_dashboard_data(
     athletes: &[Athlete],
     results: &[LiftingResult],
@@ -198,10 +191,11 @@ fn build_dashboard_data(
 ) -> WsoDashboardData {
     let meet_athletes = athletes
         .iter()
-        .map(person_key)
+        .map(|athlete| normalize(&athlete.name))
         .collect::<HashSet<_>>()
         .len();
-    let mut people = HashSet::new();
+    // Each WSO athlete once, as first listed.
+    let mut names = HashSet::new();
     let members = athletes
         .iter()
         .filter(|athlete| {
@@ -209,13 +203,9 @@ fn build_dashboard_data(
                 .wso
                 .as_deref()
                 .is_some_and(|wso| normalize(wso) == normalize(selected_wso))
-                && people.insert(person_key(athlete))
+                && names.insert(normalize(&athlete.name))
         })
         .collect::<Vec<_>>();
-    let names = members
-        .iter()
-        .map(|athlete| normalize(&athlete.name))
-        .collect::<HashSet<_>>();
     let member_results = results
         .iter()
         .filter(|row| names.contains(&normalize(&row.name)))
@@ -511,18 +501,6 @@ mod tests {
         assert_eq!(data.rows.len(), 2);
         // Alex's best total only, as the Club Dashboard sums totals.
         assert_eq!(data.weight_lifted, 215.0);
-    }
-
-    #[test]
-    fn two_members_of_one_name_count_as_two_athletes() {
-        let member = |id: &str| Athlete {
-            member_id: Some(id.to_owned()),
-            ..entrant("Jordan Lee", Some("Florida"))
-        };
-        let athletes = [member("M1"), member("M2"), member("M2")];
-        let data = build_dashboard_data(&athletes, &[], "Florida");
-        assert_eq!(data.meet_athletes, 2);
-        assert_eq!(data.wso_athletes, 2);
     }
 
     #[test]

@@ -30,6 +30,23 @@ export function soleLifter(history: Iterable<{ lifter_id?: string }>): string | 
   return only !== undefined && others.length === 0 ? only : null;
 }
 
+export function soleLiftersAmong(rows: Iterable<{ name: string; lifter_id?: string }>): Map<string, string> {
+  const byName = new Map<string, { lifter_id?: string }[]>();
+  for (const row of rows) {
+    const key = normalizeName(row.name);
+    byName.set(key, [...(byName.get(key) ?? []), row]);
+  }
+  const sole = new Map<string, string>();
+  for (const [nameKey, named] of byName) {
+    const only = soleLifter(named);
+    if (only !== null) sole.set(nameKey, only);
+  }
+  return sole;
+}
+
+export const apiRowOf = (row: { name: string; lifterId?: string }) =>
+  row.lifterId === undefined ? { name: row.name } : { name: row.name, lifter_id: row.lifterId };
+
 export async function soleLiftersOf(ctx: QueryCtx, nameKeys: Iterable<string>): Promise<Map<string, string>> {
   const wanted = [...new Set(nameKeys)];
   if (wanted.length === 0) return new Map();

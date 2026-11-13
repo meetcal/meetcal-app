@@ -91,7 +91,7 @@ export const leaderboardPage = internalQuery({
   },
 });
 
-export const SOLE_LIFTER_NAMES_PER_READ = 100;
+export const SOLE_LIFTER_NAMES_PER_READ = 50;
 
 export const soleLifters = internalQuery({
   args: { nameKeys: v.array(v.string()) },

@@ -4,7 +4,7 @@ import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
 import { genderWordPattern } from './gender';
-import { countedRowKey, NO_SOLE_LIFTERS, soleLiftersOf, type SoleLifters, unlinkedNameKeys } from './lifterKeys';
+import { countedRowKey, NO_SOLE_LIFTERS, soleLiftersAmong, type SoleLifters } from './lifterKeys';
 import { normalizeGender } from './normalize';
 import { isPlausibleResult } from './plausible';
 import { narrowedByAgeAndGender } from './referenceFilters';
@@ -176,8 +176,7 @@ export async function computeNationalRankingsForYear(
   for (const row of rows) {
     if (rankable(row)) ranked.push({ ...linkedRow(row), date: row.date });
   }
-  const sole = await soleLiftersOf(ctx, unlinkedNameKeys(ranked));
-  return bestTotalPerAthlete(ranked, sole).map(({ name, total, date }) => ({ name, total, date }));
+  return bestTotalPerAthlete(ranked, soleLiftersAmong(ranked)).map(({ name, total, date }) => ({ name, total, date }));
 }
 
 type RankingGender = 'Men' | 'Women';
