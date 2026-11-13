@@ -299,7 +299,8 @@ describe('email', () => {
   it("says when a pending publish would replace an organizer's live schedule", async () => {
     const store = server({ meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] });
     await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] });
-    await store.as('user_b')(publish, { meet: MEET, options: options(), edits: [] });
+    expect(await failure(store.as('user_b')(publish, { meet: MEET, options: options(), edits: [] }))).toMatchObject({ status: 409 });
+    await store.as('user_b')(publish, { meet: MEET, options: options(), edits: [], baseVersion: '1' });
     const pendingRow = store.docs('schedule_publications').find((p) => p.status === 'pending');
     await store.action(email, { publicationId: pendingRow?._id, attempt: 0 });
     const html = String(sendEmailMock.mock.calls[0]?.[2]);
