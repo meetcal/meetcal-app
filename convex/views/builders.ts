@@ -6,8 +6,7 @@ import { internalAction, internalMutation, internalQuery, type ActionCtx, type M
 import { internal } from '../_generated/api';
 import { athletesWithSessions, clubAthleteCounts, computeMeetResults, computeRoster, computeScheduleRows, computeStats, computeTimelines, meetByName, packageAthlete, packageStaticText, plainRoster, previousBests, statsPreviousBestKeys, statsViewItems, toApiMeet, type PreviousBest, type TimelinesView } from '../lib/meetData';
 import { normalizeName } from '../lib/names';
-import { countedRowKey, NO_SOLE_LIFTERS, unlinkedNameKeys } from '../lib/lifterKeys';
-import { readSoleLifters } from '../results';
+import { countedRowKey } from '../lib/lifterKeys';
 import { ADAPTIVE_RECORDS_SEASON_START, computeAdaptiveRecords, clubNamesPage, computeIntlRankings, bestTotalPerAthlete, type LinkedTotal, nationalRankingPage, rankedTotalOf, type RankedTotal, computeStandards, computeWsoList, computeWsoRows } from '../lib/referenceData';
 import { writeQualifyingTotalsViews, writeRecordsViews } from '../lib/referenceViews';
 import { compareBytes } from '../lib/sort';
@@ -22,7 +21,7 @@ const natArgs = { federation: v.string(), ageCategory: v.string() };
 
 const sourceVersions = v.array(v.object({ table: v.string(), version: v.number() }));
 
-const rankedTotals = v.array(v.object({ name: v.string(), total: v.number(), lifter_id: v.optional(v.string()) }));
+const rankedTotals = v.array(v.object({ name: v.string(), total: v.number(), lifter_id: v.optional(v.string()), sole_lifter_id: v.optional(v.string()) }));
 
 export const natPage = internalQuery({
   args: { ...natArgs, cursor: v.union(v.string(), v.null()) },
@@ -42,13 +41,10 @@ async function readNat(ctx: ActionCtx, args: { federation: string; ageCategory: 
       await ctx.runQuery(internal.views.natPage, { ...args, cursor });
     sources ??= page.sources;
     for (const row of page.rows) {
-      const key = countedRowKey(row, NO_SOLE_LIFTERS);
+      const key = countedRowKey(row);
       if ((best.get(key)?.total ?? -Infinity) < row.total) best.set(key, row);
     }
-    if (page.isDone) {
-      const sole = await readSoleLifters(ctx, unlinkedNameKeys(best.values()));
-      return { rows: bestTotalPerAthlete(best.values(), sole).map(rankedTotalOf), sources };
-    }
+    if (page.isDone) return { rows: bestTotalPerAthlete(best.values()).map(rankedTotalOf), sources };
     cursor = page.cursor;
   }
 }

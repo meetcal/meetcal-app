@@ -1,5 +1,5 @@
 import { candidateLifters, namesOfLifter, recordLifterName, rowsOfName } from '../lib/lifterCandidates';
-import { isSport80Result, linkFor, mergeSighting, needsSourceHistories, sameLifterFields, sameLink, type LifterFields, type SourceHistories } from '../lib/lifters';
+import { isSport80Result, linkFor, mergeSighting, needsSourceHistories, sameLifterFields, sameLink, soleLifterIds, type LifterFields, type SourceHistories } from '../lib/lifters';
 import { v, type Infer } from 'convex/values';
 import { itemAt } from '../lib/json';
 import { EVENT_RESULTS_MAX, MEMBER_REGISTRATIONS_MAX, readAll } from '../lib/boundedRead';
@@ -12,7 +12,6 @@ import { normalizeName } from '../lib/names';
 import { clearedColumns, exceedsShrink, RESULT_COLUMNS } from '../lib/shrinkGuard';
 import { liftingResultsFields } from '../schema';
 import { type WriteHint, recordWrite } from './hints';
-import { soleLifter } from '../lib/lifterKeys';
 
 type ResultFields = Pick<Doc<'lifting_results'>, 'federation' | 'age' | 'meet' | 'name' | 'adaptive' | 'date'>;
 
@@ -165,14 +164,14 @@ export const upsertLiftingResults = internalMutation({
         await ctx.db.delete(copy._id);
         duplicates += 1;
       }
-      const { _id, _creationTime, legacyId, lifterId, lifterMatch, ...sourceValues } = existing;
-      byKey.set(key, [...otherEditions, { ...doc, legacyId, lifterId, lifterMatch, _id, _creationTime }]);
+      const { _id, _creationTime, legacyId, lifterId, lifterMatch, soleLifterId, ...sourceValues } = existing;
+      byKey.set(key, [...otherEditions, { ...doc, legacyId, lifterId, lifterMatch, soleLifterId, _id, _creationTime }]);
       if (sameValues(sourceValues, doc)) {
         unchanged += 1;
         continue;
       }
       hints.push(...resultHints(existing));
-      await ctx.db.replace(_id, { ...doc, legacyId, lifterId, lifterMatch });
+      await ctx.db.replace(_id, { ...doc, legacyId, lifterId, lifterMatch, soleLifterId });
       updated += 1;
       hints.push(...resultHints(doc));
     }
@@ -456,19 +455,19 @@ export const linkLifterResults = internalMutation({
       }
       const hints: WriteHint[] = [];
       const links = rows.map((row) => linkFor(row, lifters, sources));
-      const soleBefore = soleLifter(rows.map((row) => ({ lifter_id: row.lifterId })));
-      const soleAfter = soleLifter(links.map((link) => ({ lifter_id: link?.lifterId })));
+      const soles = soleLifterIds(rows, links.map((link) => link?.lifterId), lifters);
       rows.forEach((row, index) => {
         const link = links[index] ?? null;
         counts[link?.lifterMatch ?? 'unlinked'] += 1;
-        const changed = !sameLink(row, link);
-        if (changed) counts.changed += 1;
-        if (changed || (link === null && soleBefore !== soleAfter)) hints.push(...resultHints(row));
+        if (sameLink(row, link, soles[index])) return;
+        counts.changed += 1;
+        hints.push(...resultHints(row));
       });
       if (!dryRun) {
         for (const [index, row] of rows.entries()) {
           const link = links[index] ?? null;
-          if (!sameLink(row, link)) await ctx.db.patch(row._id, { lifterId: link?.lifterId, lifterMatch: link?.lifterMatch });
+          const soleLifterId = soles[index];
+          if (!sameLink(row, link, soleLifterId)) await ctx.db.patch(row._id, { lifterId: link?.lifterId, lifterMatch: link?.lifterMatch, soleLifterId });
         }
       }
       if (dryRun) continue;
@@ -477,5 +476,24 @@ export const linkLifterResults = internalMutation({
       await clearRelink(ctx, nameKey);
     }
     return { ...counts, stale };
+  },
+});
+
+export const markSoleLifterRows = internalMutation({
+  args: { names: v.array(v.string()) },
+  handler: async (ctx, { names }): Promise<number> => {
+    if (names.length > MAX_LINK_NAMES) throw new Error(`at most ${MAX_LINK_NAMES} names a call, got ${names.length}`);
+    let marked = 0;
+    for (const nameKey of names) {
+      const rows = await rowsOfName(ctx, nameKey);
+      const soles = soleLifterIds(rows, rows.map((row) => row.lifterId), await candidateLifters(ctx, nameKey));
+      const changed = rows.flatMap((row, index) => (row.soleLifterId === soles[index] ? [] : [{ row, soleLifterId: soles[index] }]));
+      if (changed.length === 0) continue;
+      for (const { row, soleLifterId } of changed) await ctx.db.patch(row._id, { soleLifterId });
+      await writeHistories(ctx, [nameKey]);
+      await recordWrite(ctx, 'lifting_results', changed.flatMap(({ row }) => resultHints(row)));
+      marked += changed.length;
+    }
+    return marked;
   },
 });

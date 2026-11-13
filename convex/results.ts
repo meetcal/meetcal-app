@@ -4,12 +4,12 @@ import { v } from 'convex/values';
 import { checkPass, premiumQuery, premiumRead } from './lib/access';
 import { chunks, mapLimited } from './lib/concurrency';
 import { revalidated, revalidatedText } from './lib/etag';
-import { action, type ActionCtx, internalQuery, query, type QueryCtx } from './_generated/server';
+import { action, internalQuery, query, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { latestMeetBests, readHistories, readSummaries, type Mark, type Summary } from './lib/history';
-import { addBests, type Candidate, checkLeaderboardArgs, fromCompactRow, joinSoleLifters, type LeaderboardRow, leaderboardRow, monthSlices, parseCompactRows, pruneBests, rankBests, toCompactRow, readCompactRow, unlinkedBestNames } from './lib/leaderboard';
-import { soleLifter, soleLiftersOf, type SoleLifters } from './lib/lifterKeys';
+import { addBests, type Candidate, checkLeaderboardArgs, fromCompactRow, type LeaderboardRow, leaderboardRow, monthSlices, parseCompactRows, pruneBests, rankBests, toCompactRow, readCompactRow } from './lib/leaderboard';
+import { soleLifter } from './lib/lifterKeys';
 import { checkEliteArgs, type EliteAnswer, type EliteMember, type EliteRegistration, type EliteStandard, isLinkedMemberOrNull, isMemberOf, latestRegistration, type LinkedMember, type MemberResult, ownerOfResult, rankAll, standardTables } from './lib/elite';
 import { byNameThenNewest, computeMeetResults, meetResultTitles } from './lib/meetData';
 import { editionSummaries, newestEditionFirst, type EditionSummary } from './lib/meetSummary';
@@ -91,20 +91,6 @@ export const leaderboardPage = internalQuery({
   },
 });
 
-export const SOLE_LIFTER_NAMES_PER_READ = 50;
-
-export const soleLifters = internalQuery({
-  args: { nameKeys: v.array(v.string()) },
-  handler: async (ctx, { nameKeys }): Promise<[string, string][]> => [...(await soleLiftersOf(ctx, nameKeys.slice(0, SOLE_LIFTER_NAMES_PER_READ)))],
-});
-
-export async function readSoleLifters(ctx: ActionCtx, nameKeys: readonly string[]): Promise<SoleLifters> {
-  const answers = await mapLimited(chunks(nameKeys, SOLE_LIFTER_NAMES_PER_READ), LEADERBOARD_CONCURRENCY, (batch) =>
-    ctx.runQuery(internal.results.soleLifters, { nameKeys: batch }),
-  );
-  return new Map(answers.flat());
-}
-
 /** A leaderboard: `rows` best first, and the federations in the range (`federations`, sorted, non-blank). */
 export type LeaderboardAnswer = { rows: LeaderboardRow[]; federations: string[] };
 
@@ -151,9 +137,8 @@ export const leaderboard = action({
       throw apiError(500, `results from ${start} to ${end} did not finish within ${LEADERBOARD_MAX_PAGES} pages`);
     };
     await mapLimited(slices, LEADERBOARD_CONCURRENCY, readSlice);
-    const sole = await readSoleLifters(ctx, unlinkedBestNames(best));
     return {
-      rows: rankBests(joinSoleLifters(best, sole).values(), limit).map(leaderboardRow),
+      rows: rankBests(best.values(), limit).map(leaderboardRow),
       federations: [...federations].filter((federation) => federation.trim() !== '').sort(compareBytes),
     };
   },

@@ -1,8 +1,9 @@
 import { itemAt, last } from '../convex/lib/json';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 import { writeHistories } from '../convex/lib/history';
-import { linkLifterResults, MAX_LIFTER_SIGHTINGS, MAX_LINK_NAMES, queueLifterRelinks, upsertLifters, upsertLiftingResults } from '../convex/ingest';
-import { lastCompleteRun, lifterNamesPage, liftersByName, LIFTER_NAMES_PAGE_SIZE, queuedRelinks, recordCompleteRun, unlinkedResultsPage } from '../convex/lifters';
+import { linkLifterResults, markSoleLifterRows, MAX_LIFTER_SIGHTINGS, MAX_LINK_NAMES, queueLifterRelinks, upsertLifters, upsertLiftingResults } from '../convex/ingest';
+import { getFunctionName } from 'convex/server';
+import { lastCompleteRun, lifterNamesPage, liftersByName, LIFTER_NAMES_PAGE_SIZE, markSoleLifters, queuedRelinks, recordCompleteRun, unlinkedResultsPage } from '../convex/lifters';
 
 type Row = Record<string, unknown>;
 
@@ -173,12 +174,12 @@ describe('linking a name’s results to its lifters', () => {
     expect(hinted()).toEqual(before);
   });
 
-  it('marks an unchanged unlinked row’s views stale when its name gains a second lifter', async () => {
+  it('clears an unlinked row’s sole lifter, marking its views stale, when its name gains a second lifter', async () => {
     const { ctx, rows } = await withHistories(fakeMutationCtx({
       lifters: [lifter('20730', { gender: 'Men', birthYear: 1989 }), lifter('24655', { gender: 'Women', birthYear: 1990 })],
       lifting_results: [
         result({ lifterId: '20730', lifterMatch: 'history' }),
-        result({ eventId: '400', meet: 'Unmatched Open', date: '2018-03-03', total: 99, snatchBest: 44, cjBest: 55 }),
+        result({ eventId: '400', meet: 'Unmatched Open', date: '2018-03-03', total: 99, snatchBest: 44, cjBest: 55, soleLifterId: '20730' }),
         result({ eventId: '200', meet: 'CT Open', date: '2019-08-04', age: "Open Women's 71kg", total: 133, snatchBest: 58, cjBest: 75 }),
       ],
     }));
@@ -190,14 +191,45 @@ describe('linking a name’s results to its lifters', () => {
         },
       ],
     });
-    expect(rows('lifting_results').map((r) => [r.meet, r.lifterId ?? null])).toEqual([
-      ['Kentucky Open', '20730'],
-      ['Unmatched Open', null],
-      ['CT Open', '24655'],
+    expect(rows('lifting_results').map((r) => [r.meet, r.lifterId ?? null, r.soleLifterId ?? null])).toEqual([
+      ['Kentucky Open', '20730', null],
+      ['Unmatched Open', null, null],
+      ['CT Open', '24655', null],
     ]);
     const meets = rows('view_hints').filter((hint) => hint.kind === 'meet').map((hint) => hint.key);
     expect(meets).toEqual(expect.arrayContaining(['Unmatched Open', 'CT Open']));
     expect(meets).not.toContain('Kentucky Open');
+  });
+
+  it('marks each unlinked row with the name’s only lifter when its division fits their gender and age, and no other', async () => {
+    const { ctx, rows } = await withHistories(fakeMutationCtx({
+      lifters: [lifter('64835', { gender: 'Men', birthYear: 2006 })],
+      lifting_results: [
+        result({ age: "Junior Men's 94kg", date: '2025-06-29' }),
+        result({ eventId: '200', meet: 'Summer Open', age: "Junior Men's 94kg", date: '2025-08-01', total: 250 }),
+        result({ eventId: '300', meet: 'Fall Open', age: "Open Women's 71kg", date: '2025-09-01', total: 120 }),
+        result({ eventId: '400', meet: 'Masters Open', age: "Men's Masters (40-44) 94kg", date: '2025-10-01', total: 200 }),
+      ],
+    }));
+    const histories = [history('64835', [sourceRow({ age: "Junior Men's 94kg", date: '2025-06-26' })])];
+    expect(await link(ctx, { names: [{ nameKey: 'taylor johnson', histories }] })).toEqual({ history: 1, fit: 0, unlinked: 3, changed: 2, stale: [] });
+    expect(rows('lifting_results').map((r) => [r.meet, r.lifterId ?? null, r.soleLifterId ?? null])).toEqual([
+      ['Kentucky Open', '64835', null],
+      ['Summer Open', null, '64835'],
+      ['Fall Open', null, null],
+      ['Masters Open', null, null],
+    ]);
+    const historyRows = JSON.parse(String(itemAt(rows('athlete_history'), 0).json)) as Row[];
+    expect(historyRows.map((r) => [r.meet, r.lifter_id ?? null, r.sole_lifter_id ?? null])).toEqual([
+      ['Masters Open', null, null],
+      ['Fall Open', null, null],
+      ['Summer Open', null, '64835'],
+      ['Kentucky Open', '64835', null],
+    ]);
+    const meets = rows('view_hints').filter((hint) => hint.kind === 'meet').map((hint) => hint.key);
+    expect(meets).toEqual(expect.arrayContaining(['Kentucky Open', 'Summer Open']));
+    expect(meets).not.toContain('Fall Open');
+    expect(await link(ctx, { names: [{ nameKey: 'taylor johnson', histories }] })).toMatchObject({ changed: 0 });
   });
 
   it('rewrites the name’s history with each row’s lifter, which every surface reads', async () => {
@@ -310,8 +342,8 @@ describe('linking a name’s results to its lifters', () => {
   it('counts what it would change in a dry run and writes nothing', async () => {
     const { ctx, rows } = await twoLifters();
     const answer = await link(ctx, { dryRun: true, names: [{ nameKey: 'taylor johnson', histories: [history('20730', []), history('24655', [])] }] });
-    expect(answer).toEqual({ history: 0, fit: 1, unlinked: 2, changed: 1, stale: [] });
-    expect(rows('lifting_results').every((r) => r.lifterId === undefined)).toBe(true);
+    expect(answer).toEqual({ history: 0, fit: 1, unlinked: 2, changed: 2, stale: [] });
+    expect(rows('lifting_results').every((r) => r.lifterId === undefined && r.soleLifterId === undefined)).toBe(true);
   });
 
   it('refuses a batch over the limit', async () => {
@@ -332,10 +364,76 @@ describe('a result re-sync and its lifter link', () => {
     expect(rows('lifting_results')[0]).toMatchObject({ total: 165, lifterId: '20730', lifterMatch: 'history' });
   });
 
+  it('keeps the sole lifter a result is marked with when the source corrects it', async () => {
+    const { ctx, rows } = fakeMutationCtx({ lifting_results: [result({ soleLifterId: '20730' })] });
+    expect(await upsertResults(ctx, { rows: [{ ...incoming, total: 165 }] })).toMatchObject({ updated: 1 });
+    expect(rows('lifting_results')[0]).toMatchObject({ total: 165, soleLifterId: '20730' });
+  });
+
   it('keeps the link of a result that comes twice in one batch', async () => {
     const { ctx, rows } = fakeMutationCtx({ lifting_results: [result({ lifterId: '20730', lifterMatch: 'history' })] });
     expect(await upsertResults(ctx, { rows: [{ ...incoming, total: 165 }, { ...incoming, total: 166 }] })).toMatchObject({ updated: 2 });
     expect(rows('lifting_results')).toEqual([expect.objectContaining({ total: 166, lifterId: '20730', lifterMatch: 'history' })]);
+  });
+});
+
+describe('marking the rows of every name with its sole lifter, without relinking', () => {
+  const mark = handlerOf<{ names: string[] }, number>(markSoleLifterRows);
+  const seeded = () =>
+    fakeMutationCtx({
+      lifters: [lifter('64835', { gender: 'Men', birthYear: 2006 })],
+      lifting_results: [
+        result({ age: "Junior Men's 94kg", date: '2025-06-29', lifterId: '64835', lifterMatch: 'history' }),
+        result({ eventId: '200', meet: 'Summer Open', age: "Junior Men's 94kg", date: '2025-08-01', total: 250 }),
+        result({ eventId: '300', meet: 'Fall Open', age: "Open Women's 71kg", date: '2025-09-01', total: 120, soleLifterId: '64835' }),
+      ],
+    });
+
+  it('marks the rows that fit, clears those that do not, and rewrites the history and the views they feed', async () => {
+    const { ctx, rows } = seeded();
+    expect(await mark(ctx, { names: ['taylor johnson'] })).toBe(2);
+    expect(rows('lifting_results').map((r) => [r.meet, r.lifterId ?? null, r.soleLifterId ?? null])).toEqual([
+      ['Kentucky Open', '64835', null],
+      ['Summer Open', null, '64835'],
+      ['Fall Open', null, null],
+    ]);
+    expect((JSON.parse(String(itemAt(rows('athlete_history'), 0).json)) as Row[]).map((r) => r.sole_lifter_id ?? null)).toEqual([null, '64835', null]);
+    expect(rows('view_hints').filter((hint) => hint.kind === 'meet').map((hint) => hint.key)).toEqual(expect.arrayContaining(['Summer Open', 'Fall Open']));
+    const hints = rows('view_hints').length;
+    expect(await mark(ctx, { names: ['taylor johnson'] })).toBe(0);
+    expect(rows('view_hints')).toHaveLength(hints);
+  });
+
+  it('refuses a batch over the limit', async () => {
+    const { ctx } = fakeMutationCtx();
+    await expect(mark(ctx, { names: Array.from({ length: MAX_LINK_NAMES + 1 }, (_, i) => `n${i}`) })).rejects.toThrow('at most');
+  });
+
+  it('pages through every name, a batch a mutation, and schedules the next page until the last', async () => {
+    const pages: Record<string, { names: string[]; done: boolean }> = {
+      '': { names: Array.from({ length: MAX_LINK_NAMES + 1 }, (_, i) => `name ${String(i).padStart(3, '0')}`), done: false },
+      [`name ${String(MAX_LINK_NAMES).padStart(3, '0')}`]: { names: ['zed'], done: true },
+    };
+    const batches: string[][] = [];
+    const scheduled: unknown[] = [];
+    const ctx = {
+      runQuery: jest.fn(async (fn: unknown, { after }: { after: string }) => {
+        expect(getFunctionName(fn as never)).toBe('lifters:lifterNamesPage');
+        return pages[after];
+      }),
+      runMutation: jest.fn(async (_fn: unknown, { names }: { names: string[] }) => {
+        batches.push(names);
+        return 1;
+      }),
+      scheduler: { runAfter: jest.fn(async (_ms: number, _fn: unknown, args: unknown) => void scheduled.push(args)) },
+    };
+    const run = handlerOf<{ after?: string; marked?: number }, void>(markSoleLifters);
+    await run(ctx, {});
+    expect(batches.map((batch) => batch.length)).toEqual([MAX_LINK_NAMES, 1]);
+    expect(scheduled).toEqual([{ after: `name ${String(MAX_LINK_NAMES).padStart(3, '0')}`, marked: 2 }]);
+    await run(ctx, scheduled[0] as { after: string; marked: number });
+    expect(batches).toHaveLength(3);
+    expect(scheduled).toHaveLength(1);
   });
 });
 

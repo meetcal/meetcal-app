@@ -5,7 +5,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
 import { lifterOfMembership } from './lifterHistory';
-import { apiRowOf, entriesOfLifter, rosterPersonKey, soleLiftersAmong } from './lifterKeys';
+import { apiRowOf, countedLifterOf, entriesOfLifter, rosterPersonKey, soleLiftersAmong } from './lifterKeys';
 import { normalizeName } from './names';
 import { bareWeightClass, classNamedIn } from './weightClass';
 import { normalizeGender } from './normalize';
@@ -159,7 +159,7 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
   for (const row of results) {
     const key = normalizeName(row.name);
     const soleLifter = sole.get(key) ?? null;
-    const rowLifter = row.lifterId ?? soleLifter;
+    const rowLifter = countedLifterOf(apiRowOf(row));
     const entries = entriesOfLifter(roster.get(key) ?? [], rowLifter, soleLifter, lifterOfEntry, true);
     const athlete = rosterEntryFor(entries, row.age);
     const lifter = rowLifter === null ? `${key}\u0000${athlete ? entries.indexOf(athlete) : -1}` : `lifter:${rowLifter}`;

@@ -93,6 +93,7 @@ export const lifterMatch = v.union(v.literal('history'), v.literal('fit'));
 export const lifterLinkFields = {
     lifterId: v.optional(v.string()),
     lifterMatch: v.optional(lifterMatch),
+    soleLifterId: v.optional(v.string()),
 };
 
 export const liftersFields = {

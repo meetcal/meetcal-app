@@ -1,8 +1,5 @@
 import { bestTotalPerAthlete, nationalRankingPage } from '../convex/lib/referenceData';
-import { getFunctionName } from 'convex/server';
 import { buildNat, computeNat } from '../convex/views';
-
-const isSoleLifters = (fn: unknown) => getFunctionName(fn as never) === 'results:soleLifters';
 
 function runHandler(fn: unknown, ctx: { runQuery: jest.Mock; runMutation?: jest.Mock }) {
   if (typeof fn !== 'function' || !('_handler' in fn) || typeof fn._handler !== 'function') throw new Error('Missing handler');
@@ -34,14 +31,14 @@ describe('paged national ranking computation', () => {
       { name: 'No total' }, { name: 'Bombout', total: 0 },
     ];
     const { ctx } = pageCtx(rows);
-    const runQuery = jest.fn(async (fn, { cursor }: { cursor: string | null }) => isSoleLifters(fn) ? [] : ({
+    const runQuery = jest.fn(async (_fn, { cursor }: { cursor: string | null }) => ({
       ...(await nationalRankingPage(ctx, 'USAW', 'Open', cursor)), sources: [{ table: 'lifting_results', version: cursor === null ? 4 : 5 }],
     }));
     const result = await runHandler(computeNat, { runQuery });
     const expected = bestTotalPerAthlete(rows.flatMap((r) => r.total === undefined || r.total === 0 ? [] : [{ name: r.name, total: r.total }]));
     expect(result).toEqual({ chunks: [JSON.stringify(expected)], sources: [{ table: 'lifting_results', version: 4 }] });
     expect(expected.filter((r) => r.total === 400).map((r) => r.name)).toEqual(['Ada', 'Bo']);
-    expect(runQuery).toHaveBeenCalledTimes(3);
+    expect(runQuery).toHaveBeenCalledTimes(2);
   });
 
   it('ranks one athlete once across pages whatever the spelling, under their best row (#217)', async () => {
@@ -52,7 +49,7 @@ describe('paged national ranking computation', () => {
       { name: 'MARIA LOPEZ', total: 170 },
     ];
     const { ctx } = pageCtx(rows);
-    const runQuery = jest.fn(async (fn, { cursor }: { cursor: string | null }) => isSoleLifters(fn) ? [] : ({
+    const runQuery = jest.fn(async (_fn, { cursor }: { cursor: string | null }) => ({
       ...(await nationalRankingPage(ctx, 'USAW', 'Open', cursor)), sources: [{ table: 'lifting_results', version: 4 }],
     }));
     const result = await runHandler(computeNat, { runQuery });
@@ -93,8 +90,7 @@ describe('paged national ranking computation', () => {
   it('publishes only a completed scan and keeps its original source stamp', async () => {
     const runQuery = jest.fn()
       .mockResolvedValueOnce({ rows: [{ name: 'Ada', total: 200 }], cursor: 'next', isDone: false, sources: [{ table: 'lifting_results', version: 4 }] })
-      .mockResolvedValueOnce({ rows: [{ name: 'Ada', total: 300 }], cursor: 'end', isDone: true, sources: [{ table: 'lifting_results', version: 5 }] })
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce({ rows: [{ name: 'Ada', total: 300 }], cursor: 'end', isDone: true, sources: [{ table: 'lifting_results', version: 5 }] });
     const runMutation = jest.fn().mockResolvedValue(1);
     expect(await runHandler(buildNat, { runQuery, runMutation })).toBe(1);
     expect(runMutation).toHaveBeenCalledTimes(1);
@@ -120,7 +116,7 @@ describe('paged national ranking computation', () => {
   it('transfers more than 8192 ranked athletes as JSON chunks instead of a Convex array', async () => {
     const rows = Array.from({ length: 8200 }, (_, i) => ({ name: `Lifter ${i}`, total: 100 + (i % 400) }));
     const { ctx } = pageCtx(rows);
-    const runQuery = jest.fn(async (fn, { cursor }: { cursor: string | null }) => isSoleLifters(fn) ? [] : ({
+    const runQuery = jest.fn(async (_fn, { cursor }: { cursor: string | null }) => ({
       ...(await nationalRankingPage(ctx, 'USAW', 'Open', cursor)), sources: [{ table: 'lifting_results', version: 4 }],
     }));
     const runMutation = jest.fn().mockResolvedValue(rows.length);

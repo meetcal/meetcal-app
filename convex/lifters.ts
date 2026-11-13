@@ -1,8 +1,11 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from './_generated/server';
+import { internal } from './_generated/api';
+import { internalAction, internalMutation, internalQuery } from './_generated/server';
+import { chunks } from './lib/concurrency';
 import { candidateLifters, rowsOfName } from './lib/lifterCandidates';
 import { isSport80Result } from './lib/lifters';
 import { normalizeName } from './lib/names';
+import { MAX_LINK_NAMES } from './ingest';
 
 export const UNLINKED_PAGE_SIZE = 2000;
 export const LIFTER_NAMES_PAGE_SIZE = 500;
@@ -37,6 +40,21 @@ export const lifterNamesPage = internalQuery({
     if (entries.length < LIFTER_NAMES_PAGE_SIZE) return { names, done: true };
     if (names.length === 1) throw new Error(`${LIFTER_NAMES_PAGE_SIZE} or more lifters share the name ${JSON.stringify(names[0])}`);
     return { names: names.slice(0, -1), done: false };
+  },
+});
+
+export const markSoleLifters = internalAction({
+  args: { after: v.optional(v.string()), marked: v.optional(v.number()) },
+  handler: async (ctx, { after, marked }): Promise<void> => {
+    const page: { names: string[]; done: boolean } = await ctx.runQuery(internal.lifters.lifterNamesPage, { after: after ?? '' });
+    let total = marked ?? 0;
+    for (const names of chunks(page.names, MAX_LINK_NAMES)) total += await ctx.runMutation(internal.ingest.markSoleLifterRows, { names });
+    const last = page.names.at(-1);
+    if (page.done || last === undefined) {
+      console.log(`lifters: ${total} unlinked results marked as their name's sole lifter's`);
+      return;
+    }
+    await ctx.scheduler.runAfter(0, internal.lifters.markSoleLifters, { after: last, marked: total });
   },
 });
 
