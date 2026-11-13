@@ -22,6 +22,7 @@ pub(crate) fn sport80_panel(
     platforms: Signal<Vec<String>>,
     sport80_link: Option<String>,
     checks: RwSignal<u64>,
+    publishing: RwSignal<bool>,
     actions: BoardActions,
 ) -> AnyView {
     let checking = RwSignal::new(false);
@@ -59,6 +60,7 @@ pub(crate) fn sport80_panel(
     view! {
         <section
             class="builder-panel builder-changes no-print"
+            inert=move || publishing.get()
             aria-labelledby="builder-changes-heading"
             data-testid="sport80-changes"
         >

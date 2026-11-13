@@ -501,7 +501,11 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
             LoadState::Loading => {}
         });
     });
+    let publishing = RwSignal::new(false);
     let build = move || {
+        if publishing.get_untracked() {
+            return;
+        }
         let options = match checked_options(&form.get_untracked()) {
             Ok(options) => options,
             Err(message) => {
@@ -534,7 +538,6 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
             "Build Again"
         }
     });
-    let publishing = RwSignal::new(false);
     let add_edit = Callback::new(move |edit: BuilderEdit| {
         if publishing.get_untracked() {
             return false;
@@ -573,6 +576,7 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
             form
             on_build=move |()| build()
             build_label
+            busy=publishing
             error=Signal::derive(move || form_error.get())
         />
         {move || {
@@ -597,7 +601,11 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                                 <button
                                     class="builder-button"
                                     type="button"
+                                    disabled=move || publishing.get()
                                     on:click=move |_| {
+                                        if publishing.get_untracked() {
+                                            return;
+                                        }
                                         apply(options.get_value());
                                         focus_element(BUILD_BUTTON_ID);
                                     }
@@ -638,6 +646,7 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                         }),
                         sport80_link.clone(),
                         checks,
+                        publishing,
                         actions,
                     )
                 })

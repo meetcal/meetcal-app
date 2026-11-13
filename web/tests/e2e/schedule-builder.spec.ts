@@ -641,6 +641,38 @@ test("the board takes no edits while a publish is on its way", async ({ page }) 
   expect(calls.publishes.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "2|ava smith", fromSession: 1, fromPlatform: "Red", occurrence: 0, toSession: 2, toPlatform: "Red" }]);
 });
 
+test("a publish on its way holds Rebuild From Scratch and the Sport80 changes too", async ({ page }) => {
+  const calls = await mockBuilder(page, { signedIn: true, published: true });
+  await page.goto("/schedule-builder?meet=Turkey%20Cup");
+  const changes = page.getByRole("region", { name: "Sport80 Changes" });
+  await expect(changes).toContainText("1 new lifter isn’t placed");
+  const rebuild = page.locator(".builder-options").getByRole("button", { name: "Rebuild From Scratch" });
+  await rebuild.click();
+  const confirm = page.getByRole("alertdialog", { name: "Rebuild from scratch?" });
+  const confirmRebuild = confirm.getByRole("button", { name: "Rebuild From Scratch" });
+  await expect(confirmRebuild).toBeEnabled();
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await routeMutation(page, "schedulePublications:publish", async (route) => {
+    await held;
+    await route.fallback();
+  });
+  const publish = page.getByRole("region", { name: "Publish to MeetCal" });
+  await publish.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(publish.getByRole("button", { name: "Publishing…" })).toBeDisabled();
+  await expect(rebuild).toBeDisabled();
+  await expect(confirmRebuild).toBeDisabled();
+  await expect(changes).toHaveAttribute("inert", "");
+  release();
+  await expect(publish.getByRole("heading", { name: "Sent for Review" })).toBeVisible();
+  await expect(changes).not.toHaveAttribute("inert", "");
+  await expect(rebuild).toBeEnabled();
+  expect(calls.publishes.at(-1)?.args).toMatchObject({ base: "published", edits: [] });
+  expect(calls.previews.every((call) => call.args.base === "published")).toBe(true);
+});
+
 test("signed in, drafts save and list, and a publish is sent for review", async ({ page }) => {
   const calls = await mockBuilder(page, { signedIn: true });
   await page.goto("/schedule-builder");

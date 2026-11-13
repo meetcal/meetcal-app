@@ -432,6 +432,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       startTime: scheduled ? storedClockOf(slot.start ?? 0) : '',
       weighInTime: scheduled ? storedClockOf((slot.start ?? 0) - WEIGH_IN_MINUTES) : '',
     };
+    const sessionRow = slot.retimed ? undefined : earliest([...(slot.published?.values() ?? [])].flat());
     const builtGroups = groups.map(({ platform, group }): BuiltGroup => {
       const sorted = [...group.athletes].sort(byTotal);
       const labels = groupLabels(group, sorted, options, editedSplits);
@@ -447,7 +448,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
         weightClasses: sortByWeightClass([...new Set(sorted.map((a) => a.weightClass))], (c) => c),
         athletes: sorted.map((a) => ({ ...a, gender: athleteGenderLabel(a.gender) })),
       };
-      const own = slot.retimed ? undefined : earliest(slot.published?.get(platform) ?? []);
+      const own = slot.retimed ? undefined : (earliest(slot.published?.get(platform) ?? []) ?? sessionRow);
       const times = own ? timesOfPart(own) : undefined;
       const origin = group.edited ? undefined : group.published;
       if (!origin) return times ? { ...built, times } : built;
@@ -459,8 +460,9 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
     const own = slot.published && !slot.retimed && scheduled ? earliest(builtGroups.flatMap((group) => (group.times ? [group.times] : []))) : undefined;
     return { id: slot.id, number, ...(own ?? computed), groups: builtGroups };
   });
-  const retimed = new Set(kept.filter(({ slot }) => slot.retimed).map(({ slot }) => slot.id));
-  const warnsOf = numbering === 'asPublished' ? (session: BuiltSession) => retimed.has(session.id) : () => true;
+  const outOfPlace = (slot: Slot, group: Group) => group.edited || (group.published !== undefined && group.published.slot !== slot.id);
+  const touched = new Set(kept.filter(({ slot, groups }) => slot.retimed || groups.some(({ group }) => outOfPlace(slot, group))).map(({ slot }) => slot.id));
+  const warnsOf = numbering === 'asPublished' ? (session: BuiltSession) => touched.has(session.id) : () => true;
   warnings.push(...overlapWarnings(sessions, options.sessionMinutes, warnsOf));
   const unscheduled = sessions.filter((s) => s.startTime === '').length;
   if (athletes === 0) warnings.unshift({ code: 'noEntrants', message: 'The meet has no entrants yet.' });
@@ -645,11 +647,17 @@ export function unlistedRemovals(build: PublishedBuild): string[] {
 }
 
 function publishedSessionMinutes(rows: readonly PublishedRow[], fallback: number): number {
-  const starts = new Map<string, number[]>();
+  const firstStarts = new Map<string, { lane: string; start: number }>();
   for (const row of rows) {
     const start = minutesOfStoredClock(row.startTime);
-    if (row.date !== '' && start !== null) addTo(starts, `${row.date}|${row.platform.trim()}`, start);
+    if (row.date === '' || start === null) continue;
+    const lane = `${row.date}|${row.platform.trim()}`;
+    const key = `${lane}|${row.sessionId}`;
+    const first = firstStarts.get(key);
+    if (!first || start < first.start) firstStarts.set(key, { lane, start });
   }
+  const starts = new Map<string, number[]>();
+  for (const { lane, start } of firstStarts.values()) addTo(starts, lane, start);
   const gaps = [...starts.values()].flatMap((list) => {
     const sorted = [...new Set(list)].sort((a, b) => a - b);
     return sorted.slice(1).map((start, i) => start - (sorted[i] ?? start));

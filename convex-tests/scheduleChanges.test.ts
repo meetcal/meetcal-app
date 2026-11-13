@@ -1,12 +1,12 @@
 import { ConvexError } from 'convex/values';
-import { changes, defaults, NOT_PUBLISHED, preview, saveDraft } from '../convex/scheduleBuilder';
+import { changes, defaults, exportFile, NOT_PUBLISHED, preview, saveDraft } from '../convex/scheduleBuilder';
 import { approve, BASE_GONE, decideByToken, emailContent, publish, reviewByToken, STALE_APPROVAL, STALE_BASE, stillListedProblem } from '../convex/schedulePublications';
 import { forgetSport80Entrants, recordSport80Entrants, replaceMeetAthletes, replaceMeetSchedule } from '../convex/ingest';
 import { platformLabel, renderPublicationEmail, renderReviewPage, type PublicationEmailContent, type ReviewPageContent } from '../convex/lib/schedulePublishing';
 import { sha256Hex } from '../convex/lib/tokens';
 import { buildFromPublished, buildSchedule, sport80Diff, type PublishedBase } from '../convex/lib/scheduleBuilder';
 import { suggestedPlace } from '../convex/lib/scheduleChanges';
-import { defaultBuilderOptions, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
+import { clockLabel, defaultBuilderOptions, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 const NOW = Date.UTC(2027, 0, 10, 12);
@@ -690,3 +690,107 @@ describe('an added entrant already on the roster without a session', () => {
   });
 });
 
+
+type TimedBoard = {
+  sessions: { number: number; date: string; startTime: string; weighInTime: string; groups: { platform: string; label: string; times?: { date: string; startTime: string; weighInTime: string } }[] }[];
+  warnings: { code: string; message: string }[];
+};
+
+async function timedBoard(store: ReturnType<typeof server>, edits: Args[]): Promise<TimedBoard> {
+  return (await board(store, edits)) as unknown as TimedBoard;
+}
+
+const shownRows = (answer: TimedBoard) =>
+  answer.sessions.flatMap((session) =>
+    session.groups.map((group) => ({ meet: MEET, sessionId: session.number, platform: group.platform, weightClass: group.label, ...(group.times ?? { date: session.date, startTime: session.startTime, weighInTime: session.weighInTime }) })),
+  );
+
+async function exportedTimes(store: ReturnType<typeof server>, edits: Args[]) {
+  const file = (await store.as(null)(exportFile, { meet: MEET, options: await publishedOptions(store), edits, base: 'published', format: 'csv' })) as { content: string };
+  const [, ...lines] = file.content.replace(/^\uFEFF/, '').split('\r\n');
+  return [...new Set(lines.map((line) => line.split(',').slice(0, 6).join(',')))].sort();
+}
+
+const exportLinesOf = (rows: readonly Row[]) => [...new Set(rows.map((row) => [row.sessionId, row.platform, row.date, clockLabel(String(row.weighInTime)), clockLabel(String(row.startTime)), row.weightClass].join(',')))].sort();
+
+describe('swapping sessions of a published schedule', () => {
+  const swapped = [{ kind: 'swapSessions', session: 1, withSession: 2 }];
+
+  async function publishedSwap(store: ReturnType<typeof server>) {
+    const shown = await timedBoard(store, swapped);
+    const exported = await exportedTimes(store, swapped);
+    await publishAs(store, 'user_a', 'published', null, swapped);
+    return { shown, exported, written: sortedRows(store) };
+  }
+
+  it('writes a session on another platform at the times of the session it moved into, as the board and the export show', async () => {
+    const store = server({
+      ...organizer,
+      athletes: [rostered(ann, 1), rostered(cal, 2, { sessionPlatform: 'Blue' })],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:30:00', 'W 58'), handRow(2, 'Blue', '11:00:00', '09:30:00', 'M 89')],
+    });
+    const { shown, exported, written } = await publishedSwap(store);
+    expect(written).toEqual([handRow(1, 'Blue', '09:00:00', '07:30:00', 'M 89'), handRow(2, 'Red', '11:00:00', '09:30:00', 'W 58')]);
+    expect(inRowOrder(shownRows(shown))).toEqual(written);
+    expect(exported).toEqual(exportLinesOf(written));
+  });
+
+  it("gives a platform the session has no row for the session's earliest start, and keeps the others' own", async () => {
+    const store = server({
+      ...organizer,
+      athletes: [rostered(ann, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(gia, 2, { sessionPlatform: 'Blue' }), rostered(dan, 2, { sessionPlatform: 'Green' })],
+      session_schedule: [
+        handRow(1, 'Red', '09:00:00', '07:30:00', 'W 58'),
+        handRow(1, 'Blue', '09:30:00', '08:00:00', 'M 89'),
+        handRow(2, 'Blue', '11:00:00', '09:30:00', 'W 63'),
+        handRow(2, 'Green', '11:30:00', '10:00:00', 'M 96'),
+      ],
+    });
+    const { shown, exported, written } = await publishedSwap(store);
+    expect(written).toEqual([
+      handRow(1, 'Blue', '09:30:00', '08:00:00', 'W 63'),
+      handRow(1, 'Green', '09:00:00', '07:30:00', 'M 96'),
+      handRow(2, 'Blue', '11:00:00', '09:30:00', 'M 89'),
+      handRow(2, 'Red', '11:00:00', '09:30:00', 'W 58'),
+    ]);
+    expect(shown.sessions.map((s) => [s.number, s.startTime, s.weighInTime])).toEqual([
+      [1, '09:00:00', '07:30:00'],
+      [2, '11:00:00', '09:30:00'],
+    ]);
+    expect(inRowOrder(shownRows(shown))).toEqual(written);
+    expect(exported).toEqual(exportLinesOf(written));
+  });
+});
+
+describe('overlaps on a published schedule', () => {
+  const overlaps = (answer: TimedBoard) => answer.warnings.filter((w) => w.code === 'overlap').map((w) => w.message);
+
+  it('warns once a swap puts a session on a platform another session uses at that time', async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(cal, 2, { sessionPlatform: 'Blue' }), rostered(gia, 3, { sessionPlatform: 'Blue' })],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Blue', '09:00:00', '07:00:00', 'M 89'), handRow(3, 'Blue', '11:00:00', '09:00:00', 'W 63')],
+    });
+    expect(overlaps(await timedBoard(store, []))).toEqual([]);
+    expect(overlaps(await timedBoard(store, [{ kind: 'swapSessions', session: 1, withSession: 3 }]))).toEqual(['Sessions 1 and 2 use the Blue platform at the same time.']);
+  });
+
+  it('warns once an added lifter opens a platform another session uses at that time', async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(cal, 2, { sessionPlatform: 'Blue' })],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Blue', '09:00:00', '07:00:00', 'M 89')],
+    });
+    await store.record([listed(ann), listed(cal), listed(fay)]);
+    expect(overlaps(await timedBoard(store, []))).toEqual([]);
+    expect(overlaps(await timedBoard(store, [{ kind: 'addAthlete', athlete: keyOf(fay), toSession: 1, toPlatform: 'Blue' }]))).toEqual(['Sessions 1 and 2 use the Blue platform at the same time.']);
+  });
+});
+
+describe("a published schedule's session length", () => {
+  it('runs from the first start of one session to the first start of the next on its platform, whatever starts later inside a session', async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(gia, 1), rostered(cal, 2)],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Red', '10:00:00', '08:00:00', 'W 63'), handRow(2, 'Red', '11:00:00', '09:00:00', 'M 89')],
+    });
+    expect((await publishedOptions(store)).sessionMinutes).toBe(120);
+  });
+});
