@@ -38,6 +38,10 @@ run = "bun scripts/check-lock.ts bun run test:ci --testTimeout=20000"
 description = "Run Jest with coverage (waits for any other worktree's gate)"
 run = "bun scripts/check-lock.ts bun run test:coverage --testTimeout=20000"
 
+[tasks."app:bundle"]
+description = "Export the iOS bundle and check its size budget and banned packages, as CI does (waits for any other worktree's gate)"
+run = "bun scripts/check-lock.ts bun scripts/check-bundle.ts"
+
 [tasks."app:maestro"]
 description = "Run device smoke flows in their own E2E Metro session (waits for the simulator lock)"
 run = "bun run maestro:test"

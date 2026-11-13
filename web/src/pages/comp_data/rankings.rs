@@ -1,4 +1,5 @@
 use super::{
+    catalog,
     filters::{SortDirection, sort_numeric, sort_orders},
     format::display_weight_class,
     loading::{load_rows, table_response},
@@ -77,7 +78,7 @@ const FILTERS: &[Filter<Ranking>] = &[
     },
 ];
 
-const HEADERS: &[&str] = &[
+pub(crate) const HEADERS: &[&str] = &[
     "Rank",
     "Athlete",
     "Meet",
@@ -140,8 +141,7 @@ pub fn Rankings() -> impl IntoView {
 
     view! {
         <DataPage
-            heading="International Rankings"
-            intro="Browse current international rankings by meet, gender, age, or weight class."
+            page=catalog::RANKINGS
         >
             {move || table_response(rankings, HEADERS.len(), "rankings", |rankings| {
                 view! {

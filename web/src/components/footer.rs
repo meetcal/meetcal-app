@@ -1,4 +1,3 @@
-use js_sys::Date;
 use leptos::prelude::*;
 use leptos_router::components::A;
 
@@ -6,7 +5,7 @@ use crate::components::store_links::{APP_STORE_URL, PLAY_STORE_URL};
 
 #[component]
 pub fn Footer() -> impl IntoView {
-    let current_year = Date::new_0().get_full_year().to_string();
+    let current_year = crate::utils::page::this_year().to_string();
 
     view! {
         <footer class="site-footer">

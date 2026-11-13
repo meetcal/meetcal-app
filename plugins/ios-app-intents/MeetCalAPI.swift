@@ -79,6 +79,36 @@ struct APILiftingResult: Decodable {
     let total: Int?
 }
 
+struct APILifterChoice: Decodable {
+    let id: String
+    let name: String
+    let label: String
+    let results: Double
+    let latest_date: String
+}
+
+struct APILifterCard: Decodable {
+    let id: String
+    let name: String
+    let label: String
+}
+
+struct APIAthleteAnswer: Decodable {
+    let kind: String
+    let lifter: APILifterCard?
+    let json: String?
+    let year_bests: APIYearBests?
+    let lifters: [APILifterChoice]?
+    let other_results: Double?
+
+    var isChoice: Bool { kind == "choose" }
+
+    func rows() throws -> [APILiftingResult] {
+        guard let json else { return [] }
+        return try JSONDecoder().decode([APILiftingResult].self, from: Data(json.utf8))
+    }
+}
+
 struct APISearchResponse: Decodable {
     let matched_name: String?
     let suggestions: [String]?
@@ -216,16 +246,6 @@ enum APITimeFormat {
 
 // MARK: - Request bodies
 
-/// One athlete's bests as `results:bests` lists them (`[{ name, best_* }]`:
-/// Convex object keys must be ASCII and athlete names are not, so the query
-/// answers a list that `bests(names:)` turns back into a name-keyed map).
-struct APINamedBests: Decodable {
-    let name: String
-    let best_snatch: Double?
-    let best_cj: Double?
-    let best_total: Double?
-}
-
 /// `accessPass:pass`'s answer: the pass, and when to ask for the next (ms).
 struct APIAccessPass: Decodable {
     let pass: String
@@ -360,11 +380,6 @@ actor MeetCalAPI {
         return URL(string: configured.isEmpty ? "https://disciplined-hare-790.convex.cloud" : configured)
             ?? URL(string: "https://disciplined-hare-790.convex.cloud")!
     }()
-    /// Names per name-list request. Matches `NAMES_QUERY_CHUNK_SIZE` in
-    /// lib/api/meetcal-api.ts; the queries reject more than 100 names.
-    private static let nameChunkSize = 40
-    /// The queries' `MAX_LIMIT_PER_NAME`; a larger `limitPerName` is an error.
-    private static let maxLimitPerName = 200
     private let session: URLSession
     private let ttl: TimeInterval = 300 // ~5 minutes
 
@@ -397,6 +412,7 @@ actor MeetCalAPI {
         "results:recent",
         "results:yearBests",
         "results:bests",
+        "results:athlete",
         "results:search",
         "meets:packageForMeet",
     ]
@@ -459,59 +475,11 @@ actor MeetCalAPI {
         try await self.query("results:search", args: ["query": query])
     }
 
-    /// Each name's newest `limitPerName` results (newest first), so a long
-    /// career is not downloaded and cached just to show a few rows. Ranges
-    /// over the whole history, not a date window, so a lifter who has not
-    /// competed lately still gets their last meets.
-    func resultsByNames(_ names: [String], limitPerName: Int) async throws -> [APILiftingResult] {
-        let cleaned = Self.cleanNameList(names)
-        guard !cleaned.isEmpty else { return [] }
-        let limit = min(max(limitPerName, 1), Self.maxLimitPerName)
-        var rows: [APILiftingResult] = []
-        for chunk in Self.chunked(cleaned) {
-            let part: [APILiftingResult] = try await query(
-                "results:byNames",
-                args: ["names": chunk, "limitPerName": limit]
-            )
-            rows.append(contentsOf: part)
-        }
-        return rows
-    }
-
-    func bests(names: [String]) async throws -> [String: APIYearBests] {
-        let cleaned = Self.cleanNameList(names)
-        guard !cleaned.isEmpty else { return [:] }
-        // One cutoff for every chunk, the window the app uses.
-        let cutoff = HistoryCutoff.date(yearsAgo: HistoryCutoff.yearBestsYears)
-        var merged: [String: APIYearBests] = [:]
-        for chunk in Self.chunked(cleaned) {
-            let part: [APINamedBests] = try await query(
-                "results:bests",
-                args: ["names": chunk, "cutoffDate": cutoff]
-            )
-            for row in part {
-                let bests = APIYearBests(best_snatch: row.best_snatch, best_cj: row.best_cj, best_total: row.best_total)
-                // A name with no bests is left out, so the map is empty for an
-                // unknown name instead of holding a row of zeros.
-                if bests.hasAnyBest { merged[row.name] = bests }
-            }
-        }
-        return merged
-    }
-
-    /// Trims each name and drops blanks, as the queries' `cleanNameList`
-    /// does, so an all-blank list short-circuits instead of drawing an error.
-    private static func cleanNameList(_ names: [String]) -> [String] {
-        names
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    /// Splits a name list into requests of at most `nameChunkSize` names.
-    private static func chunked(_ names: [String]) -> [[String]] {
-        stride(from: 0, to: names.count, by: nameChunkSize).map { start in
-            Array(names[start..<min(start + nameChunkSize, names.count)])
-        }
+    func athlete(name: String, lifter: String?, other: Bool) async throws -> APIAthleteAnswer {
+        var args: [String: Any] = ["name": name, "cutoffDate": HistoryCutoff.date(yearsAgo: HistoryCutoff.yearBestsYears)]
+        if let lifter { args["lifter"] = lifter }
+        if other { args["other"] = true }
+        return try await query("results:athlete", args: args)
     }
 
     func qualifyingTotals() async throws -> [APIQualifyingTotalRow] {
@@ -732,7 +700,7 @@ actor MeetCalAPI {
             throw MeetCalAPIError.queryFailed
         }
         let value = envelope["value"] ?? NSNull()
-        if let object = value as? [String: Any], let text = object["json"] as? String {
+        if let object = value as? [String: Any], let text = object["json"] as? String, Set(object.keys).isSubset(of: ["json", "etag"]) {
             return Data(text.utf8)
         }
         return try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])

@@ -13,6 +13,7 @@ use serde_json::json;
 
 use crate::utils::access::{self, NoPass};
 use crate::utils::backend::{self, Endpoint, FunctionError, functions};
+use crate::utils::cache::{self, Cache};
 use crate::utils::credentials::{self, Credentials};
 use crate::utils::device_login::{self, PollAnswer, Poller, Started, Step};
 
@@ -57,7 +58,8 @@ pub async fn run_login(_args: LoginArgs) -> Result<()> {
 }
 
 pub async fn run_logout(_args: LogoutArgs) -> Result<()> {
-    logout(&credentials_path()?, &mut std::io::stderr()).await
+    let cache = cache::default_dir().map(Cache::at);
+    logout(&credentials_path()?, cache.as_ref(), &mut std::io::stderr()).await
 }
 
 fn credentials_path() -> Result<PathBuf> {
@@ -227,9 +229,10 @@ async fn revoke(login: &Credentials) -> Result<()> {
     .map(|_| ())
 }
 
-/// Ends the login saved at `path` and deletes it. The token is ended on the server when it can
-/// be; the file goes either way.
-pub async fn logout<W: Write>(path: &Path, out: &mut W) -> Result<()> {
+pub async fn logout<W: Write>(path: &Path, cache: Option<&Cache>, out: &mut W) -> Result<()> {
+    if let Some(cache) = cache {
+        cache.forget_access();
+    }
     let saved = match credentials::load(path) {
         Ok(Some(saved)) => saved,
         Ok(None) => {

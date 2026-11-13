@@ -1,5 +1,6 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
+    catalog,
     format::{NO_VALUE, display_weight_class, format_us_date},
     loading::{Load, LoadState, load_error, load_query},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
@@ -286,8 +287,7 @@ pub fn WsoElite() -> impl IntoView {
 
     view! {
         <DataPage
-            heading="WSO Elite"
-            intro="Find a WSO’s top 20 women and men overall and in each age group, scored by % of A standard, Q-points, Q-masters, or Sinclair."
+            page=catalog::WSO_ELITE
         >
             {move || wsos.with(|state| match state {
                 LoadState::Ready(wsos) => view! {

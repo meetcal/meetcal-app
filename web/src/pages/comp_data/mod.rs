@@ -12,6 +12,7 @@ pub(crate) mod loading;
 pub mod meet_center;
 pub(crate) mod meets;
 pub(crate) mod models;
+pub(crate) mod narrowed;
 pub mod national_rankings;
 pub mod qual_totals;
 pub mod rankings;

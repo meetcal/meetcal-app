@@ -397,22 +397,52 @@ struct GetAthleteResultsIntent: AppIntent {
         return years == 1 ? "Bests (Past Year)" : "Bests (Past \(years) Years)"
     }
 
+    private static let otherResultsChoice = "Other Results For This Name"
+
+    private static func choiceTitles(_ lifters: [APILifterChoice]) -> [String] {
+        var seen: [String: Int] = [:]
+        return lifters.map { choice in
+            let count = choice.results == 1 ? "1 result" : "\(Int(choice.results)) results"
+            let latest = choice.latest_date.isEmpty ? "" : "latest \(APIDateFormat.pretty(choice.latest_date))"
+            let title = [choice.name, choice.label, count, latest].filter { !$0.isEmpty }.joined(separator: " · ")
+            let repeats = seen[title, default: 0]
+            seen[title] = repeats + 1
+            return repeats == 0 ? title : "\(title) (\(repeats + 1))"
+        }
+    }
+
+    private func pickedLifter(from answer: APIAthleteAnswer) async throws -> (lifter: String?, other: Bool)? {
+        guard answer.isChoice, let lifters = answer.lifters, !lifters.isEmpty else { return nil }
+        let titles = Self.choiceTitles(lifters)
+        var options = titles
+        if (answer.other_results ?? 0) > 0 { options.append(Self.otherResultsChoice) }
+        let picked = try await $name.requestDisambiguation(among: options, dialog: "Which \(name) do you mean?")
+        if picked == Self.otherResultsChoice { return (nil, true) }
+        guard let index = titles.firstIndex(of: picked) else { return nil }
+        return (lifters[index].id, false)
+    }
+
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
         guard PremiumGate.isUnlocked else {
             let (dialog, view) = PremiumGate.lockedAnswer(.athleteResults)
             return .result(dialog: dialog, view: view)
         }
 
-        // Bests and recent meets are independent: show whichever arrived.
-        async let bestsTask = MeetCalAPI.shared.bests(names: [name])
-        async let resultsTask = MeetCalAPI.shared.resultsByNames([name], limitPerName: Self.recentResultCount)
-        let fetchedBests = try? await bestsTask
-        let fetchedResults = try? await resultsTask
-        let bests = fetchedBests ?? [:]
-        let results = fetchedResults ?? []
-        // `bests(names:)` leaves out a name with no bests, so an unknown name
-        // (a typo) has none and reaches "I couldn't find results".
-        let best = bests[name] ?? bests.values.first
+        guard let first = try? await MeetCalAPI.shared.athlete(name: name, lifter: nil, other: false) else {
+            return .result(dialog: IntentFailure.dialog(), view: IntentFailure.view(title: name, systemImage: "trophy.fill"))
+        }
+        var answer = first
+        if let pick = try await pickedLifter(from: first) {
+            guard let picked = try? await MeetCalAPI.shared.athlete(name: name, lifter: pick.lifter, other: pick.other) else {
+                return .result(dialog: IntentFailure.dialog(), view: IntentFailure.view(title: name, systemImage: "trophy.fill"))
+            }
+            answer = picked
+        }
+        guard let results = try? answer.rows() else {
+            return .result(dialog: IntentFailure.dialog(), view: IntentFailure.view(title: name, systemImage: "trophy.fill"))
+        }
+        let shownName = answer.lifter?.name ?? name
+        let best = answer.year_bests.flatMap { $0.hasAnyBest ? $0 : nil }
 
         var rows: [SnippetRow] = []
 
@@ -430,7 +460,6 @@ struct GetAthleteResultsIntent: AppIntent {
 
         for result in results.prefix(Self.recentResultCount) {
             let total = positiveKg(result.total.map(Double.init)).map { "\($0) kg" } ?? "—"
-            // A body weight sent as 0 is missing, not "0.0 kg BW".
             let bodyWeight = result.body_weight.flatMap { $0 > 0 ? "\(kgString($0)) BW" : nil }
             rows.append(SnippetRow(
                 leading: "",
@@ -440,28 +469,19 @@ struct GetAthleteResultsIntent: AppIntent {
             ))
         }
 
-        // Nothing to show and a query failed: the server was unreachable, so
-        // don't claim the athlete has no results.
-        if rows.isEmpty && (fetchedBests == nil || fetchedResults == nil) {
-            return .result(
-                dialog: IntentFailure.dialog(),
-                view: IntentFailure.view(title: name, systemImage: "trophy.fill")
-            )
-        }
-
         let dialog: IntentDialog
         if rows.isEmpty {
-            dialog = "I couldn't find results for \(name)."
+            dialog = "I couldn't find results for \(shownName)."
         } else if let total = positiveKg(best?.best_total) {
-            dialog = "\(name)'s best total over \(Self.bestsWindow) is \(total) kilograms."
+            dialog = "\(shownName)'s best total over \(Self.bestsWindow) is \(total) kilograms."
         } else {
-            dialog = "Here are recent results for \(name)."
+            dialog = "Here are recent results for \(shownName)."
         }
 
         return .result(
             dialog: dialog,
             view: SnippetListView(
-                title: name,
+                title: shownName,
                 subtitle: "Results",
                 rows: rows,
                 emptyMessage: "No results found",

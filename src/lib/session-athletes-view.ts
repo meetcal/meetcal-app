@@ -39,6 +39,7 @@ export function toSessionAthletesByPlatform(
 
   return {
     [platform]: sortedAthletes.map((athlete) => ({
+      memberId: athlete.memberId,
       name: athlete.name,
       age: athlete.age,
       club: athlete.club,

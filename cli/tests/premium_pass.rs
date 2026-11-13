@@ -371,3 +371,24 @@ async fn a_refused_premium_action_without_a_login_says_to_log_in() {
     assert!(PassRefused::is(&error));
     assert_eq!(request_paths(&requests), ["/api/action"]);
 }
+
+#[tokio::test]
+async fn a_dead_link_fails_the_pass_and_the_read_together() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    drop(listener);
+    let access = Access::from_file(saved_login("dead-link", &base_url, FAR_FUTURE));
+
+    let error = read_club(&base_url, &access)
+        .await
+        .expect_err("nothing listens there");
+
+    assert_eq!(
+        error.to_string(),
+        "Could not reach MeetCal. Check your internet connection and try again."
+    );
+    assert!(
+        format!("{error:#}").contains("MeetCal was unreachable earlier in this run"),
+        "the read tried the dead link again after the pass fetch: {error:#}"
+    );
+}

@@ -1,4 +1,5 @@
 use super::{
+    catalog,
     filters::{SortDirection, sort_numeric, sort_orders},
     format::{display_weight_class, reference_value},
     loading::{load_rows, table_response},
@@ -63,7 +64,7 @@ const FILTERS: &[Filter<Standard>] = &[
     },
 ];
 
-const HEADERS: &[&str] = &["Gender", "Age", "Weight class", "A", "B"];
+pub(crate) const HEADERS: &[&str] = &["Gender", "Age", "Weight class", "A", "B"];
 
 sort_orders!(StandardSort {
     ADesc => ("standard_a_desc", "A: high to low"),
@@ -110,8 +111,7 @@ pub fn Standards() -> impl IntoView {
 
     view! {
         <DataPage
-            heading="Standards"
-            intro="A and B standards by gender, age category, and weight class."
+            page=catalog::STANDARDS
         >
             {move || table_response(standards, HEADERS.len(), "standards", |standards| {
                 view! {

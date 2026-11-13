@@ -6,12 +6,12 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
     athlete_autocomplete::AthleteAutocomplete,
+    catalog,
     format::NO_VALUE,
     loading::{Load, LoadState, load_error},
     ui::{DataMetric, DataPage, DataStatus, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
-use js_sys::Date;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -118,7 +118,7 @@ fn wrapped_request(
 
 #[component]
 pub fn Wrapped() -> impl IntoView {
-    let current_year = Date::new_0().get_full_year() as i32;
+    let current_year = crate::utils::page::this_year();
     let page = use_page_address(WRAPPED_PATH);
     let athlete_in_address = query_param("athlete");
     let year_in_address = query_param("year");
@@ -201,7 +201,7 @@ pub fn Wrapped() -> impl IntoView {
             HistoryEntry::Push,
         );
     });
-    view! { <DataPage heading="Athlete Wrapped" intro="Summarize an athlete’s competition year, best lifts, make rate, and progress.">
+    view! { <DataPage page=catalog::WRAPPED>
         <form class="data-query-form" on:submit=move |event| { event.prevent_default(); build(); }>
             <AthleteAutocomplete value=athlete_name set_value=set_athlete_name input_id="wrapped-athlete" wrapper_class="data-query-grow" />
             <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=move || year.get() on:input=move |event| { set_year.set(event_target_value(&event)); set_year_error.set(None); } /></label>
@@ -328,7 +328,11 @@ mod tests {
 
     /// `value` read as Convex's HTTP API answer would be, floats and all.
     fn answer(value: serde_json::Value) -> WrappedAnswer {
-        read_body(queries::WRAPPED, value).unwrap()
+        read_body(
+            queries::WRAPPED,
+            &serde_json::value::to_raw_value(&value).unwrap(),
+        )
+        .unwrap()
     }
 
     fn request(query: &str) -> WrappedRequest {
@@ -467,7 +471,11 @@ mod tests {
             json!({"kind": "athlete", "name": "Test Athlete", "stats": {"totalMeets": 2.5}}),
         ] {
             assert!(
-                read_body::<WrappedAnswer>(queries::WRAPPED, value.clone()).is_err(),
+                read_body::<WrappedAnswer>(
+                    queries::WRAPPED,
+                    &serde_json::value::to_raw_value(&value).unwrap()
+                )
+                .is_err(),
                 "{value}"
             );
         }

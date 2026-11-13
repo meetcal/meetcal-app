@@ -5,12 +5,13 @@ use clap::Parser;
 use comfy_table::Table;
 
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::athletes::history;
+use crate::types::lifting_results::PrMarks;
+use crate::utils::athletes::{LifterPick, history};
 use crate::utils::format::{display_body_weight, us_date};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, fold, number,
-    percent, points, pr_flags, row_qpoints, row_sinclair, signed_kg, valid_total,
+    Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological_indexes, fold,
+    number, percent, points, pr_flags_at, row_qpoints, row_sinclair, signed_kg, valid_total,
 };
 
 /// Show an athlete's progression: every meet with its Sinclair and PRs, their trend, and their
@@ -30,27 +31,33 @@ pub struct ProgressArgs {
     /// Only results from this year on
     #[arg(long, short = 's', value_parser = crate::utils::filters::parse_year)]
     pub since: Option<i32>,
+
+    #[command(flatten)]
+    pub pick: LifterPick,
 }
 
 pub async fn run(args: ProgressArgs) -> Result<()> {
-    let rows = history(&args.name).await?;
-    let name = rows
-        .first()
-        .map(|row| row.name.clone())
+    let history = history(&args.name, &args.pick).await?;
+    let name = history
+        .lifter
+        .as_ref()
+        .map(|lifter| lifter.name.clone())
+        .or_else(|| history.rows.first().map(|row| row.name.clone()))
         .unwrap_or(args.name.clone());
-    output::emit(report(&name, &rows, args.since));
+    output::emit(report(&name, &history.rows, &history.prs, args.since));
     Ok(())
 }
 
-pub(crate) fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report {
-    // PRs are judged against the whole history, then the table is cut to `since`.
-    let all = chronological(rows);
-    let flags = pr_flags(&all);
+pub(crate) fn report(
+    name: &str,
+    rows: &[LiftingResults],
+    prs: &PrMarks,
+    since: Option<i32>,
+) -> Report {
     let from = since.map(|year| format!("{year:04}-01-01"));
-    let shown: Vec<(&LiftingResults, _)> = all
-        .iter()
-        .copied()
-        .zip(flags)
+    let shown: Vec<(&LiftingResults, _)> = chronological_indexes(rows)
+        .into_iter()
+        .map(|(index, row)| (row, pr_flags_at(prs, index)))
         .filter(|(row, _)| from.as_deref().is_none_or(|from| row.date.as_str() >= from))
         .collect();
     let rows: Vec<&LiftingResults> = shown.iter().map(|(row, _)| *row).collect();
@@ -221,6 +228,7 @@ pub(crate) fn attempts(rows: &[&LiftingResults]) -> Table {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::lifting_results::ByLift;
     use crate::utils::stats::tests::row;
 
     #[test]
@@ -245,7 +253,15 @@ mod tests {
                 [102.0, -107.0, 107.0],
             ),
         ];
-        let report = report("Ada", &rows, Some(2025));
+        let set_by_the_second = PrMarks {
+            set: ByLift {
+                snatch: vec![1],
+                cj: vec![1],
+                total: vec![1],
+            },
+            ..PrMarks::default()
+        };
+        let report = report("Ada", &rows, &set_by_the_second, Some(2025));
         let json = report.to_json();
         let results = json["results"].as_array().unwrap();
         assert_eq!(results.len(), 1);
@@ -273,7 +289,7 @@ mod tests {
             [80.0, 85.0, -88.0],
             [100.0, 105.0, 0.0],
         )];
-        let report = report("Ada", &rows, None);
+        let report = report("Ada", &rows, &PrMarks::default(), None);
         assert_eq!(
             report.to_json()["results"][0]["bw"],
             serde_json::Value::Null
@@ -292,7 +308,7 @@ mod tests {
             [80.0, 85.0, -88.0],
             [100.0, 105.0, 0.0],
         )];
-        let report = report("Ada", &rows, Some(2026));
+        let report = report("Ada", &rows, &PrMarks::default(), Some(2026));
         assert_eq!(report.to_text(), "No results for Ada in that range.");
         let json = report.to_json();
         assert_eq!(json["results"], serde_json::json!([]));
@@ -314,7 +330,7 @@ mod tests {
             )
         };
         let rows = vec![entry("Open Women's 64kg"), entry("Junior Women's 64kg")];
-        let json = report("Ada", &rows, None).to_json();
+        let json = report("Ada", &rows, &PrMarks::default(), None).to_json();
         assert_eq!(json["trend"][0]["meets"], 1);
     }
 
@@ -332,7 +348,7 @@ mod tests {
             )
         };
         let rows = vec![lift("2025-02-01"), lift("2025-03-08"), lift("2026-01-31")];
-        let json = report("Carter", &rows, None).to_json();
+        let json = report("Carter", &rows, &PrMarks::default(), None).to_json();
         assert_eq!(json["trend"][0]["best_total"], 208);
         assert_eq!(json["trend"][0]["best_total_date"], "2025-02-01");
     }
@@ -348,7 +364,7 @@ mod tests {
             // 633 for 63: the source's best and total come from the typo.
             lift("2026-03-01", [-63.0, 633.0, 65.0], [90.0, 0.0, 0.0]),
         ];
-        let json = report("Ada", &rows, None).to_json();
+        let json = report("Ada", &rows, &PrMarks::default(), None).to_json();
         let trend = &json["trend"][0];
         assert_eq!(trend["best_total"], 168);
         assert_eq!(trend["latest_total"], 168);

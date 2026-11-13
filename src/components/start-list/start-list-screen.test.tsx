@@ -39,7 +39,7 @@ type FlashListProps = {
   keyboardShouldPersistTaps?: string;
   keyboardDismissMode?: string;
   renderItem: (info: { item: LiftResult; index: number }) => React.ReactElement<{
-    onSeeAllResults: (name: string) => void;
+    onSeeAllResults: (request: { name: string; membership?: string }) => void;
   }>;
 };
 const mockFlashList = jest.fn((_props: FlashListProps) => null);
@@ -459,7 +459,8 @@ describe("Start List row results link", () => {
   const seeAllResults = (name: string) => {
     const { data, renderItem } = lastCall(mockFlashList);
     const index = data.findIndex((a) => a.name === name);
-    act(() => renderItem({ item: itemAt(data, index), index }).props.onSeeAllResults(name));
+    const athlete = itemAt(data, index);
+    act(() => renderItem({ item: athlete, index }).props.onSeeAllResults({ name, membership: athlete.memberId }));
   };
 
   it("opens a subscriber's results", async () => {
@@ -467,7 +468,7 @@ describe("Start List row results link", () => {
     seeAllResults("Jane Doe");
     expect(mockPush).toHaveBeenCalledWith({
       pathname: "/shared-screens/athlete-results",
-      params: { name: "Jane Doe" },
+      params: { name: "Jane Doe", membership: expect.any(String) },
     });
   });
 

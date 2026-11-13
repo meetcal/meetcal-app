@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { pathToRegexp } from "path-to-regexp";
 
 const config = JSON.parse(
   await readFile(new URL("../../vercel.json", import.meta.url), "utf8"),
@@ -33,8 +34,6 @@ test("CSP preserves the application's existing provider integrations", () => {
   for (const source of [
     "'wasm-unsafe-eval'",
     "https://*.clerk.accounts.dev",
-    "https://api.revenuecat.com",
-    "https://e.revenue.cat",
     "https://*.posthog.com",
   ]) {
     assert.ok(csp.includes(source), `missing required CSP source: ${source}`);
@@ -47,7 +46,6 @@ test("CSP preserves the application's existing provider integrations", () => {
   for (const source of [
     "https://clerk.meetcal.app",
     "https://disciplined-hare-790.convex.cloud",
-    "https://api.revenuecat.com",
   ]) {
     assert.ok(
       connectSrc.includes(source),
@@ -106,6 +104,15 @@ test("production rewrites serve route-specific metadata shells", async () => {
   assert.doesNotMatch(wrappedHtml, /Sign in with your MeetCal account/);
 });
 
+test("the site loads no RevenueCat: Convex's access pass decides who sees data", async () => {
+  const csp = globalHeaders["content-security-policy"];
+  for (const origin of ["unpkg.com", "revenuecat", "revenue.cat"]) {
+    assert.ok(!csp.includes(origin), `CSP still allows ${origin}`);
+  }
+  const bridge = await readFile(new URL("../../src/auth_bridge.js", import.meta.url), "utf8");
+  assert.doesNotMatch(bridge, /revenuecat|Purchases/i);
+});
+
 test("every deployment reads Convex directly, with no API proxy", () => {
   // Convex answers any origin, so previews need no same-origin rewrite (see
   // src/utils/api/), and the retired Rust API is not reachable.
@@ -129,7 +136,6 @@ test("script-src allows only the pinned SDK versions, which load with SRI", asyn
   const pinned = [
     ["CLERK_UI", "https://cdn.jsdelivr.net/npm/@clerk/ui@"],
     ["CLERK_JS", "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@"],
-    ["REVENUECAT_JS", "https://unpkg.com/@revenuecat/purchases-js@"],
   ];
   for (const [name, prefix] of pinned) {
     const version = constant(`${name}_VERSION`);
@@ -145,5 +151,13 @@ test("script-src allows only the pinned SDK versions, which load with SRI", asyn
   }
   for (const source of scriptSrc.filter((source) => /jsdelivr|unpkg/.test(source))) {
     assert.ok(pinned.some(([name, prefix]) => source === `${prefix}${constant(`${name}_VERSION`)}/`), source);
+  }
+});
+
+test("every route source is a pattern Vercel accepts", () => {
+  const rules = [...(config.headers ?? []), ...(config.redirects ?? []), ...(config.rewrites ?? [])];
+  assert.ok(rules.length > 0, "vercel.json has no route rules");
+  for (const { source } of rules) {
+    assert.doesNotThrow(() => pathToRegexp(source), `${source} is not a valid route source pattern`);
   }
 });

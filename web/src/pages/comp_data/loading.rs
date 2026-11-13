@@ -10,7 +10,7 @@
 use super::models::MeetQuery;
 use super::ui::TableSkeleton;
 use crate::utils::api::{Query, query_with};
-use futures::future::{AbortHandle, abortable};
+use futures::future::{AbortHandle, LocalBoxFuture, abortable};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::fmt::Display;
@@ -62,39 +62,24 @@ where
         let key = Memo::new(move |_| key());
         let answer = RwSignal::new(None::<(K, Result<T, String>)>);
         let attempts = RwSignal::new(0_u64);
-        let in_flight = StoredValue::new_local(None::<AbortHandle>);
-
-        Effect::new(move |_| {
-            attempts.track();
-            let request = key.get();
-            if let Some(previous) = in_flight.try_update_value(Option::take).flatten() {
-                previous.abort();
-            }
-            answer.set(None);
-
-            let (future, handle) = abortable(untrack(|| fetch(request.clone())));
-            in_flight.set_value(Some(handle));
-            spawn_local(async move {
-                // An aborted request was replaced; its answer is never shown.
-                if let Ok(result) = future.await {
-                    answer.try_set(Some((request, result)));
-                }
-            });
-        });
-
         let load = Self {
             key,
             answer,
             attempts,
         };
-        let reconnect = window_event_listener(leptos::ev::online, move |_| load.retry_failed());
-        on_cleanup(move || {
-            reconnect.remove();
-            if let Some(request) = in_flight.try_update_value(Option::take).flatten() {
-                request.abort();
-            }
-        });
-
+        run_each_request(
+            attempts,
+            Box::new(move || {
+                let request = key.get();
+                answer.set(None);
+                let fetching = untrack(|| fetch(request.clone()));
+                Box::pin(async move {
+                    let result = fetching.await;
+                    answer.try_set(Some((request, result)));
+                })
+            }),
+            Box::new(move || load.retry_failed()),
+        );
         load
     }
 
@@ -120,6 +105,40 @@ where
             self.retry();
         }
     }
+}
+
+fn run_each_request(
+    attempts: RwSignal<u64>,
+    start: Box<dyn Fn() -> LocalBoxFuture<'static, ()>>,
+    retry_failed: Box<dyn Fn()>,
+) {
+    let in_flight = StoredValue::new_local(None::<AbortHandle>);
+    Effect::new(move |_| {
+        attempts.track();
+        if let Some(previous) = in_flight.try_update_value(Option::take).flatten() {
+            previous.abort();
+        }
+        let (request, handle) = abortable(start());
+        in_flight.set_value(Some(handle));
+        spawn_local(async move {
+            let _ = request.await;
+        });
+    });
+    let retry_failed = StoredValue::new_local(retry_failed);
+    let reconnect = StoredValue::new_local(None::<WindowListenerHandle>);
+    Effect::new(move |_| {
+        reconnect.set_value(Some(window_event_listener(leptos::ev::online, move |_| {
+            retry_failed.with_value(|retry| retry());
+        })));
+    });
+    on_cleanup(move || {
+        if let Some(listener) = reconnect.try_update_value(Option::take).flatten() {
+            listener.remove();
+        }
+        if let Some(request) = in_flight.try_update_value(Option::take).flatten() {
+            request.abort();
+        }
+    });
 }
 
 /// The state of `answer` for the request `key`: an answer to another

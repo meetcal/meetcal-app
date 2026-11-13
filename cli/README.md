@@ -76,15 +76,22 @@ approved, denied, or the code expires (10 minutes); denied and expired exit non-
 The login lasts 90 days and is saved in `~/.config/meetcal/credentials.json`
 (`$XDG_CONFIG_HOME/meetcal/credentials.json` when `XDG_CONFIG_HOME` is set), readable by you alone.
 Logging in again replaces it. Each machine logs in on its own; there is no token environment
-variable. With a login, commands fetch MeetCal's daily access pass once per run and send it with
-subscriber-data reads; the login itself is sent only to get that pass (and to re-check a subscription MeetCal has not heard of yet).
+variable. With a login, commands fetch MeetCal's daily access pass, keep it until it changes, and
+send it with subscriber-data reads; the login itself is sent only to get that pass (and to re-check
+a subscription MeetCal has not heard of yet).
+
+Commands keep the reference tables, meet lists, start lists and meet results they read in `~/.cache/meetcal/`
+(`$XDG_CACHE_HOME/meetcal/` when `XDG_CACHE_HOME` is set), readable by you alone, at most 64 MB.
+The next read asks MeetCal whether its copy is still current and downloads it again only when it
+changed. Subscriber data is kept only with the access pass, and goes when the pass changes or you
+log out. Deleting the folder is always safe.
 
 ```sh
 meetcal logout
 ```
 
 `logout` ends the login on MeetCal's side and deletes the file (the file goes even when MeetCal
-cannot be reached).
+cannot be reached), the access pass and the subscriber data kept with it.
 
 ## Commands
 
@@ -166,6 +173,14 @@ Search for an athlete by name. Prints meet results, comp PRs, and make rates.
 
 ```sh
 meetcal search "Maddisen Mohnsen"
+```
+
+When more than one lifter has the name, `search`, `progress` and `qualify` list each one's id,
+age, WSO and club instead; run again with `--lifter <id>`, or `--other` for the name's results no
+one lifter holds. `h2h` takes `--first-lifter` and `--second-lifter`.
+
+```sh
+meetcal search "Taylor Johnson" --lifter 20730
 ```
 
 #### `wrapped`
