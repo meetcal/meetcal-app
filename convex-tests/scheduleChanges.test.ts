@@ -851,7 +851,7 @@ describe('a platform with several published rows at their own times', () => {
     const { html } = renderPublicationEmail({ meet: MEET, status: 'live', userId: 'u', schedule, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: true });
     expect(html).toContain('<li>Red: W 59 (1)</li><li>Red (Weigh-In 8:00 AM · Start 10:00 AM): W 64 (2)</li>');
 
-    const store = server({ athletes: [rostered(kim, 1), rostered(lea, 1)], session_schedule: flights('W 59', 'W 64').rows });
+    const store = server({ athletes: [rostered(kim, 1), rostered(lea, 1)], session_schedule: [...flights('W 59', 'W 64').rows] });
     const shown = await board(store);
     expect(shown.sessions[0]?.groups.map((g) => [g.label, g.ownTimes])).toEqual([['W 59 / W 64', 'W 59 · Weigh-In 7:00 AM · Start 9:00 AM\nW 64 · Weigh-In 8:00 AM · Start 10:00 AM']]);
     const file = (await store.as(null)(exportFile, { meet: MEET, options: await publishedOptions(store), edits: [], base: 'published', format: 'csv' })) as { content: string };
