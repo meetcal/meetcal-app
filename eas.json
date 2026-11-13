@@ -80,6 +80,11 @@
         "ascAppId": "6741133286",
         "appleTeamId": "HCK9FFW6UX"
       }
+    },
+    "internal": {
+      "android": {
+        "track": "internal"
+      }
     }
   }
 }
