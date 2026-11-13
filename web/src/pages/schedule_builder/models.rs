@@ -100,18 +100,11 @@ pub(crate) struct AddedEntrant {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
-pub(crate) struct WithdrawnAthlete {
-    pub athlete: BuiltAthlete,
-    pub place: BoardPlace,
-    pub occurrence: u32,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Sport80Changes {
     pub checked_at: Option<f64>,
     pub added: Vec<AddedEntrant>,
-    pub withdrawn: Vec<WithdrawnAthlete>,
+    pub withdrawn: Vec<serde::de::IgnoredAny>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -525,11 +518,13 @@ pub(crate) fn added_note(count: usize) -> String {
     }
 }
 
-pub(crate) fn withdrawn_note(count: usize) -> &'static str {
-    if count == 0 {
-        "Every published lifter is still on Sport80."
-    } else {
-        ""
+pub(crate) fn withdrawn_note(count: usize) -> String {
+    match count {
+        0 => "Every published lifter is still on Sport80.".to_owned(),
+        1 => "1 lifter is marked on the board. Remove takes them off the start list when you publish.".to_owned(),
+        count => format!(
+            "{count} lifters are marked on the board. Remove takes them off the start list when you publish."
+        ),
     }
 }
 
@@ -974,7 +969,10 @@ mod tests {
             withdrawn_note(0),
             "Every published lifter is still on Sport80."
         );
-        assert_eq!(withdrawn_note(2), "");
+        assert_eq!(
+            withdrawn_note(2),
+            "2 lifters are marked on the board. Remove takes them off the start list when you publish."
+        );
         assert_eq!(
             rebuild_warning(false, 1),
             "Building again discards your edit."
@@ -1031,8 +1029,7 @@ mod tests {
                 .as_deref(),
             Some("Session 1 · Red")
         );
-        assert_eq!(changes.withdrawn[0].place.session, 3);
-        assert_eq!(changes.withdrawn[0].athlete.name, "Ann");
+        assert_eq!(changes.withdrawn.len(), 1);
     }
 
     fn session(id: u32, number: u32) -> BuiltSession {

@@ -27,7 +27,7 @@ import {
   SEARCH_BUDGET_MS,
   sport80LinkOf,
 } from '../convex/scheduleBuilderLoad';
-import { upsertEntryAthletes, upsertMeets } from '../convex/ingest';
+import { recordSport80Entrants, upsertEntryAthletes, upsertMeets } from '../convex/ingest';
 import { addFromBuilder, BUILDER_TARGETS_MAX } from '../convex/scrapers/entryTargets';
 import { entriesMeet } from '../convex/scrapers/queries';
 import { fetchEntriesMeet, readEntries } from '../convex/scrapers/entries';
@@ -107,6 +107,8 @@ describe('defaults and preview', () => {
       timeZone: 'America/Chicago',
       status: 'upcoming',
       options: options(),
+      sport80Link: 'https://usaweightlifting.sport80.com/public/events/15084',
+      published: null,
     });
   });
 
@@ -137,7 +139,9 @@ describe('drafts', () => {
     expect(await as('user_a')(saveDraft, { meet: MEET, options: options(), edits })).toEqual({ meet: MEET, updatedAt: NOW });
     expect(await as('user_a')(drafts)).toEqual([{ meet: MEET, updatedAt: NOW }]);
     expect(await as('user_b')(drafts)).toEqual([]);
-    expect(await as('user_a')(draft, { meet: MEET })).toEqual({ meet: MEET, options: options(), edits, updatedAt: NOW });
+    expect(await as('user_a')(draft, { meet: MEET })).toEqual({ meet: MEET, options: options(), edits, basis: { base: 'entries', baseVersion: null }, updatedAt: NOW });
+    await as('user_a')(saveDraft, { meet: MEET, options: options(), edits, base: 'published', baseVersion: 'pub_1' });
+    expect(await as('user_a')(draft, { meet: MEET })).toMatchObject({ basis: { base: 'published', baseVersion: 'pub_1' } });
     expect(await as('user_b')(draft, { meet: MEET })).toBeNull();
     expect(await as('user_b')(deleteDraft, { meet: MEET })).toEqual({ deleted: false });
     expect(await as('user_a')(deleteDraft, { meet: MEET })).toEqual({ deleted: true });
@@ -284,6 +288,7 @@ describe('load', () => {
     'ingest:upsertMeets': upsertMeets,
     'scrapers/entryTargets:addFromBuilder': addFromBuilder,
     'ingest:upsertEntryAthletes': upsertEntryAthletes,
+    'ingest:recordSport80Entrants': recordSport80Entrants,
   };
 
   function actionServer(seed: Record<string, Record<string, unknown>[]> = {}) {

@@ -1,8 +1,9 @@
-use super::board::{BoardActions, Menu, MenuId, alert_line, athlete_details, move_items};
+use super::board::{
+    BoardActions, Menu, MenuId, alert_line, athlete_details, edit_button, move_items,
+};
 use super::browser::local_date_time;
 use super::models::{
-    AddedEntrant, BuiltSchedule, MoveTarget, WithdrawnAthlete, added_note, place_targets,
-    withdrawn_note,
+    AddedEntrant, BuiltSchedule, MoveTarget, added_note, place_targets, withdrawn_note,
 };
 use crate::utils::api::{self, BuilderEdit};
 use leptos::prelude::*;
@@ -15,14 +16,13 @@ pub(crate) fn checked_label(checked_at: Option<f64>) -> String {
     )
 }
 
-#[component]
-pub(crate) fn Sport80Panel(
+pub(crate) fn sport80_panel(
     board: RwSignal<Option<BuiltSchedule>>,
     platforms: Signal<Vec<String>>,
     sport80_link: Option<String>,
     checks: RwSignal<u64>,
     actions: BoardActions,
-) -> impl IntoView {
+) -> AnyView {
     let checking = RwSignal::new(false);
     let problem = RwSignal::new(None::<String>);
     let no_link = sport80_link.is_none();
@@ -77,6 +77,7 @@ pub(crate) fn Sport80Panel(
             {move || board.with(|board| change_lists(board.as_ref(), platforms, actions))}
         </section>
     }
+    .into_any()
 }
 
 fn change_lists(
@@ -102,13 +103,6 @@ fn change_lists(
         .enumerate()
         .map(|(row, entrant)| added_row(row, entrant, targets, actions))
         .collect_view();
-    let withdrawn = changes
-        .withdrawn
-        .iter()
-        .enumerate()
-        .map(|(row, lifter)| withdrawn_row(row, lifter, actions))
-        .collect_view();
-    let withdrawn_text = withdrawn_note(changes.withdrawn.len());
     view! {
         <h3 class="builder-subheading">"New on Sport80"</h3>
         <p class="builder-help">{added_note(changes.added.len())}</p>
@@ -116,47 +110,7 @@ fn change_lists(
             {added}
         </ul>
         <h3 class="builder-subheading">"No Longer on Sport80"</h3>
-        <p class="builder-help" hidden=withdrawn_text.is_empty()>
-            {withdrawn_text}
-        </p>
-        <ul class="builder-list" aria-label="No Longer on Sport80">
-            {withdrawn}
-        </ul>
-    }
-    .into_any()
-}
-
-fn change_row(name: &str, meta: String, buttons: AnyView) -> AnyView {
-    view! {
-        <li class="builder-list-row">
-            <span class="builder-match">
-                <span class="builder-match-name">{name.to_owned()}</span>
-                <span class="builder-list-meta">{meta}</span>
-            </span>
-            {buttons}
-        </li>
-    }
-    .into_any()
-}
-
-fn edit_button(
-    id: String,
-    name: &str,
-    label: String,
-    edit: BuilderEdit,
-    actions: BoardActions,
-) -> AnyView {
-    let pressed = id.clone();
-    view! {
-        <button
-            id=id
-            class="builder-button-quiet"
-            type="button"
-            on:click=move |_| actions.edit_from(&pressed, edit.clone())
-        >
-            <span class="visually-hidden">{format!("{name}: ")}</span>
-            {label}
-        </button>
+        <p class="builder-help">{withdrawn_note(changes.withdrawn.len())}</p>
     }
     .into_any()
 }
@@ -184,44 +138,33 @@ fn added_row(
         )
     });
     let menu_trigger = StoredValue::new(format!("builder-add-to-{row}"));
-    let buttons = view! {
-        {suggested}
-        <Menu
-            id=MenuId::Add(athlete.key.clone())
-            open_menu=actions.open_menu
-            trigger_id=menu_trigger.get_value()
-            label="Add To…"
-            whose=format!("{}: ", athlete.name)
-            title="Add To…"
-        >
-            {move || {
-                move_items(
-                    targets.get_value(),
-                    menu_trigger.get_value(),
-                    actions,
-                    move |target| add_to(target.session, target.platform),
-                )
-            }}
-        </Menu>
-    };
-    change_row(&athlete.name, athlete_details(athlete), buttons.into_any())
-}
-
-fn withdrawn_row(row: usize, lifter: &WithdrawnAthlete, actions: BoardActions) -> AnyView {
-    let athlete = &lifter.athlete;
-    let remove = edit_button(
-        format!("builder-remove-{row}"),
-        &athlete.name,
-        "Remove".to_owned(),
-        BuilderEdit::RemoveAthlete {
-            athlete: athlete.key.clone(),
-            from_session: lifter.place.session,
-            from_platform: lifter.place.platform.clone(),
-            occurrence: lifter.occurrence,
-        },
-        actions,
-    );
-    change_row(&athlete.name, lifter.place.label(), remove)
+    view! {
+        <li class="builder-list-row">
+            <span class="builder-match">
+                <span class="builder-match-name">{athlete.name.clone()}</span>
+                <span class="builder-list-meta">{athlete_details(athlete)}</span>
+            </span>
+            {suggested}
+            <Menu
+                id=MenuId::Add(athlete.key.clone())
+                open_menu=actions.open_menu
+                trigger_id=menu_trigger.get_value()
+                label="Add To…"
+                whose=format!("{}: ", athlete.name)
+                title="Add To…"
+            >
+                {move || {
+                    move_items(
+                        targets.get_value(),
+                        menu_trigger.get_value(),
+                        actions,
+                        move |target| add_to(target.session, target.platform),
+                    )
+                }}
+            </Menu>
+        </li>
+    }
+    .into_any()
 }
 
 #[cfg(test)]

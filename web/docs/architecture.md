@@ -318,6 +318,19 @@ Convex's answer.
   "Live on MeetCal" or "Sent for Review" until the options or edits change, when the form returns
   for the next publish; `schedulePublications:publications` lists the user's publishes of the meet
   and whether they organize it.
+- A meet with a published schedule (`defaults.published`) opens on it: the page sends
+  `base: 'published'` with every preview, export, draft and publish, and the options form's button
+  reads Rebuild From Scratch, which asks first (the same confirmation as Build Again) and then
+  builds from the entries as before. Saved work reopens only when it was made on the same base and
+  version (`basis`, kept with each draft and each browser copy); otherwise the published schedule
+  opens with a line saying the saved work was set aside. A live publish from the published schedule
+  makes the answered `version` the new base and clears the edits.
+- On the published schedule a Sport80 Changes section reads `preview`'s `changes`: when Sport80
+  was last checked, Check Sport80 Now (the action `scheduleBuilderLoad:load` on `defaults.sport80Link`,
+  then the preview again), and each new lifter with "Add to Session N · Platform" (the server's
+  suggestion) and Add To…, the same disclosure list as Move To…, both sending `addAthlete`, plus how
+  many new lifters stay off the start list. Lifters no longer on Sport80 are marked on the board,
+  each with Remove (`removeAthlete`), and the section says how many there are.
 - A function error's `error` is shown as the sentence the server wrote, and a 401 asks the user to
   sign in again.
 

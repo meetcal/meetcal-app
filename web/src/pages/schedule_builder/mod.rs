@@ -15,7 +15,7 @@ use board::{Board, BoardActions, Menu, MenuId, UNDO_BUTTON_ID, alert_line};
 use browser::{
     focus_element, now_ms, print_page, read_local_work, save_download, write_local_work,
 };
-use changes::Sport80Panel;
+use changes::sport80_panel;
 use drafts::{SavedSchedules, builder_path};
 use form::{BUILD_BUTTON_ID, OptionsPanel};
 use futures::future::{AbortHandle, abortable};
@@ -621,17 +621,24 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                     }
                 })
         }}
-        <Show when=move || on_published.get()>
-            <Sport80Panel
-                board=last_board
-                platforms=Signal::derive(move || {
-                    applied.with(|applied| applied.as_ref().map(|o| o.platforms.clone()).unwrap_or_default())
+        {move || {
+            on_published
+                .get()
+                .then(|| {
+                    sport80_panel(
+                        last_board,
+                        Signal::derive(move || {
+                            applied
+                                .with(|applied| {
+                                    applied.as_ref().map(|o| o.platforms.clone()).unwrap_or_default()
+                                })
+                        }),
+                        sport80_link.clone(),
+                        checks,
+                        actions,
+                    )
                 })
-                sport80_link=sport80_link.clone()
-                checks
-                actions
-            />
-        </Show>
+        }}
         <Show when=move || applied.with(Option::is_some)>
             <section class="builder-sessions" aria-labelledby="builder-sessions-heading">
                 <div class="builder-sessions-head">

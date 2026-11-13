@@ -68,6 +68,7 @@ import type * as lib_results from "../lib/results.js";
 import type * as lib_roster from "../lib/roster.js";
 import type * as lib_scheduleBuilder from "../lib/scheduleBuilder.js";
 import type * as lib_scheduleBuilderOptions from "../lib/scheduleBuilderOptions.js";
+import type * as lib_scheduleChanges from "../lib/scheduleChanges.js";
 import type * as lib_scheduleExport from "../lib/scheduleExport.js";
 import type * as lib_schedulePublishing from "../lib/schedulePublishing.js";
 import type * as lib_shrinkGuard from "../lib/shrinkGuard.js";
@@ -227,6 +228,7 @@ declare const fullApi: ApiFromModules<{
   "lib/roster": typeof lib_roster;
   "lib/scheduleBuilder": typeof lib_scheduleBuilder;
   "lib/scheduleBuilderOptions": typeof lib_scheduleBuilderOptions;
+  "lib/scheduleChanges": typeof lib_scheduleChanges;
   "lib/scheduleExport": typeof lib_scheduleExport;
   "lib/schedulePublishing": typeof lib_schedulePublishing;
   "lib/shrinkGuard": typeof lib_shrinkGuard;

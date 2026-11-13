@@ -3280,9 +3280,15 @@ main > div:has(> h4) > p {
     margin: 0;
 }
 
-.builder-withdrawn {
-    justify-self: start;
+.builder-withdrawn-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
     margin-top: 4px;
+}
+
+.builder-withdrawn {
     background: color-mix(in srgb, #c53b35 12%, var(--card));
 }
 

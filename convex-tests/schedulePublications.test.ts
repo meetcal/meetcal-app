@@ -126,7 +126,7 @@ describe('what a publish writes', () => {
 describe('publish', () => {
   it('holds a first publish for review without changing the meet, and emails it', async () => {
     const store = server();
-    expect(await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [], contactEmail: 'coach@example.com' })).toEqual({ status: 'pending', sessions: 2, athletes: 3 });
+    expect(await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [], contactEmail: 'coach@example.com' })).toEqual({ status: 'pending', sessions: 2, athletes: 3, version: null });
     expect(store.rows('session_schedule')).toEqual([]);
     expect(sessionsOf(store).every(([, session]) => session === null)).toBe(true);
     expect(store.rows('schedule_publications').map((p) => [p.status, p.contactEmail])).toEqual([['pending', 'coach@example.com']]);
@@ -143,7 +143,8 @@ describe('publish', () => {
 
   it("puts an organizer's publish live at once", async () => {
     const store = server({ meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] });
-    expect(await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] })).toEqual({ status: 'live', sessions: 2, athletes: 3 });
+    const answer = await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] });
+    expect(answer).toEqual({ status: 'live', sessions: 2, athletes: 3, version: String(store.docs('schedule_publications')[0]?._id) });
     expect(sessionsOf(store)).toEqual([
       ['Ann', 1, 'Red'],
       ['Bea', 1, 'Red'],

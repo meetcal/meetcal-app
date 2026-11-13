@@ -11,6 +11,28 @@ use leptos::prelude::*;
 
 pub(crate) const UNDO_BUTTON_ID: &str = "builder-undo";
 
+pub(crate) fn edit_button(
+    id: String,
+    name: &str,
+    label: String,
+    edit: BuilderEdit,
+    actions: BoardActions,
+) -> AnyView {
+    let pressed = id.clone();
+    view! {
+        <button
+            id=id
+            class="builder-button-quiet"
+            type="button"
+            on:click=move |_| actions.edit_from(&pressed, edit.clone())
+        >
+            <span class="visually-hidden">{format!("{name}: ")}</span>
+            {label}
+        </button>
+    }
+    .into_any()
+}
+
 pub(crate) fn alert_line(message: Option<String>, class: &'static str) -> Option<AnyView> {
     message.map(|message| {
         view! {
@@ -584,7 +606,26 @@ fn AthleteRow(
     actions: BoardActions,
 ) -> impl IntoView {
     let details = athlete_details(&athlete);
-    let withdrawn = athlete.withdrawn;
+    let withdrawn = athlete.withdrawn.then(|| {
+        let remove = edit_button(
+            format!("{trigger_id}-remove"),
+            &athlete.name,
+            "Remove".to_owned(),
+            BuilderEdit::RemoveAthlete {
+                athlete: athlete.key.clone(),
+                from_session: session,
+                from_platform: platform.clone(),
+                occurrence,
+            },
+            actions,
+        );
+        view! {
+            <span class="builder-withdrawn-line">
+                <span class="builder-status-pill builder-withdrawn">"No Longer on Sport80"</span>
+                {remove}
+            </span>
+        }
+    });
     let menu_id = athlete_menu_id(session, &platform, row, &athlete);
     let key = StoredValue::new(athlete.key.clone());
     let platform = StoredValue::new(platform);
@@ -594,14 +635,7 @@ fn AthleteRow(
             <div class="builder-athlete-text">
                 <span class="builder-athlete-name">{athlete.name.clone()}</span>
                 <span class="builder-athlete-detail">{details}</span>
-                {withdrawn
-                    .then(|| {
-                        view! {
-                            <span class="builder-status-pill builder-withdrawn">
-                                "No Longer on Sport80"
-                            </span>
-                        }
-                    })}
+                {withdrawn}
             </div>
             <Menu
                 id=menu_id
