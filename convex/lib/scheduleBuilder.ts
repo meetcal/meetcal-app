@@ -4,7 +4,7 @@ import { athleteGenderLabel, normalizeGender } from './normalize';
 import { normalizeName } from './names';
 import { hasNoMemberId } from './memberIds';
 import { foldedNameAndGender, hasSession } from './roster';
-import { platformLabel } from './schedulePublishing';
+import { platformLabel, timesOf } from './schedulePublishing';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { bareWeightClass } from './weightClass';
 import {
@@ -50,6 +50,7 @@ export type BuiltGroup = {
   athletes: BuiltAthlete[];
   times?: RowTimes;
   publishedRows?: PublishedPart[];
+  storedPlatform?: string;
 };
 
 export type BuiltSession = {
@@ -69,7 +70,7 @@ export type BuiltSchedule = { athletes: number; sessions: BuiltSession[]; warnin
 
 type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean; published?: { slot: number; rows: PublishedPart[] } };
 
-type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group>; published?: Map<string, PublishedPart[]>; retimed?: boolean };
+type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group>; published?: Map<string, PublishedPart[]>; storedPlatforms?: Map<string, string>; retimed?: boolean };
 
 function earliest<Times extends RowTimes>(times: readonly Times[]): Times | undefined {
   const startOf = (t: RowTimes) => minutesOfStoredClock(t.startTime) ?? MINUTES_PER_DAY;
@@ -384,19 +385,22 @@ function groupLabels(group: Group, athletes: readonly BuiltAthlete[], options: B
   return { gender, ageGroup: pools.length === 1 && pool !== undefined ? pool : '', split: '', mixed: genders.length > 1 };
 }
 
+function overlapping(a: RowTimes, b: RowTimes, sessionMinutes: number): boolean {
+  const aStart = minutesOfClock(a.startTime.slice(0, 5));
+  const bStart = minutesOfClock(b.startTime.slice(0, 5));
+  if (aStart === null || bStart === null || a.date === '' || a.date !== b.date) return false;
+  return Math.abs(aStart - bStart) < sessionMinutes;
+}
+
 export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinutes: number, warnsOf: (session: BuiltSession) => boolean = () => true): BuilderWarning[] {
-  const scheduled = sessions.flatMap((session) => {
-    const start = minutesOfClock(session.startTime.slice(0, 5));
-    return start === null || session.date === '' ? [] : [{ session, start }];
-  });
   const warnings: BuilderWarning[] = [];
-  scheduled.forEach(({ session, start }, i) => {
-    for (const later of scheduled.slice(i + 1)) {
-      if (later.session.date !== session.date || later.start >= start + sessionMinutes || start >= later.start + sessionMinutes) continue;
-      if (!warnsOf(session) && !warnsOf(later.session)) continue;
-      const shared = session.groups.map((g) => g.platform).filter((platform) => later.session.groups.some((g) => g.platform === platform));
-      for (const platform of shared) {
-        warnings.push({ code: 'overlap', message: `Sessions ${session.number} and ${later.session.number} use the ${platform} platform at the same time.` });
+  sessions.forEach((session, i) => {
+    for (const later of sessions.slice(i + 1)) {
+      if (!warnsOf(session) && !warnsOf(later)) continue;
+      for (const group of session.groups) {
+        const other = later.groups.find((g) => g.platform === group.platform);
+        if (!other || !overlapping(timesOf(session, group), timesOf(later, other), sessionMinutes)) continue;
+        warnings.push({ code: 'overlap', message: `Sessions ${session.number} and ${later.number} use the ${group.platform} platform at the same time.` });
       }
     }
   });
@@ -448,6 +452,8 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
         weightClasses: sortByWeightClass([...new Set(sorted.map((a) => a.weightClass))], (c) => c),
         athletes: sorted.map((a) => ({ ...a, gender: athleteGenderLabel(a.gender) })),
       };
+      const stored = slot.storedPlatforms?.get(platform);
+      if (stored !== undefined && stored !== platform) built.storedPlatform = stored;
       const own = slot.retimed ? undefined : (earliest(slot.published?.get(platform) ?? []) ?? sessionRow);
       const times = own ? timesOfPart(own) : undefined;
       const origin = group.edited ? undefined : group.published;
@@ -566,6 +572,12 @@ export function publishedPlatforms(base: Pick<PublishedBase, 'rows' | 'roster'>)
   return new Set([...base.rows.map((row) => row.platform.trim()), ...fromRoster].filter((platform) => platform !== ''));
 }
 
+function keepStoredPlatform(slot: Slot, stored: string): void {
+  slot.storedPlatforms ??= new Map<string, string>();
+  const platform = stored.trim();
+  if (!slot.storedPlatforms.has(platform)) slot.storedPlatforms.set(platform, stored);
+}
+
 function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnIds: ReadonlySet<string>): Slot[] {
   const slots = new Map<number, Slot>();
   for (const row of [...base.rows].sort((a, b) => a.sessionId - b.sessionId)) {
@@ -574,6 +586,7 @@ function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnI
     const slot = slots.get(row.sessionId) ?? { id: row.sessionId, date: row.date, start, groups: new Map<string, Group>(), published: new Map<string, PublishedPart[]>() };
     slots.set(row.sessionId, slot);
     if (slot.published) addTo(slot.published, row.platform.trim(), part);
+    keepStoredPlatform(slot, row.platform);
     if (start !== null && (slot.start === null || start < slot.start)) {
       slot.start = start;
       slot.date = row.date;
@@ -585,6 +598,7 @@ function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnI
     const platform = (athlete.sessionPlatform ?? '').trim();
     const slot = slots.get(id) ?? { id, date: '', start: null, groups: new Map<string, Group>() };
     slots.set(id, slot);
+    keepStoredPlatform(slot, athlete.sessionPlatform ?? '');
     const built = builtAthleteOf(rosterEntrant(athlete));
     const group = slot.groups.get(platform) ?? { gender: built.gender, ageGroup: '', split: '', splitOf: '', athletes: [], edited: false };
     slot.groups.set(platform, group);

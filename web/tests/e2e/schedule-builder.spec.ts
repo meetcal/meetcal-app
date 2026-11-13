@@ -70,6 +70,8 @@ function schedule(edits: Edit[], { secondDay, twins = false }: Shape = {}) {
   };
 }
 
+const FLIGHT_TIMES = "W 77 · Weigh-In 9:00 AM · Start 11:00 AM\nW 87 · Weigh-In 10:00 AM · Start 12:00 PM";
+
 type Match = { eventId: string; name: string; startDate: string; endDate: string; place: string; entriesUrl: string | null };
 function publishedBoard(edits: Edit[], checkedAt: number) {
   const board = schedule(edits.filter((edit) => edit.kind === "moveAthlete"));
@@ -79,7 +81,8 @@ function publishedBoard(edits: Edit[], checkedAt: number) {
   const sessions = board.sessions.map((session) => {
     const groups = session.groups.map((group) => {
       const kept = group.athletes.filter((a) => !(removed && a.key === "2|ava smith")).map((a) => (a.key === "2|ava smith" ? { ...a, withdrawn: true } : a));
-      return { ...group, athletes: add?.toSession === session.id ? [...kept, newcomer] : kept };
+      const ownTimes = session.id === 2 ? FLIGHT_TIMES : null;
+      return { ...group, ownTimes, athletes: add?.toSession === session.id ? [...kept, newcomer] : kept };
     });
     return { ...session, date: "2026-11-21", startTime: session.startTime || "11:00:00", weighInTime: session.weighInTime || "09:00:00", groups };
   });
@@ -639,6 +642,15 @@ test("the board takes no edits while a publish is on its way", async ({ page }) 
   await expect(page.getByTestId("schedule-board")).not.toHaveAttribute("inert", "");
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
   expect(calls.publishes.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "2|ava smith", fromSession: 1, fromPlatform: "Red", occurrence: 0, toSession: 2, toPlatform: "Red" }]);
+});
+
+test("a platform published in several rows at their own times shows one line per row", async ({ page }) => {
+  await mockBuilder(page, { signedIn: true, published: true });
+  await page.goto("/schedule-builder?meet=Turkey%20Cup");
+  const times = sessionCard(page, 2).locator(".builder-group-time");
+  await expect(times).toBeVisible();
+  expect(await times.evaluate((element) => (element as HTMLElement).innerText)).toBe(FLIGHT_TIMES);
+  await expect(sessionCard(page, 1).locator(".builder-group-time")).toBeHidden();
 });
 
 test("a publish on its way holds Rebuild From Scratch and the Sport80 changes too", async ({ page }) => {

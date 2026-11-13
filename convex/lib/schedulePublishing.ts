@@ -1,7 +1,8 @@
 import { isoDateOf } from './dates';
 import { escapeHtml } from './email';
 import { clockLabel, meetDays } from './scheduleBuilderOptions';
-import type { BuiltGroup, BuiltSchedule, RowTimes } from './scheduleBuilder';
+import type { BuiltAthlete, BuiltGroup, BuiltSchedule, PublishedPart, RowTimes } from './scheduleBuilder';
+import { bareWeightClass } from './weightClass';
 
 export const MAX_PUBLISHES_PER_DAY = 10;
 export const REVIEW_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -32,6 +33,29 @@ export function timesOf(session: RowTimes, group: Pick<BuiltGroup, 'times'>): Ro
   return group.times ?? { date: session.date, startTime: session.startTime, weighInTime: session.weighInTime };
 }
 
+type ShownGroup = Pick<BuiltGroup, 'gender' | 'weightClasses' | 'split' | 'ageGroup' | 'publishedRows' | 'times'>;
+
+export function rowsOf(session: RowTimes, group: ShownGroup): PublishedPart[] {
+  return group.publishedRows && group.publishedRows.length > 0 ? group.publishedRows : [{ ...timesOf(session, group), weightClass: labelOf(group) }];
+}
+
+const classesNamedIn = (label: string) => label.split(/[^0-9A-Za-z+.]+/).filter((token) => token !== '').map(bareWeightClass);
+
+export type RowWithAthletes = { row: PublishedPart; athletes: BuiltAthlete[] };
+
+export function athletesByRow(session: RowTimes, group: ShownGroup & Pick<BuiltGroup, 'athletes'>): RowWithAthletes[] {
+  const parts = rowsOf(session, group).map((row) => ({ row, classes: classesNamedIn(row.weightClass), athletes: [] as BuiltAthlete[] }));
+  for (const athlete of group.athletes) {
+    const weightClass = bareWeightClass(athlete.weightClass);
+    (parts.find((part) => part.classes.includes(weightClass)) ?? parts[0])?.athletes.push(athlete);
+  }
+  return parts.map(({ row, athletes }) => ({ row, athletes }));
+}
+
+export function writtenPlatform(group: Pick<BuiltGroup, 'platform' | 'storedPlatform'>): string {
+  return group.storedPlatform ?? group.platform;
+}
+
 export function publishProblem(schedule: BuiltSchedule, meet: { startDate: string; endDate: string }): string | null {
   if (schedule.athletes === 0 || schedule.sessions.length === 0) return 'the meet has no entrants to publish yet';
   const days = meetDays(meet.startDate, meet.endDate);
@@ -47,10 +71,10 @@ export function publishedSchedule(schedule: BuiltSchedule): PublishedSchedule {
   const placements: Placement[] = [];
   for (const session of schedule.sessions) {
     for (const group of session.groups) {
-      const written = group.publishedRows ?? [{ ...timesOf(session, group), weightClass: labelOf(group) }];
-      for (const row of written) rows.push({ ...row, sessionId: session.number, platform: group.platform });
+      const platform = writtenPlatform(group);
+      for (const row of rowsOf(session, group)) rows.push({ ...row, sessionId: session.number, platform });
       for (const athlete of group.athletes) {
-        const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: group.platform };
+        const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform };
         placements.push(athlete.rosterId === undefined ? placement : { ...placement, rosterId: athlete.rosterId });
       }
     }
@@ -72,22 +96,28 @@ export type PublicationEmailContent = {
   reviewUrl?: string;
 };
 
-export function ownTimesLabel(session: RowTimes, group: Pick<BuiltGroup, 'times'>): string | null {
+const timesLine = (times: RowTimes) => `Weigh-In ${clockLabel(times.weighInTime)} · Start ${clockLabel(times.startTime)}`;
+
+const sameTimes = (a: RowTimes, b: RowTimes) => a.startTime === b.startTime && a.weighInTime === b.weighInTime;
+
+export function ownTimesLabel(session: RowTimes, group: ShownGroup): string | null {
+  const rows = rowsOf(session, group);
+  const [first] = rows;
+  if (first && rows.some((row) => !sameTimes(row, first))) return rows.map((row) => `${row.weightClass} · ${timesLine(row)}`).join('\n');
   const times = timesOf(session, group);
-  if (times.startTime === session.startTime && times.weighInTime === session.weighInTime) return null;
-  return `Weigh-In ${clockLabel(times.weighInTime)} · Start ${clockLabel(times.startTime)}`;
+  return sameTimes(times, session) ? null : timesLine(times);
 }
 
-function ownStart(session: RowTimes, group: Pick<BuiltGroup, 'times'>): string {
-  const own = ownTimesLabel(session, group);
-  return own === null ? '' : ` (${escapeHtml(own)})`;
+function rowLine(session: RowTimes, platform: string, { row, athletes }: RowWithAthletes): string {
+  const own = sameTimes(row, session) ? '' : ` (${escapeHtml(timesLine(row))})`;
+  return `<li>${escapeHtml(platform)}${own}: ${escapeHtml(row.weightClass)} (${athletes.length})</li>`;
 }
 
 function sessionLines(schedule: BuiltSchedule): string {
   return schedule.sessions
     .map((session) => {
-      const platforms = session.groups.map((g) => `${escapeHtml(g.platform)}${ownStart(session, g)}: ${escapeHtml(labelOf(g))} (${g.athletes.length})`).join('; ');
-      return `<li>Session ${session.number}, ${escapeHtml(session.date)} ${escapeHtml(session.startTime.slice(0, 5))}: ${platforms}</li>`;
+      const rows = session.groups.flatMap((group) => athletesByRow(session, group).map((part) => rowLine(session, group.platform, part))).join('');
+      return `<li>Session ${session.number}, ${escapeHtml(session.date)} ${escapeHtml(session.startTime.slice(0, 5))}<ul>${rows}</ul></li>`;
     })
     .join('');
 }

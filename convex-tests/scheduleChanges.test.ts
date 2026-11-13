@@ -7,6 +7,7 @@ import { sha256Hex } from '../convex/lib/tokens';
 import { buildFromPublished, buildSchedule, sport80Diff, type PublishedBase } from '../convex/lib/scheduleBuilder';
 import { suggestedPlace } from '../convex/lib/scheduleChanges';
 import { clockLabel, defaultBuilderOptions, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
+import { sessionRows, startListRows } from '../convex/lib/scheduleExport';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 const NOW = Date.UTC(2027, 0, 10, 12);
@@ -648,7 +649,7 @@ describe('platforms of one session at their own times', () => {
     const built = buildFromPublished(published, sport80Diff(published), options);
     expect(built.sessions[0]).toMatchObject({ startTime: '09:00:00', weighInTime: '07:30:00' });
     const { html } = renderPublicationEmail({ meet: MEET, status: 'live', userId: 'u', schedule: built, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: true });
-    expect(html).toContain('Red: W 58 (1); Blue (Weigh-In 8:00 AM · Start 9:30 AM): M 89 (1)');
+    expect(html).toContain('<li>Red: W 58 (1)</li><li>Blue (Weigh-In 8:00 AM · Start 9:30 AM): M 89 (1)</li>');
     const emptied = buildFromPublished(published, sport80Diff(published), options, [
       { kind: 'moveAthlete', athlete: keyOf(ann), fromSession: 1, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'Blue' },
     ]);
@@ -792,5 +793,106 @@ describe("a published schedule's session length", () => {
       session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Red', '10:00:00', '08:00:00', 'W 63'), handRow(2, 'Red', '11:00:00', '09:00:00', 'M 89')],
     });
     expect((await publishedOptions(store)).sessionMinutes).toBe(120);
+  });
+});
+
+describe('overlaps between platforms at their own times', () => {
+  const overlapsOf = (answer: TimedBoard) => answer.warnings.filter((w) => w.code === 'overlap').map((w) => w.message);
+
+  it("warns when two sessions meet on a platform at its own time, though the sessions' starts are a session apart", async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(gia, 2)],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Blue', '11:00:00', '09:00:00', 'M 89'), handRow(2, 'Red', '11:00:00', '09:00:00', 'W 63')],
+    });
+    await store.record([listed(ann), listed(cal), listed(gia), listed(fay)]);
+    expect((await publishedOptions(store)).sessionMinutes).toBe(120);
+    expect(overlapsOf(await timedBoard(store, []))).toEqual([]);
+    expect(overlapsOf(await timedBoard(store, [{ kind: 'addAthlete', athlete: keyOf(fay), toSession: 2, toPlatform: 'Blue' }]))).toEqual(['Sessions 1 and 2 use the Blue platform at the same time.']);
+  });
+
+  it("stays quiet when the sessions' starts are close but their shared platform's times are a session apart", async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(dan, 2, { sessionPlatform: 'Blue' })],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Blue', '12:00:00', '10:00:00', 'M 89'), handRow(2, 'Blue', '10:00:00', '08:00:00', 'M 96')],
+    });
+    await store.record([listed(ann), listed(cal), listed(dan), listed(fay)]);
+    expect((await publishedOptions(store)).sessionMinutes).toBe(120);
+    expect(overlapsOf(await timedBoard(store, [{ kind: 'addAthlete', athlete: keyOf(fay), toSession: 1, toPlatform: 'Red' }]))).toEqual([]);
+  });
+});
+
+describe('a platform with several published rows at their own times', () => {
+  const kim: Lifter = { memberId: '111', name: 'Kim Ng', gender: 'Women', weightClass: '59', entryTotal: 90 };
+  const lea: Lifter = { memberId: '112', name: 'Lea Orr', gender: 'Women', weightClass: '64', entryTotal: 95 };
+  const mae: Lifter = { memberId: '113', name: 'Mae Park', gender: 'Women', weightClass: '64', entryTotal: 100 };
+  const flights = (first: string, second: string): PublishedBase => ({
+    rows: [handRow(1, 'Red', '09:00:00', '07:00:00', first), handRow(1, 'Red', '10:00:00', '08:00:00', second)],
+    roster: [
+      { ...rostered(kim, 1), _id: 'kim' },
+      { ...rostered(lea, 1), _id: 'lea' },
+      { ...rostered(mae, 1), _id: 'mae' },
+    ],
+    sport80: null,
+  });
+  const built = (published: PublishedBase) => buildFromPublished(published, sport80Diff(published), { ...defaultBuilderOptions(meetRow), platforms: ['Red'] });
+  const startTimes = (rows: ReturnType<typeof startListRows>) => rows.map((row) => [row[6], row[4], row[5]]);
+
+  it('shows each row at its own time on the board, in the email and in both export sheets', async () => {
+    const schedule = built(flights('W 59', 'W 64'));
+    expect(sessionRows(schedule)).toEqual([
+      [1, 'Red', '2027-03-06', '7:00 AM', '9:00 AM', 'W 59', 1],
+      [1, 'Red', '2027-03-06', '8:00 AM', '10:00 AM', 'W 64', 2],
+    ]);
+    expect(startTimes(startListRows(schedule))).toEqual([
+      ['Kim Ng', '9:00 AM', 'W 59'],
+      ['Lea Orr', '10:00 AM', 'W 64'],
+      ['Mae Park', '10:00 AM', 'W 64'],
+    ]);
+    const { html } = renderPublicationEmail({ meet: MEET, status: 'live', userId: 'u', schedule, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: true });
+    expect(html).toContain('<li>Red: W 59 (1)</li><li>Red (Weigh-In 8:00 AM · Start 10:00 AM): W 64 (2)</li>');
+
+    const store = server({ athletes: [rostered(kim, 1), rostered(lea, 1)], session_schedule: flights('W 59', 'W 64').rows });
+    const shown = await board(store);
+    expect(shown.sessions[0]?.groups.map((g) => [g.label, g.ownTimes])).toEqual([['W 59 / W 64', 'W 59 · Weigh-In 7:00 AM · Start 9:00 AM\nW 64 · Weigh-In 8:00 AM · Start 10:00 AM']]);
+    const file = (await store.as(null)(exportFile, { meet: MEET, options: await publishedOptions(store), edits: [], base: 'published', format: 'csv' })) as { content: string };
+    expect(file.content.split('\r\n').find((line) => line.includes('Lea Orr'))?.split(',').slice(3, 6)).toEqual(['8:00 AM', '10:00 AM', 'W 64']);
+  });
+
+  it("puts a lifter whose class no row's label names in the platform's first row", () => {
+    const schedule = built(flights('Flight A', 'Flight B'));
+    expect(startTimes(startListRows(schedule))).toEqual([
+      ['Kim Ng', '9:00 AM', 'Flight A'],
+      ['Lea Orr', '9:00 AM', 'Flight A'],
+      ['Mae Park', '9:00 AM', 'Flight A'],
+    ]);
+    expect(sessionRows(schedule).map((row) => [row[4], row[5], row[6]])).toEqual([
+      ['9:00 AM', 'Flight A', 3],
+      ['10:00 AM', 'Flight B', 0],
+    ]);
+  });
+});
+
+describe('a hand-loaded platform name with spaces around it', () => {
+  const padded = () =>
+    server({
+      ...organizer,
+      athletes: [rostered(ann, 1, { sessionPlatform: 'Red ' }), rostered(cal, 2, { sessionPlatform: 'Red ' })],
+      session_schedule: [handRow(1, 'Red ', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Red ', '11:00:00', '09:00:00', 'M 89')],
+    });
+  const spellings = (store: ReturnType<typeof server>) =>
+    [...store.rows('session_schedule').map((row) => `${String(row.sessionId)}|${String(row.platform)}`), ...store.rows('athletes').map((athlete) => `${String(athlete.name)}|${String(athlete.sessionPlatform)}`)].sort();
+
+  it('is written back as it was stored, with no edits', async () => {
+    const store = padded();
+    await publishAs(store, 'user_a', 'published', null);
+    expect(spellings(store)).toEqual(['1|Red ', '2|Red ', 'Ann Lee|Red ', 'Cal Diaz|Red ']);
+  });
+
+  it('is written back as it was stored when an edit changes another session', async () => {
+    const store = padded();
+    await store.record([listed(ann), listed(cal), listed(eve)]);
+    await publishAs(store, 'user_a', 'published', null, [{ kind: 'addAthlete', athlete: keyOf(eve), toSession: 2, toPlatform: 'Red' }]);
+    expect(spellings(store)).toEqual(['1|Red ', '2|Red ', 'Ann Lee|Red ', 'Cal Diaz|Red ', 'Eve Gray|Red ']);
+    expect(store.rows('session_schedule').find((row) => row.sessionId === 1)).toEqual(handRow(1, 'Red ', '09:00:00', '07:00:00', 'W 58'));
   });
 });

@@ -1,4 +1,4 @@
-import { labelOf, timesOf } from './schedulePublishing';
+import { athletesByRow } from './schedulePublishing';
 import type { BuiltSchedule } from './scheduleBuilder';
 import { clockLabel } from './scheduleBuilderOptions';
 import { workbook, type Cell } from './xlsx';
@@ -11,33 +11,33 @@ export const SESSIONS_HEADER = ['Session', 'Platform', 'Date', 'Weigh-In', 'Star
 
 export function startListRows(schedule: BuiltSchedule): Cell[][] {
   return schedule.sessions.flatMap((session) =>
-    session.groups.flatMap((group) => {
-      const times = timesOf(session, group);
-      return group.athletes.map((athlete): Cell[] => [
-        session.number,
-        group.platform,
-        times.date,
-        clockLabel(times.weighInTime),
-        clockLabel(times.startTime),
-        labelOf(group),
-        athlete.name,
-        athlete.gender,
-        athlete.age,
-        athlete.weightClass,
-        athlete.entryTotal,
-        athlete.club,
-        hasNoMemberId(athlete.memberId) ? '' : athlete.memberId,
-      ]);
-    }),
+    session.groups.flatMap((group) =>
+      athletesByRow(session, group).flatMap(({ row, athletes }) =>
+        athletes.map((athlete): Cell[] => [
+          session.number,
+          group.platform,
+          row.date,
+          clockLabel(row.weighInTime),
+          clockLabel(row.startTime),
+          row.weightClass,
+          athlete.name,
+          athlete.gender,
+          athlete.age,
+          athlete.weightClass,
+          athlete.entryTotal,
+          athlete.club,
+          hasNoMemberId(athlete.memberId) ? '' : athlete.memberId,
+        ]),
+      ),
+    ),
   );
 }
 
 export function sessionRows(schedule: BuiltSchedule): Cell[][] {
   return schedule.sessions.flatMap((session) =>
-    session.groups.map((group): Cell[] => {
-      const times = timesOf(session, group);
-      return [session.number, group.platform, times.date, clockLabel(times.weighInTime), clockLabel(times.startTime), labelOf(group), group.athletes.length];
-    }),
+    session.groups.flatMap((group) =>
+      athletesByRow(session, group).map(({ row, athletes }): Cell[] => [session.number, group.platform, row.date, clockLabel(row.weighInTime), clockLabel(row.startTime), row.weightClass, athletes.length]),
+    ),
   );
 }
 

@@ -3282,6 +3282,7 @@ main > div:has(> h4) > p {
 
 .builder-group-time {
     flex-basis: 100%;
+    white-space: pre-line;
     color: var(--text-secondary);
     font-size: 0.86rem;
     font-weight: 500;
