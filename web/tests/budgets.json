@@ -1,6 +1,8 @@
 {
   "wasmRawBytes": 1850000,
   "wasmBrotli11Bytes": 502000,
+  "scheduleBuilderWasmRawBytes": 910000,
+  "scheduleBuilderWasmBrotli11Bytes": 290000,
   "requestsBeforeWasm": 5,
   "slow4gPhone": {
     "ownRequests": 11,
@@ -12,6 +14,7 @@
       "meetCenter": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 682000 },
       "meetCenterOnAMeet": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 682000 },
       "wrapped": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 682000 },
+      "scheduleBuilder": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 405000 },
       "signIn": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 685000 }
     }
   }

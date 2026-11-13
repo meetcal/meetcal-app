@@ -8,40 +8,76 @@ import { apiError } from './lib/validation';
 import { errorMessage } from './lib/errors';
 import { fetchEntriesMeet, readEntries } from './scrapers/entries';
 import { fetchWidgetPage } from './scrapers/meets';
-import { canonicalEntriesUrl, entriesEventId } from './scrapers/parse/entries';
-import { isAdaptiveListing, readAllWidgetPages, transformMeets, widgetPageUrl, type WidgetRow } from './scrapers/parse/meets';
+import { canonicalEntriesUrl, entriesEventId, meetPageEventId } from './scrapers/parse/entries';
+import { runBudget } from './scrapers/lib/budget';
+import {
+  isAdaptiveListing,
+  parseAddress,
+  parseDateRange,
+  readAllWidgetPages,
+  readWidgetPage,
+  transformMeets,
+  WIDGET_PAGE_SIZE,
+  widgetPageUrl,
+  type WidgetRow,
+} from './scrapers/parse/meets';
 
 const SPORT80_HOST = 'usaweightlifting.sport80.com';
+const NOT_UPCOMING = "Sport80 doesn't list this event as upcoming, so MeetCal can't add it";
+const NO_ENTRY_LIST = "Sport80 doesn't show a public entry list for this meet yet";
+export const LOAD_BUDGET_MS = 100_000;
+export const SEARCH_BUDGET_MS = 30_000;
+export const MIN_SEARCH_LENGTH = 3;
+export const MAX_SEARCH_LENGTH = 80;
+export const MAX_SEARCH_RESULTS = 20;
+export const MAX_SEARCH_PAGES = 2;
 
 type StoredMeet = { name: string; status: string; endDate: string };
 
-export function entriesPageOf(url: string): { eventId: string; url: string } {
+export type Sport80Link = { eventId: string; entriesUrl: string | null };
+
+const HAS_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
+
+function pastedUrl(text: string): URL {
+  const trimmed = text.trim();
+  return new URL(HAS_SCHEME.test(trimmed) ? trimmed : `https://${trimmed}`);
+}
+
+export function sport80LinkOf(url: string): Sport80Link {
   let parsed: URL;
   try {
-    parsed = new URL(url.trim());
+    parsed = pastedUrl(url);
   } catch {
-    throw apiError(400, 'paste the Sport80 entries page URL, like https://usaweightlifting.sport80.com/public/events/12345/entries/67890');
+    throw apiError(400, "paste the meet's Sport80 link, like https://usaweightlifting.sport80.com/public/events/12345, or its entries list");
   }
-  if (parsed.hostname !== SPORT80_HOST) throw apiError(400, `the URL must be a ${SPORT80_HOST} entries page`);
+  if (parsed.hostname !== SPORT80_HOST) throw apiError(400, `the URL must be a ${SPORT80_HOST} meet page or entries list`);
+  const eventId = meetPageEventId(parsed.pathname);
+  if (eventId !== null) return { eventId, entriesUrl: null };
   try {
-    return { eventId: entriesEventId(parsed.pathname), url: canonicalEntriesUrl(parsed.pathname) };
+    return { eventId: entriesEventId(parsed.pathname), entriesUrl: canonicalEntriesUrl(parsed.pathname) };
   } catch {
-    throw apiError(400, "that page is not a Sport80 entries list; open the meet's Entries tab on Sport80 and copy its URL");
+    throw apiError(400, "that page is not a Sport80 meet page or entries list; open the meet on Sport80 and copy its URL from the address bar");
   }
 }
 
-async function fromSport80<T>(work: Promise<T>): Promise<T> {
-  try {
-    return await work;
-  } catch (error) {
-    console.error(`scheduleBuilder load: ${errorMessage(error)}`);
-    throw apiError(502, 'Sport80 did not answer; try again in a minute');
-  }
+type Sport80Read = <T>(work: Promise<T>) => Promise<T>;
+
+function sport80Within(budgetMs: number, purpose: string): Sport80Read {
+  const budget = runBudget({ budgetMs, hardStopMs: budgetMs });
+  return async (work) => {
+    try {
+      return await budget.orStop(work);
+    } catch (error) {
+      if (budget.spent()) throw apiError(504, 'Sport80 is slow right now; try again in a minute');
+      console.error(`scheduleBuilder ${purpose}: ${errorMessage(error)}`);
+      throw apiError(502, 'Sport80 did not answer; try again in a minute');
+    }
+  };
 }
 
 export function listedMeetProblem(rows: readonly WidgetRow[], eventId: string): { row: WidgetRow } | { problem: string } {
   const row = rows.find((r) => r.id === eventId);
-  if (!row) return { problem: "Sport80 doesn't list this event as upcoming, so MeetCal can't add it" };
+  if (!row) return { problem: NOT_UPCOMING };
   const { meets, undated } = transformMeets([row]);
   if (meets.length > 0) return { row };
   if (undated.length > 0) return { problem: "Sport80 hasn't set this meet's dates yet" };
@@ -49,11 +85,25 @@ export function listedMeetProblem(rows: readonly WidgetRow[], eventId: string): 
   return { problem: "MeetCal couldn't read this meet's dates on Sport80" };
 }
 
-async function storeMeet(ctx: ActionCtx, eventId: string, title: string): Promise<StoredMeet> {
+type Listing = () => Promise<WidgetRow[]>;
+
+function upcomingListing(fromSport80: Sport80Read): Listing {
+  let rows: Promise<WidgetRow[]> | null = null;
+  return () => (rows ??= fromSport80(readAllWidgetPages((page) => fetchWidgetPage(widgetPageUrl('', page)))));
+}
+
+async function entriesUrlOf(link: Sport80Link, listing: Listing): Promise<string> {
+  if (link.entriesUrl !== null) return link.entriesUrl;
+  const listed = (await listing()).find((row) => row.id === link.eventId);
+  if (!listed) throw apiError(422, NOT_UPCOMING);
+  if (listed.entriesUrl === null) throw apiError(422, NO_ENTRY_LIST);
+  return listed.entriesUrl;
+}
+
+async function storeMeet(ctx: ActionCtx, eventId: string, title: string, listing: Listing): Promise<StoredMeet> {
   const known: StoredMeet | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
   if (known) return known;
-  const rows = await fromSport80(readAllWidgetPages((page) => fetchWidgetPage(widgetPageUrl('', page))));
-  const listed = listedMeetProblem(rows, eventId);
+  const listed = listedMeetProblem(await listing(), eventId);
   if ('problem' in listed) throw apiError(422, listed.problem);
   await ctx.runMutation(internal.ingest.upsertMeets, { rows: transformMeets([listed.row]).meets });
   const stored: StoredMeet | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
@@ -64,14 +114,17 @@ async function storeMeet(ctx: ActionCtx, eventId: string, title: string): Promis
 export const load = action({
   args: { url: v.string() },
   handler: async (ctx, { url }): Promise<{ meet: string; refreshed: boolean }> => {
-    const page = entriesPageOf(url);
-    const claimed: { recentMeet: string } | { claim: Id<'schedule_builder_loads'> } = await ctx.runMutation(internal.scheduleBuilder.claimLoad, { eventId: page.eventId });
+    const link = sport80LinkOf(url);
+    const claimed: { recentMeet: string } | { claim: Id<'schedule_builder_loads'> } = await ctx.runMutation(internal.scheduleBuilder.claimLoad, { eventId: link.eventId });
     if ('recentMeet' in claimed) return { meet: claimed.recentMeet, refreshed: false };
-    const title = await fromSport80(fetchEntriesMeet(page.url));
-    const meet = await storeMeet(ctx, page.eventId, title);
+    const fromSport80 = sport80Within(LOAD_BUDGET_MS, 'load');
+    const listing = upcomingListing(fromSport80);
+    const entriesUrl = await entriesUrlOf(link, listing);
+    const title = await fromSport80(fetchEntriesMeet(entriesUrl));
+    const meet = await storeMeet(ctx, link.eventId, title, listing);
     if (meet.status === 'completed') throw apiError(409, 'this meet is over, so its schedule can no longer be built');
-    await ctx.runMutation(internal.scrapers.entryTargets.addFromBuilder, { label: title, url: page.url });
-    const entries = await fromSport80(readEntries(ctx, page.url, meet.name));
+    await ctx.runMutation(internal.scrapers.entryTargets.addFromBuilder, { label: title, url: entriesUrl });
+    const entries = await fromSport80(readEntries(ctx, entriesUrl, meet.name));
     if (entries.length > 0) {
       try {
         await ctx.runMutation(internal.ingest.upsertEntryAthletes, { meet: meet.name, rows: entries, complete: true });
@@ -82,5 +135,63 @@ export const load = action({
     }
     await ctx.runMutation(internal.scheduleBuilder.finishLoad, { claim: claimed.claim, meet: meet.name });
     return { meet: meet.name, refreshed: true };
+  },
+});
+
+export type MeetMatch = { eventId: string; name: string; startDate: string; endDate: string; place: string; entriesUrl: string | null };
+
+export function searchQueryOf(query: string): string {
+  const trimmed = query.trim();
+  if (trimmed.length < MIN_SEARCH_LENGTH) throw apiError(400, `type at least ${MIN_SEARCH_LENGTH} characters of the meet's name`);
+  if (trimmed.length > MAX_SEARCH_LENGTH) throw apiError(400, `a meet name is at most ${MAX_SEARCH_LENGTH} characters`, { max: MAX_SEARCH_LENGTH });
+  return trimmed;
+}
+
+const KNOWN = (part: string) => part !== '' && part !== 'Unknown';
+
+type ListedEvent = WidgetRow & { id: string };
+
+const isListedEvent = (row: WidgetRow): row is ListedEvent => row.isEvent && row.id !== null;
+
+function placeOf(address: string | null): string {
+  const trimmed = address?.trim() ?? '';
+  if (trimmed === '') return '';
+  const { city, state } = parseAddress(trimmed);
+  return [city, state].filter(KNOWN).join(', ');
+}
+
+export function meetMatchOf(row: ListedEvent): MeetMatch {
+  const dates = row.subtitle === null ? null : parseDateRange(row.subtitle);
+  return {
+    eventId: row.id,
+    name: row.name,
+    startDate: dates?.startDate ?? '',
+    endDate: dates?.endDate ?? '',
+    place: placeOf(row.address),
+    entriesUrl: row.entriesUrl,
+  };
+}
+
+export async function upcomingMatches(fetchPage: (page: number) => Promise<unknown>): Promise<{ results: MeetMatch[]; truncated: boolean }> {
+  const matches: MeetMatch[] = [];
+  let read = 0;
+  let more = false;
+  for (let page = 0; page < MAX_SEARCH_PAGES && matches.length <= MAX_SEARCH_RESULTS; page++) {
+    const { total, rows } = readWidgetPage(await fetchPage(page));
+    read += rows.length;
+    matches.push(...rows.filter(isListedEvent).map(meetMatchOf));
+    more = read < total && rows.length === WIDGET_PAGE_SIZE;
+    if (!more) break;
+  }
+  return { results: matches.slice(0, MAX_SEARCH_RESULTS), truncated: matches.length > MAX_SEARCH_RESULTS || more };
+}
+
+export const search = action({
+  args: { query: v.string() },
+  handler: async (ctx, { query }): Promise<{ results: MeetMatch[]; truncated: boolean }> => {
+    const name = searchQueryOf(query);
+    await ctx.runMutation(internal.scheduleBuilder.claimSearch, {});
+    const fromSport80 = sport80Within(SEARCH_BUDGET_MS, 'search');
+    return await fromSport80(upcomingMatches((page) => fetchWidgetPage(widgetPageUrl(name, page))));
   },
 });

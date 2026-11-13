@@ -4,7 +4,7 @@ import { athleteGenderLabel, normalizeGender } from './normalize';
 import { normalizeName } from './names';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { bareWeightClass } from './weightClass';
-import { MINUTES_PER_DAY, minutesOfClock, storedClockOf, type BuilderEdit, type BuilderOptions, type BuilderOrder } from './scheduleBuilderOptions';
+import { MINUTES_PER_DAY, WEIGH_IN_MINUTES, minutesOfClock, storedClockOf, type BuilderEdit, type BuilderOptions, type BuilderOrder } from './scheduleBuilderOptions';
 
 export type BuilderEntrant = {
   memberId: string;
@@ -236,7 +236,9 @@ function initialSlots(entrants: readonly BuilderEntrant[], options: BuilderOptio
 
 type EditOutcome = 'applied' | 'skipped';
 
-function findAthlete(slots: readonly Slot[], key: string): { group: Group; index: number } | null {
+type MoveAthlete = Extract<BuilderEdit, { kind: 'moveAthlete' }>;
+
+function firstWithKey(slots: readonly Slot[], key: string): { group: Group; index: number } | null {
   for (const slot of slots) {
     for (const group of slot.groups.values()) {
       const index = group.athletes.findIndex((a) => a.key === key);
@@ -244,6 +246,13 @@ function findAthlete(slots: readonly Slot[], key: string): { group: Group; index
     }
   }
   return null;
+}
+
+function findAthlete(slots: readonly Slot[], edit: MoveAthlete): { group: Group; index: number } | null {
+  if (edit.fromSession === undefined || edit.fromPlatform === undefined) return firstWithKey(slots, edit.athlete);
+  const group = slots.find((s) => s.id === edit.fromSession)?.groups.get(edit.fromPlatform);
+  const athlete = group ? [...group.athletes].sort(byTotal).filter((a) => a.key === edit.athlete)[edit.occurrence ?? 0] : undefined;
+  return group && athlete ? { group, index: group.athletes.indexOf(athlete) } : null;
 }
 
 function targetGroup(slots: readonly Slot[], options: BuilderOptions, session: number, platform: string, like: Pick<Group, 'gender' | 'ageGroup'>): Group | null {
@@ -259,7 +268,7 @@ function targetGroup(slots: readonly Slot[], options: BuilderOptions, session: n
 function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): EditOutcome {
   switch (edit.kind) {
     case 'moveAthlete': {
-      const found = findAthlete(slots, edit.athlete);
+      const found = findAthlete(slots, edit);
       if (!found) return 'skipped';
       const target = targetGroup(slots, options, edit.toSession, edit.toPlatform, found.group);
       if (!target) return 'skipped';
@@ -293,7 +302,7 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): E
     case 'setSessionTime': {
       const slot = slots.find((s) => s.id === edit.session);
       const start = minutesOfClock(edit.startTime);
-      if (!slot || start === null || start < options.weighInMinutes || start + options.sessionMinutes > MINUTES_PER_DAY) return 'skipped';
+      if (!slot || start === null || start < WEIGH_IN_MINUTES || start + options.sessionMinutes > MINUTES_PER_DAY) return 'skipped';
       if (!options.days.some((d) => d.date === edit.date)) return 'skipped';
       slot.date = edit.date;
       slot.start = start;
@@ -372,7 +381,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       number: i + 1,
       date: scheduled ? slot.date : '',
       startTime: scheduled ? storedClockOf(slot.start ?? 0) : '',
-      weighInTime: scheduled ? storedClockOf((slot.start ?? 0) - options.weighInMinutes) : '',
+      weighInTime: scheduled ? storedClockOf((slot.start ?? 0) - WEIGH_IN_MINUTES) : '',
       groups: builtGroups,
     };
   });

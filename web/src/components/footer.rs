@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
 
+use crate::app::link_rel;
 use crate::components::store_links::{APP_STORE_URL, PLAY_STORE_URL};
 
 #[component]
@@ -19,8 +20,8 @@ pub fn Footer() -> impl IntoView {
 
             <p>"© " {current_year} " MeetCal LLC. All rights reserved."</p>
             <nav class="footer-legal" aria-label="Legal">
-                <A href="/privacy">"Privacy Policy"</A>
-                <A href="/terms">"Terms of Use"</A>
+                <A href="/privacy" attr:rel=link_rel("/privacy")>"Privacy Policy"</A>
+                <A href="/terms" attr:rel=link_rel("/terms")>"Terms of Use"</A>
             </nav>
         </footer>
     }

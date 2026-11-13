@@ -17,7 +17,7 @@ pub struct PageMetadata {
     pub canonical: bool,
 }
 
-pub const SITE_PAGES: [&str; 7] = [
+pub const SITE_PAGES: [&str; 8] = [
     "/",
     "/features",
     "/privacy",
@@ -25,6 +25,7 @@ pub const SITE_PAGES: [&str; 7] = [
     "/subscription",
     "/link",
     "/submit-meet",
+    "/schedule-builder",
 ];
 
 pub fn shell_paths() -> impl Iterator<Item = &'static str> {
@@ -86,6 +87,12 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
             title: "Approve a MeetCal CLI Sign-In",
             description: "Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login.",
             indexable: false,
+            canonical: true,
+        },
+        "/schedule-builder" => PageMetadata {
+            title: "Weightlifting Meet Schedule Builder — MeetCal",
+            description: "Free for meet organizers: paste a meet's Sport80 link, build the meet's sessions in one click, adjust them, and export or publish the schedule.",
+            indexable: true,
             canonical: true,
         },
         "/submit-meet" => PageMetadata {
@@ -198,7 +205,14 @@ mod tests {
 
     #[test]
     fn public_pages_are_indexable_with_distinct_titles() {
-        let public = ["/", "/features", "/privacy", "/terms", "/wrapped"];
+        let public = [
+            "/",
+            "/features",
+            "/privacy",
+            "/terms",
+            "/wrapped",
+            "/schedule-builder",
+        ];
         let mut titles = public
             .into_iter()
             .map(metadata_for_path)
@@ -241,6 +255,7 @@ mod tests {
             "/",
             "/features",
             "/wrapped",
+            "/schedule-builder",
             "/comp-data",
             "/qualifying-totals",
             "/subscription",

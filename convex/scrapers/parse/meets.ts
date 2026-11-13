@@ -1,6 +1,7 @@
 // Pure parts of `scrapers/meets.ts` (port of `usaw/meet_to_supabase/scripts/sync-*.js`).
 
 import { isRecord, rowCount, itemAt } from '../../lib/json';
+import { sport80EntriesUrlOf } from './entries';
 import { isValidIsoDate } from '../../lib/validation';
 import { countryTimeZone, isUnitedStates, usTerritoryTimeZone } from '../lib/countries';
 import { stateCode, usTimeZone } from '../lib/states';
@@ -40,10 +41,18 @@ export function widgetPageUrl(search: string, page: number): string {
   return `${WIDGET}?p=${page}&i=${WIDGET_PAGE_SIZE}&l=&d=10&f=&s=${encodeURIComponent(search)}`;
 }
 
-/** A widget row; `address` and `subtitle` are null when the row has no such text. */
-export type WidgetRow = { id: string | null; name: string; address: string | null; subtitle: string | null };
+export type WidgetRow = { id: string | null; name: string; address: string | null; subtitle: string | null; isEvent: boolean; entriesUrl: string | null };
 
 const text = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
+function listedEntriesUrl(actions: unknown, eventId: string | null): string | null {
+  if (eventId === null || !Array.isArray(actions)) return null;
+  for (const action of actions) {
+    const url = isRecord(action) && typeof action.url === 'string' ? sport80EntriesUrlOf(action.url, eventId) : null;
+    if (url !== null) return url;
+  }
+  return null;
+}
 
 export function readWidgetPage(body: unknown): { total: number; rows: WidgetRow[] } {
   if (!isRecord(body)) throw new Error('widget: response is not an object');
@@ -56,7 +65,7 @@ export function readWidgetPage(body: unknown): { total: number; rows: WidgetRow[
     const name = (text(row.name) ?? '').trim();
     if (!name) throw new Error(`widget: row ${i} has no name`);
     const id = row.id === undefined || row.id === null ? null : String(row.id);
-    return { id, name, address: text(row.address), subtitle: text(row.subtitle) };
+    return { id, name, address: text(row.address), subtitle: text(row.subtitle), isEvent: row.is_event !== false, entriesUrl: listedEntriesUrl(row.actions, id) };
   });
   return { total: count, rows };
 }
