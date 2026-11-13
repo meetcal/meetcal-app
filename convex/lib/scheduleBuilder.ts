@@ -35,11 +35,11 @@ export type BuilderEntrant = {
 
 export type AgePool = 'youth' | 'open' | 'masters' | '';
 
-export type BuiltAthlete = BuilderEntrant & { key: string; withdrawn?: true };
+export type BuiltAthlete = BuilderEntrant & { key: string; withdrawn?: true; seat?: { session: number; platform: string } };
 
 export type RowTimes = { date: string; startTime: string; weighInTime: string };
 
-export type PublishedPart = RowTimes & { weightClass: string };
+export type PublishedPart = RowTimes & { weightClass: string; platform?: string };
 
 export type BuiltGroup = {
   platform: string;
@@ -392,23 +392,34 @@ function groupLabels(group: Group, athletes: readonly BuiltAthlete[], options: B
   return { gender, ageGroup: pools.length === 1 && pool !== undefined ? pool : '', split: '', mixed: genders.length > 1 };
 }
 
-function rowsOverlap(a: RowTimes, b: RowTimes, sessionMinutes: number): boolean {
-  const aStart = minutesOfClock(a.startTime.slice(0, 5));
-  const bStart = minutesOfClock(b.startTime.slice(0, 5));
-  if (aStart === null || bStart === null || a.date === '' || a.date !== b.date) return false;
-  return Math.abs(aStart - bStart) < sessionMinutes;
+type Window = { date: string; start: number; end: number };
+
+export type OverlapRules = {
+  warnsOf: (session: BuiltSession, group: BuiltGroup) => boolean;
+  nextStart: (session: BuiltSession, group: BuiltGroup, date: string) => number;
+};
+
+const EVERY_PAIR: OverlapRules = { warnsOf: () => true, nextStart: () => Number.POSITIVE_INFINITY };
+
+function windowsOf(session: BuiltSession, group: BuiltGroup, sessionMinutes: number, rules: OverlapRules): Window[] {
+  const starts = rowsOf(session, group).flatMap((row) => {
+    const start = minutesOfClock(row.startTime.slice(0, 5));
+    return start === null || row.date === '' ? [] : [{ date: row.date, start }];
+  });
+  const first = Math.min(...starts.map(({ start }) => start));
+  return starts.map(({ date, start }) => ({ date, start, end: start === first ? start + sessionMinutes : Math.min(start + sessionMinutes, rules.nextStart(session, group, date)) }));
 }
 
-const overlapping = (a: readonly RowTimes[], b: readonly RowTimes[], sessionMinutes: number) => a.some((row) => b.some((other) => rowsOverlap(row, other, sessionMinutes)));
+const overlapping = (a: readonly Window[], b: readonly Window[]) => a.some((x) => b.some((y) => x.date === y.date && x.start < y.end && y.start < x.end));
 
-export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinutes: number, warnsOf: (session: BuiltSession) => boolean = () => true): BuilderWarning[] {
+export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinutes: number, rules: OverlapRules = EVERY_PAIR): BuilderWarning[] {
   const warnings: BuilderWarning[] = [];
   sessions.forEach((session, i) => {
     for (const later of sessions.slice(i + 1)) {
-      if (!warnsOf(session) && !warnsOf(later)) continue;
       for (const group of session.groups) {
         const other = later.groups.find((g) => g.platform === group.platform);
-        if (!other || !overlapping(rowsOf(session, group), rowsOf(later, other), sessionMinutes)) continue;
+        if (!other || (!rules.warnsOf(session, group) && !rules.warnsOf(later, other))) continue;
+        if (!overlapping(windowsOf(session, group, sessionMinutes, rules), windowsOf(later, other, sessionMinutes, rules))) continue;
         warnings.push({ code: 'overlap', message: `Sessions ${session.number} and ${later.number} use the ${group.platform} platform at the same time.` });
       }
     }
@@ -417,6 +428,34 @@ export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinute
 }
 
 type Numbering = 'inTimeOrder' | 'asPublished';
+
+const placeKey = (session: number, platform: string) => `${session}|${platform}`;
+
+function publishedOverlapRules(slots: readonly Slot[], kept: readonly { slot: Slot; groups: readonly { platform: string; group: Group }[] }[]): OverlapRules {
+  const outOfPlace = (slot: Slot, group: Group) => slot.retimed === true || group.edited || (group.published !== undefined && group.published.slot !== slot.id);
+  const touched = new Set(kept.flatMap(({ slot, groups }) => groups.filter(({ group }) => outOfPlace(slot, group)).map(({ platform }) => placeKey(slot.id, platform))));
+  const firsts = new Map<string, Map<number, number>>();
+  for (const slot of slots) {
+    for (const [platform, rows] of slot.published ?? []) {
+      for (const row of rows) {
+        const start = minutesOfStoredClock(row.startTime);
+        if (start === null || row.date === '') continue;
+        const lane = firsts.get(`${row.date}|${platform}`) ?? new Map<number, number>();
+        firsts.set(`${row.date}|${platform}`, lane);
+        lane.set(slot.id, Math.min(start, lane.get(slot.id) ?? start));
+      }
+    }
+  }
+  return {
+    warnsOf: (session, group) => touched.has(placeKey(session.id, group.platform)),
+    nextStart: (session, group, date) => {
+      const lane = firsts.get(`${date}|${group.platform}`);
+      const own = lane?.get(session.id);
+      if (!lane || own === undefined) return Number.POSITIVE_INFINITY;
+      return Math.min(Number.POSITIVE_INFINITY, ...[...lane].filter(([slot, start]) => slot !== session.id && start > own).map(([, start]) => start));
+    },
+  };
+}
 
 function finish(slots: readonly Slot[], options: BuilderOptions, athletes: number, skipped: number, numbering: Numbering = 'inTimeOrder'): BuiltSchedule {
   const warnings: BuilderWarning[] = [];
@@ -471,7 +510,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       if (!origin) return times ? { ...built, times } : built;
       const inPlace = origin.slot === slot.id && !slot.retimed;
       const relabelled = !locked && group.splitOf !== '' && editedSplits.has(group.splitOf);
-      const publishedRows = origin.rows.map((row) => ({ ...(inPlace ? timesOfPart(row) : (times ?? computed)), weightClass: relabelled ? platformLabel(built) : row.weightClass }));
+      const publishedRows = origin.rows.map((row) => ({ ...(inPlace ? timesOfPart(row) : (times ?? computed)), weightClass: relabelled ? platformLabel(built) : row.weightClass, ...(inPlace && row.platform !== undefined ? { platform: row.platform } : {}) }));
       return { ...built, ...(times ? { times } : {}), publishedRows };
     });
     const own = slot.published && !slot.retimed && scheduled ? earliest(builtGroups.flatMap((group) => (group.times ? [group.times] : []))) : undefined;
@@ -479,10 +518,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
     if (builtGroups.some((group) => group.locked)) session.locked = true;
     return session;
   });
-  const outOfPlace = (slot: Slot, group: Group) => group.edited || (group.published !== undefined && group.published.slot !== slot.id);
-  const touched = new Set(kept.filter(({ slot, groups }) => slot.retimed || groups.some(({ group }) => outOfPlace(slot, group))).map(({ slot }) => slot.id));
-  const warnsOf = numbering === 'asPublished' ? (session: BuiltSession) => touched.has(session.id) : () => true;
-  warnings.push(...overlapWarnings(sessions, options.sessionMinutes, warnsOf));
+  warnings.push(...overlapWarnings(sessions, options.sessionMinutes, numbering === 'asPublished' ? publishedOverlapRules(slots, kept) : EVERY_PAIR));
   const unscheduled = sessions.filter((s) => s.startTime === '').length;
   if (athletes === 0) warnings.unshift({ code: 'noEntrants', message: 'The meet has no entrants yet.' });
   if (unscheduled > 0) {
@@ -528,9 +564,9 @@ function lockedPlace(slots: readonly Slot[], edit: BuilderEdit): LockedPlace | n
     return slot && platform !== undefined ? { session: slot.id, platform } : null;
   };
   const source = (athlete: AthleteAt): LockedPlace | null => {
-    if (athlete.fromSession !== undefined) return at(athlete.fromSession, athlete.fromPlatform);
+    const found = findAthlete(slots, athlete);
     for (const slot of slots) {
-      for (const [platform, group] of slot.groups) if (group.athletes.some((a) => a.key === athlete.athlete)) return at(slot.id, platform);
+      for (const [platform, group] of slot.groups) if (group === found?.group) return at(slot.id, platform);
     }
     return null;
   };
@@ -538,7 +574,7 @@ function lockedPlace(slots: readonly Slot[], edit: BuilderEdit): LockedPlace | n
     case 'addAthlete':
       return at(edit.toSession, edit.toPlatform);
     case 'removeAthlete':
-      return at(edit.fromSession, edit.fromPlatform);
+      return source(edit);
     case 'moveAthlete':
       return source(edit) ?? at(edit.toSession, edit.toPlatform);
     case 'moveClass':
@@ -644,7 +680,7 @@ function keepStoredPlatform(slot: Slot, stored: string): void {
 function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnIds: ReadonlySet<string>): Slot[] {
   const slots = new Map<number, Slot>();
   for (const row of [...base.rows].sort((a, b) => a.sessionId - b.sessionId)) {
-    const part: PublishedPart = { date: row.date, startTime: row.startTime, weighInTime: row.weighInTime, weightClass: row.weightClass };
+    const part: PublishedPart = { date: row.date, startTime: row.startTime, weighInTime: row.weighInTime, weightClass: row.weightClass, platform: row.platform };
     const start = minutesOfStoredClock(row.startTime);
     const slot = slots.get(row.sessionId) ?? { id: row.sessionId, date: row.date, start, groups: new Map<string, Group>(), published: new Map<string, PublishedPart[]>() };
     slots.set(row.sessionId, slot);
@@ -662,7 +698,7 @@ function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnI
     const slot = slots.get(id) ?? { id, date: '', start: null, groups: new Map<string, Group>() };
     slots.set(id, slot);
     keepStoredPlatform(slot, athlete.sessionPlatform ?? '');
-    const built = builtAthleteOf(rosterEntrant(athlete));
+    const built: BuiltAthlete = { ...builtAthleteOf(rosterEntrant(athlete)), seat: { session: id, platform: athlete.sessionPlatform ?? '' } };
     const group = slot.groups.get(platform) ?? { gender: built.gender, ageGroup: '', split: '', splitOf: '', athletes: [], edited: false };
     slot.groups.set(platform, group);
     group.athletes.push(withdrawnIds.has(athlete._id) ? { ...built, withdrawn: true } : built);

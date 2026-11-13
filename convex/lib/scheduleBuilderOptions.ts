@@ -135,9 +135,12 @@ export function checkBuilderOptions(options: BuilderOptions, publishedPlatforms:
   }
 }
 
+export const HALF_SOURCE = "a lifter's move names both the session and the platform it comes from, or neither";
+
 export function checkBuilderEdits(edits: readonly BuilderEdit[]): void {
   if (edits.length > MAX_BUILDER_EDITS) throw apiError(400, `at most ${MAX_BUILDER_EDITS} edits`, { max: MAX_BUILDER_EDITS });
   for (const edit of edits) {
+    if (edit.kind === 'moveAthlete' && (edit.fromSession === undefined) !== (edit.fromPlatform === undefined)) throw apiError(400, HALF_SOURCE);
     if (edit.kind === 'setSessionTime' && (!isValidIsoDate(edit.date) || minutesOfClock(edit.startTime) === null)) {
       throw apiError(400, 'a session time edit needs a YYYY-MM-DD date and an HH:MM start');
     }

@@ -63,9 +63,10 @@ export function publishedSchedule(schedule: BuiltSchedule): PublishedSchedule {
   for (const session of schedule.sessions) {
     for (const group of session.groups) {
       const platform = writtenPlatform(group);
-      for (const row of rowsOf(session, group)) rows.push({ ...row, sessionId: session.number, platform });
+      for (const row of rowsOf(session, group)) rows.push({ ...row, sessionId: session.number, platform: row.platform ?? platform });
       for (const athlete of group.athletes) {
-        const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform };
+        const seated = athlete.seat && athlete.seat.session === session.number && athlete.seat.platform.trim() === group.platform ? athlete.seat.platform : platform;
+        const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: seated };
         placements.push(athlete.rosterId === undefined ? placement : { ...placement, rosterId: athlete.rosterId });
       }
     }

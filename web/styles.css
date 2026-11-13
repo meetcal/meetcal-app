@@ -3117,9 +3117,10 @@ main > div:has(> h4) > p {
     flex: none;
 }
 
-.builder-menu[hidden],
-.builder-classes[hidden],
-.builder-session-actions[hidden] {
+.builder-locked > header .builder-session-actions,
+.builder-group.builder-locked .builder-classes,
+.builder-group.builder-locked .builder-menu,
+.builder-group.builder-locked .builder-withdrawn-line button {
     display: none;
 }
 

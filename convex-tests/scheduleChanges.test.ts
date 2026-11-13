@@ -6,7 +6,7 @@ import { platformLabel, renderPublicationEmail, renderReviewPage, type Publicati
 import { sha256Hex } from '../convex/lib/tokens';
 import { buildFromPublished, buildSchedule, sport80Diff, type PublishedBase } from '../convex/lib/scheduleBuilder';
 import { suggestedPlace } from '../convex/lib/scheduleChanges';
-import { clockLabel, defaultBuilderOptions, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
+import { clockLabel, defaultBuilderOptions, HALF_SOURCE, type BuilderEdit, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
 import { sessionRows, startListRows } from '../convex/lib/scheduleExport';
 import { joinRoster } from '../convex/lib/meetData';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
@@ -872,6 +872,19 @@ describe('a platform with several published rows', () => {
     expect(blue.sessions[1]?.groups.find((g) => g.platform === 'Blue')?.athletes.map((a) => a.name)).toEqual(['Cal Diaz', 'Dan Fox']);
   });
 
+  it("refuses a move that names only half of where the lifter comes from, and the lock still catches one that gets past the check", async () => {
+    const halfSource: BuilderEdit = { kind: 'moveAthlete', athlete: keyOf(kim), fromSession: 1, toSession: 2, toPlatform: 'Red' };
+    const store = locked();
+    expect(await failure(publishAs(store, 'user_a', 'published', null, [halfSource]))).toEqual({ status: 400, error: HALF_SOURCE });
+    expect(await failure(board(store, [halfSource]))).toEqual({ status: 400, error: HALF_SOURCE });
+    expect(await failure(board(store, [{ kind: 'moveAthlete', athlete: keyOf(kim), fromPlatform: 'Red', toSession: 2, toPlatform: 'Red' }]))).toEqual({ status: 400, error: HALF_SOURCE });
+    expect(sortedRows(store)).toEqual(inRowOrder(flights()));
+    const published = { rows: flights(), roster: lifters().map((athlete, i) => ({ ...athlete, _id: String(i) })), sport80: null };
+    const built = buildFromPublished(published, sport80Diff(published), { ...defaultBuilderOptions(meetRow), platforms: ['Red', 'Blue'] }, [halfSource]);
+    expect(built.locked).toEqual([{ session: 1, platform: 'Red' }]);
+    expect(built.sessions[0]?.groups.find((g) => g.platform === 'Red')?.athletes.map((a) => a.name)).toEqual(['Kim Ng', 'Lea Orr']);
+  });
+
   it('refuses a publish that tries one, and an approval of one', async () => {
     for (const edit of touching) {
       const store = locked();
@@ -936,6 +949,56 @@ describe('a platform with several published rows', () => {
     ]);
     const { html } = renderPublicationEmail({ meet: MEET, status: 'live', userId: 'u', schedule, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: true });
     expect(html).toContain('<li>Red: W 59 (2)</li><li>Red (Weigh-In 8:00 AM · Start 10:00 AM): W 64 (2)</li>');
+  });
+});
+
+describe('overlaps a schedule was loaded with', () => {
+  const overlapsOf = (answer: Board) => answer.warnings.filter((w) => w.code === 'overlap').map((w) => (w as { message?: string }).message);
+  const staggered = () =>
+    server({
+      athletes: [rostered(ann, 1), rostered(gia, 1), rostered(cal, 2)],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Red', '10:00:00', '08:00:00', 'W 63'), handRow(2, 'Red', '11:00:00', '09:00:00', 'M 89')],
+    });
+
+  it('stay quiet when an edit on another platform touches the same sessions', async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(gia, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(bea, 2), rostered(dan, 2, { sessionPlatform: 'Blue' })],
+      session_schedule: [
+        handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'),
+        handRow(1, 'Red', '10:00:00', '08:00:00', 'W 63'),
+        handRow(1, 'Blue', '09:00:00', '07:00:00', 'M 89'),
+        handRow(2, 'Red', '12:00:00', '10:00:00', 'W 58'),
+        handRow(2, 'Blue', '12:00:00', '10:00:00', 'M 96'),
+      ],
+    });
+    expect((await publishedOptions(store)).sessionMinutes).toBe(180);
+    expect(overlapsOf(await board(store, [{ kind: 'moveAthlete', athlete: keyOf(cal), fromSession: 1, fromPlatform: 'Blue', occurrence: 0, toSession: 2, toPlatform: 'Blue' }]))).toEqual([]);
+  });
+
+  it("stay quiet when an add lands in the session after a platform's staggered rows", async () => {
+    const store = staggered();
+    await store.record([listed(ann), listed(gia), listed(cal), listed(fay)]);
+    expect((await publishedOptions(store)).sessionMinutes).toBe(120);
+    expect(overlapsOf(await board(store, [{ kind: 'addAthlete', athlete: keyOf(fay), toSession: 2, toPlatform: 'Red' }]))).toEqual([]);
+  });
+
+  it('still warn when an edit books a platform twice', async () => {
+    const store = staggered();
+    expect(overlapsOf(await board(store, [{ kind: 'setSessionTime', session: 2, date: '2027-03-06', startTime: '10:30' }]))).toEqual(['Sessions 1 and 2 use the Red platform at the same time.']);
+  });
+});
+
+describe('a platform spelled two ways in one session', () => {
+  it('writes each row and each athlete back with their own spelling', async () => {
+    const rows = [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Red ', '10:00:00', '08:00:00', 'W 63'), handRow(2, 'Red', '12:00:00', '10:00:00', 'M 89')];
+    const store = server({ ...organizer, athletes: [rostered(ann, 1, { sessionPlatform: 'Red ' }), rostered(gia, 1, { sessionPlatform: 'Red ' }), rostered(cal, 2)], session_schedule: rows });
+    await publishAs(store, 'user_a', 'published', null);
+    expect(sortedRows(store)).toEqual(inRowOrder(rows));
+    expect(store.rows('athletes').map((a) => [a.name, a.sessionPlatform])).toEqual([
+      ['Ann Lee', 'Red '],
+      ['Gia Hu', 'Red '],
+      ['Cal Diaz', 'Red'],
+    ]);
   });
 });
 
