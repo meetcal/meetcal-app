@@ -171,6 +171,14 @@ describe('deleteUserData (#250)', () => {
       { userId: A, meet: 'Open', options: {}, edits: [], updatedAt: 1 },
       { userId: B, meet: 'Open', options: {}, edits: [], updatedAt: 1 },
     ],
+    schedule_publications: [
+      { userId: A, meet: 'Open', options: {}, edits: [], status: 'pending', createdAt: 1 },
+      { userId: B, meet: 'Open', options: {}, edits: [], status: 'pending', createdAt: 1 },
+    ],
+    meet_organizers: [
+      { userId: A, meet: 'Open', approvedAt: 1 },
+      { userId: B, meet: 'Open', approvedAt: 1 },
+    ],
   });
   const run = handlerOf<{ userId: string }, Record<string, unknown>>(deleteUserData);
 
@@ -195,9 +203,11 @@ describe('deleteUserData (#250)', () => {
       meetSubmissions: 1,
       meetSubmissionUploadUrls: 1,
       scheduleDrafts: 1,
+      schedulePublications: 1,
+      meetOrganizers: 1,
       more: false,
     });
-    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets', 'entitlements', 'entitlement_syncs', 'api_tokens', 'meet_submissions', 'meet_submission_upload_urls', 'schedule_drafts']) {
+    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets', 'entitlements', 'entitlement_syncs', 'api_tokens', 'meet_submissions', 'meet_submission_upload_urls', 'schedule_drafts', 'schedule_publications', 'meet_organizers']) {
       expect(store.rows(table).map((r) => r.userId)).toEqual([B]);
     }
     expect(store.rows('meet_submission_files').map((r) => r.storageId)).toEqual(['_storage:b']);
@@ -214,6 +224,8 @@ describe('deleteUserData (#250)', () => {
       meetSubmissions: 0,
       meetSubmissionUploadUrls: 0,
       scheduleDrafts: 0,
+      schedulePublications: 0,
+      meetOrganizers: 0,
       more: false,
     });
   });

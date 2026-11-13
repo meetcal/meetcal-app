@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { randomHex } from './lib/tokens';
 import { internal } from './_generated/api';
 import { internalAction, internalMutation, internalQuery, query } from './_generated/server';
 import { callerOf, currentPasses, type Passes } from './lib/access';
@@ -57,13 +58,11 @@ export const store = internalMutation({
   },
 });
 
-/** A new pass: 256 random bits. In an action, where randomness is real. */
 export const rotate = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }) => {
     if (dryRun) return;
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const pass = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    const pass = randomHex(32);
     await ctx.runMutation(internal.accessPass.store, { pass, now: Date.now() });
   },
 });

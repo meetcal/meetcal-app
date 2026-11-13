@@ -28,8 +28,6 @@ export const MEET_SUBMISSION_RETENTION_MS = MEET_SUBMISSION_RETENTION_DAYS * DAY
 export const ORPHAN_UPLOAD_MS = DAY_MS;
 /** Rows (or stored files) one cleanup run looks at per kind; a full batch schedules the next. */
 export const MEET_SUBMISSION_CLEANUP_BATCH = 100;
-/** Waits before each retry of a failed email; after the last, the failure is thrown. */
-export const MEET_SUBMISSION_EMAIL_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000] as const;
 
 export type MeetSubmissionFileArg = { storageId: string; name: string };
 
@@ -81,10 +79,7 @@ export function checkMeetSubmission(args: {
     if (!isValidIsoDate(endDate)) throw apiError(400, 'end date must be a date (YYYY-MM-DD)');
     if (endDate < startDate) throw apiError(400, 'end date is before the start date');
   }
-  const contactEmail = args.contactEmail?.trim() || undefined;
-  if (contactEmail !== undefined && (contactEmail.length > MAX_MEET_SUBMISSION_EMAIL_LEN || !EMAIL.test(contactEmail))) {
-    throw apiError(400, 'contact email is not an email address');
-  }
+  const contactEmail = checkContactEmail(args.contactEmail);
   if (args.files.length === 0) throw apiError(400, 'at least one file is required');
   if (args.files.length > MAX_MEET_SUBMISSION_FILES) {
     throw apiError(400, `at most ${MAX_MEET_SUBMISSION_FILES} files`, { max: MAX_MEET_SUBMISSION_FILES });
@@ -102,6 +97,14 @@ export function checkMeetSubmission(args: {
     return { storageId, name: trimmed };
   });
   return { meetName, startDate, endDate, contactEmail, files };
+}
+
+export function checkContactEmail(value: string | null | undefined): string | undefined {
+  const contactEmail = value?.trim() || undefined;
+  if (contactEmail !== undefined && (contactEmail.length > MAX_MEET_SUBMISSION_EMAIL_LEN || !EMAIL.test(contactEmail))) {
+    throw apiError(400, 'contact email is not an email address');
+  }
+  return contactEmail;
 }
 
 export type MeetSubmissionEmailContent = {
