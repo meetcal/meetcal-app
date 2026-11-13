@@ -600,8 +600,9 @@ describe('approving a publication whose published schedule is gone', () => {
 });
 
 const handRow = (sessionId: number, platform: string, startTime: string, weighInTime: string, weightClass: string, date = '2027-03-06') => ({ meet: MEET, date, sessionId, startTime, weighInTime, platform, weightClass });
-const sortedRows = (store: ReturnType<typeof server>) =>
-  store.rows('session_schedule').sort((a, b) => Number(a.sessionId) - Number(b.sessionId) || String(a.platform).localeCompare(String(b.platform)) || String(a.startTime).localeCompare(String(b.startTime)));
+const inRowOrder = (list: readonly Row[]) =>
+  [...list].sort((a, b) => Number(a.sessionId) - Number(b.sessionId) || String(a.platform).localeCompare(String(b.platform)) || String(a.startTime).localeCompare(String(b.startTime)));
+const sortedRows = (store: ReturnType<typeof server>) => inRowOrder(store.rows('session_schedule'));
 
 describe('published rows without a lifter of their own', () => {
   const rows = () => [
@@ -618,13 +619,13 @@ describe('published rows without a lifter of their own', () => {
     const store = handLoaded();
     expect((await board(store)).sessions.find((s) => s.id === 3)?.groups[0]?.label).toBe('W 59 / W 64');
     await publishAs(store, 'user_a', 'published', null);
-    expect(sortedRows(store)).toEqual(rows().sort((a, b) => a.sessionId - b.sessionId || a.platform.localeCompare(b.platform) || a.startTime.localeCompare(b.startTime)));
+    expect(sortedRows(store)).toEqual(inRowOrder(rows()));
   });
 
   it('are written back exactly when an edit changes another session', async () => {
     const store = handLoaded();
     await publishAs(store, 'user_a', 'published', null, [{ kind: 'moveAthlete', athlete: keyOf(ann), fromSession: 1, fromPlatform: 'Red', occurrence: 0, toSession: 2, toPlatform: 'Red' }]);
-    expect(untouched(sortedRows(store))).toEqual(untouched(rows()).sort((a, b) => a.sessionId - b.sessionId || a.platform.localeCompare(b.platform) || a.startTime.localeCompare(b.startTime)));
+    expect(untouched(sortedRows(store))).toEqual(inRowOrder(untouched(rows())));
   });
 });
 
