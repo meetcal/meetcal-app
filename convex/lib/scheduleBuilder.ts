@@ -67,7 +67,7 @@ export type BuilderWarning = { code: BuilderWarningCode; message: string };
 
 export type BuiltSchedule = { athletes: number; sessions: BuiltSession[]; warnings: BuilderWarning[] };
 
-type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean };
+type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean; published?: { slot: number; rows: PublishedPart[] } };
 
 type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group>; published?: Map<string, PublishedPart[]>; retimed?: boolean };
 
@@ -408,13 +408,13 @@ type Numbering = 'inTimeOrder' | 'asPublished';
 function finish(slots: readonly Slot[], options: BuilderOptions, athletes: number, skipped: number, numbering: Numbering = 'inTimeOrder'): BuiltSchedule {
   const warnings: BuilderWarning[] = [];
   const editedSplits = new Set(slots.flatMap((slot) => [...slot.groups.values()].filter((g) => g.edited && g.splitOf !== '').map((g) => g.splitOf)));
-  const untouchedPublished = (slot: Slot, platform: string, group: Group) => !group.edited && slot.published?.has(platform) === true;
+  const untouchedPublished = (group: Group) => !group.edited && group.published !== undefined;
   const kept = slots
     .map((slot) => ({
       slot,
       groups: options.platforms.flatMap((platform) => {
         const group = slot.groups.get(platform);
-        return group && (group.athletes.length > 0 || untouchedPublished(slot, platform, group)) ? [{ platform, group }] : [];
+        return group && (group.athletes.length > 0 || untouchedPublished(group)) ? [{ platform, group }] : [];
       }),
     }))
     .filter(({ groups }) => groups.length > 0)
@@ -447,14 +447,14 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
         weightClasses: sortByWeightClass([...new Set(sorted.map((a) => a.weightClass))], (c) => c),
         athletes: sorted.map((a) => ({ ...a, gender: athleteGenderLabel(a.gender) })),
       };
-      const rows = slot.published?.get(platform);
-      if (!rows) return built;
-      const own = slot.retimed ? undefined : earliest(rows);
+      const own = slot.retimed ? undefined : earliest(slot.published?.get(platform) ?? []);
+      const times = own ? timesOfPart(own) : undefined;
+      const origin = group.edited ? undefined : group.published;
+      if (!origin) return times ? { ...built, times } : built;
+      const inPlace = origin.slot === slot.id && !slot.retimed;
       const relabelled = group.splitOf !== '' && editedSplits.has(group.splitOf);
-      const publishedRows = group.edited
-        ? undefined
-        : rows.map((row) => ({ ...(slot.retimed ? computed : timesOfPart(row)), weightClass: relabelled ? platformLabel(built) : row.weightClass }));
-      return { ...built, ...(own ? { times: timesOfPart(own) } : {}), ...(publishedRows ? { publishedRows } : {}) };
+      const publishedRows = origin.rows.map((row) => ({ ...(inPlace ? timesOfPart(row) : (times ?? computed)), weightClass: relabelled ? platformLabel(built) : row.weightClass }));
+      return { ...built, ...(times ? { times } : {}), publishedRows };
     });
     const own = slot.published && !slot.retimed && scheduled ? earliest(builtGroups.flatMap((group) => (group.times ? [group.times] : []))) : undefined;
     return { id: slot.id, number, ...(own ?? computed), groups: builtGroups };
@@ -593,8 +593,8 @@ function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnI
       if (!slot.groups.has(platform)) slot.groups.set(platform, { gender: '', ageGroup: '', split: '', splitOf: '', athletes: [], edited: false });
     }
     for (const [platform, group] of slot.groups) {
-      const label = slot.published?.get(platform)?.[0]?.weightClass ?? '';
-      Object.assign(group, publishedGroupLabels(group, label, options.separateAgeGroups));
+      const rows = slot.published?.get(platform);
+      Object.assign(group, publishedGroupLabels(group, rows?.[0]?.weightClass ?? '', options.separateAgeGroups), rows ? { published: { slot: slot.id, rows } } : {});
     }
   }
   return [...slots.values()];
