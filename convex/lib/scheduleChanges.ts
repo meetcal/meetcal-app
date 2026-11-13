@@ -41,8 +41,8 @@ export function suggestedPlace(entrant: BuiltAthlete, sessions: readonly BuiltSe
       : best(
           sameGender,
           (a, b) =>
-            classDistance(a.group, entrant.weightClass) - classDistance(b.group, entrant.weightClass) ||
             Number(samePool(b)) - Number(samePool(a)) ||
+            classDistance(a.group, entrant.weightClass) - classDistance(b.group, entrant.weightClass) ||
             fewerAthletes(a, b),
         );
   return chosen ? { session: chosen.session.id, number: chosen.session.number, platform: chosen.group.platform } : null;

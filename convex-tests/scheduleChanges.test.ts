@@ -179,6 +179,16 @@ describe('the changes on Sport80', () => {
     expect(built.sessions.find((s) => s.number === at(near))?.groups[0]?.weightClasses).toContain('58');
     expect(suggestedPlace(lifter(gus), built.sessions, true)).toBeNull();
   });
+
+  it("prefers a nearer class of the entrant's own age group over a nearer one of another", () => {
+    const options = defaultBuilderOptions(meetRow);
+    const master = { memberId: '300', name: 'Mae Old', gender: 'Women', weightClass: '58', entryTotal: 70, age: 40 };
+    const open = { memberId: '301', name: 'Ora Mid', gender: 'Women', weightClass: '69', entryTotal: 90, age: 25 };
+    const built = buildSchedule([entrant(master), entrant(open)], options);
+    const newcomer = { ...entrant({ ...open, memberId: '302', name: 'Nia New', weightClass: '63' }), gender: 'Female', key: '302|nia new' };
+    const place = suggestedPlace(newcomer, built.sessions, true);
+    expect(built.sessions.find((s) => s.id === place?.session)?.groups[0]?.weightClasses).toEqual(['69']);
+  });
 });
 
 describe('building on the published schedule', () => {
