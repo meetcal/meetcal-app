@@ -5,32 +5,18 @@ use clap::Parser;
 use comfy_table::Table;
 use serde::Deserialize;
 use serde_json::json;
-use tokio::task::JoinSet;
 
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::backend::{FunctionError, queries, query};
+use crate::utils::backend::{CONCURRENT_READS, FunctionError, in_order, queries, query};
 use crate::utils::format::{NO_VALUE, date_range, us_date};
 use crate::utils::meet_names::{editions_by_year, equivalent_meets};
-use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
 use crate::utils::output::{self, Report};
-use crate::utils::progress::Progress;
-use crate::utils::stats::{fold, folded_words};
+use crate::utils::stats::fold;
 
 /// Meets `meets:attendance` counts per call (its limit).
 pub(crate) const ATTENDANCE_BATCH: usize = 8;
 /// The most meets one run counts; more means the words are too broad.
 pub(crate) const MAX_MATCHES: usize = 80;
-/// Name ranges listed at once.
-pub(crate) const CONCURRENCY: usize = 16;
-
-/// Where the results meets' names are split to be listed side by side. They only balance the
-/// work: the ranges between them cover every name.
-const RANGE_BOUNDARIES: &[&str] = &[
-    "2", "2013", "2016", "2018", "2020", "2021", "2022", "2023", "2024", "2025", "2026", "2027",
-    "3", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
-    "S", "Sp", "T", "The 2", "The 2020", "The 2023", "The 3", "U", "V", "W", "X", "a",
-];
-
 /// Show how many took part in a meet year after year. Its name can change between years, so give
 /// the words it always has: every meet whose name contains all of them (ignoring the year, "The"
 /// and punctuation) counts as an edition. Both registrations and results are counted, so a meet
@@ -88,104 +74,66 @@ fn year_in_name(meet: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-pub(crate) fn normalized(meet: &str) -> String {
-    folded_words(meet)
-        .split_whitespace()
-        .filter(|word| {
-            *word != "the" && !(word.len() == 4 && word.chars().all(|c| c.is_ascii_digit()))
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+#[derive(Debug, Deserialize)]
+pub(crate) struct MatchingNames {
+    pub(crate) meets: Vec<String>,
+    pub(crate) count: usize,
 }
 
-/// Whether `meet` contains every one of `words` and none of `exclude`.
-pub(crate) fn matches(meet: &str, words: &[String], exclude: &[String]) -> bool {
-    let name = normalized(meet);
-    words.iter().all(|word| {
-        let word = normalized(word);
-        word.is_empty() || name.contains(&word)
-    }) && !exclude.iter().any(|text| {
-        let text = normalized(text);
-        !text.is_empty() && name.contains(&text)
-    })
-}
-
-/// One name range's meet names, every page of it.
-async fn list_range(
-    source: &'static str,
-    from: Option<String>,
-    before: Option<String>,
-) -> Result<Vec<String>> {
-    meet_names_between(source, from, before, MAX_NAME_PAGES, false).await
-}
-
-/// Every meet name in the results and the registrations.
-async fn all_meet_names() -> Result<Vec<String>> {
-    // Each range starts just before its boundary: `after` is exclusive, so a name equal to the
-    // boundary would be skipped by starting at the boundary itself.
-    let mut ranges: Vec<(Option<String>, Option<String>)> = Vec::new();
-    let mut start: Option<String> = None;
-    for boundary in RANGE_BOUNDARIES {
-        ranges.push((start.clone(), Some(boundary.to_string())));
-        start = Some(just_before(boundary));
-    }
-    ranges.push((start, None));
-
-    let mut names = Vec::new();
-    let mut pending = ranges.into_iter();
-    let mut tasks = JoinSet::new();
-    let total = RANGE_BOUNDARIES.len() + 1;
-    let mut done = 0;
-    let mut progress = Progress::new("Listing meets");
-    for (from, before) in pending.by_ref().take(CONCURRENCY) {
-        tasks.spawn(list_range("results", from, before));
-    }
-    tasks.spawn(list_range("registrations", None, None));
-    while let Some(result) = tasks.join_next().await {
-        names.extend(result??);
-        done += 1;
-        progress.update(format!("{}/{}", done.min(total), total));
-        if let Some((from, before)) = pending.next() {
-            tasks.spawn(list_range("results", from, before));
-        }
-    }
-    drop(progress);
-    names.sort();
-    names.dedup();
-    Ok(names)
+fn given(values: &[String]) -> Vec<&str> {
+    values
+        .iter()
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .collect()
 }
 
 pub async fn run(args: AttendanceArgs) -> Result<()> {
-    let names = all_meet_names().await?;
-    let matched: Vec<String> = names
-        .into_iter()
-        .filter(|meet| matches(meet, &args.words, &args.exclude))
-        .collect();
     let search = args.words.join(" ");
-    if matched.is_empty() {
+    let words = given(&args.words);
+    if words.is_empty() {
+        bail!("Give a word every edition's name contains, such as `meetcal attendance ohio wso`.");
+    }
+    let found: MatchingNames = query(
+        queries::MEET_NAMES_MATCHING,
+        &json!({ "words": words, "exclude": given(&args.exclude) }),
+    )
+    .await?;
+    if found.count == 0 {
         bail!("No meet names contain \"{search}\". Try fewer or shorter words.");
     }
-    if matched.len() > MAX_MATCHES {
+    if found.count > MAX_MATCHES {
         bail!(
             "{} meets contain \"{search}\"; add words or --exclude to narrow it (at most {MAX_MATCHES}).",
-            matched.len()
+            found.count
         );
     }
+    let matched = found.meets;
 
-    let mut editions: Vec<Edition> = Vec::new();
     let answers = answers_for(&matched, |batch| async move {
         query::<Vec<Edition>, _>(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await
     })
     .await?;
-    for answered in answers {
-        for edition in answered {
-            if edition.spans_years() {
-                let rows: Vec<LiftingResults> =
-                    query(queries::MEET_RESULTS, &json!({ "meet": edition.meet })).await?;
-                editions.extend(split_by_year(&edition, rows));
-            } else {
-                editions.push(edition);
+    let answered: Vec<Edition> = answers.into_iter().flatten().collect();
+    let reads = answered
+        .iter()
+        .filter(|edition| edition.spans_years())
+        .map(|edition| {
+            let meet = edition.meet.clone();
+            async move {
+                query::<Vec<LiftingResults>, _>(queries::MEET_RESULTS, &json!({ "meet": meet }))
+                    .await
             }
+        });
+    let mut yearly_rows = in_order(CONCURRENT_READS, reads).await?.into_iter();
+    let mut editions: Vec<Edition> = Vec::new();
+    for edition in answered {
+        if edition.spans_years()
+            && let Some(rows) = yearly_rows.next()
+        {
+            editions.extend(split_by_year(&edition, rows));
+        } else {
+            editions.push(edition);
         }
     }
     output::emit(report(&search, &editions));
@@ -490,23 +438,6 @@ mod tests {
         assert_eq!(output::value(&count(12)), serde_json::json!(12));
     }
 
-    #[test]
-    fn words_match_a_meet_name_written_with_another_accent_form_or_case() {
-        let words = |text: &str| vec![text.to_string()];
-        assert!(matches(
-            "Copa Atlético 2026",
-            &words("atle\u{301}tico"),
-            &[]
-        ));
-        assert!(matches("COPA ATLÉTICO 2026", &words("atlético"), &[]));
-        assert!(!matches("Copa Atlético 2026", &words("atletico"), &[]));
-        assert!(matches(
-            "The 2026 Ohio WSO Championships",
-            &words("ohio wso"),
-            &[]
-        ));
-    }
-
     fn refused(status: u16) -> anyhow::Error {
         anyhow::Error::new(FunctionError {
             function: "meets:attendance".to_owned(),
@@ -575,43 +506,6 @@ mod tests {
         assert_eq!(second, &names[3..]);
         let (first, second) = halves(&names[..2]);
         assert_eq!((first.len(), second.len()), (1, 1));
-    }
-
-    fn words(values: &[&str]) -> Vec<String> {
-        values.iter().map(|value| value.to_string()).collect()
-    }
-
-    #[test]
-    fn names_match_across_years_and_wording() {
-        let wanted = words(&["ohio", "wso"]);
-        assert!(matches("2026 Ohio WSO Championships", &wanted, &[]));
-        assert!(matches("The 2023 Ohio WSO Championship", &wanted, &[]));
-        assert!(!matches("2026 Ohio Open", &wanted, &[]));
-        let nationals = words(&["national", "championships"]);
-        let exclude = words(&["junior", "youth"]);
-        assert!(matches(
-            "2025 USA Weightlifting National Championships, Powered by Rogue",
-            &nationals,
-            &exclude
-        ));
-        assert!(!matches(
-            "The 2025 National Junior Championships, Powered by Rogue",
-            &nationals,
-            &exclude
-        ));
-        assert_eq!(
-            normalized("The 2026 DMV WSO Championships!"),
-            "dmv wso championships"
-        );
-    }
-
-    #[test]
-    fn ranges_start_just_before_each_boundary() {
-        let before = just_before("B");
-        assert!(before.as_str() < "B");
-        assert!(before.as_str() > "Azzzz");
-        assert!(just_before("2020").as_str() < "2020");
-        assert!(just_before("2020").as_str() > "2019 Zeta Meet");
     }
 
     fn edition(

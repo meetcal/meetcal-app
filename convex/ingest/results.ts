@@ -442,7 +442,9 @@ export const linkLifterResults = internalMutation({
         counts.changed += 1;
         if (!dryRun) await ctx.db.patch(row._id, { lifterId: link?.lifterId, lifterMatch: link?.lifterMatch });
       }
-      if (!dryRun) await clearRelink(ctx, nameKey);
+      if (dryRun) continue;
+      await writeHistories(ctx, [nameKey]);
+      await clearRelink(ctx, nameKey);
     }
     return { ...counts, stale };
   },

@@ -33,6 +33,7 @@ export const PREMIUM_QUERY_FUNCTIONS: ReadonlySet<string> = new Set([
   'results:yearBests',
   'results:bests',
   'results:groupMedals',
+  'results:athlete',
   'results:search',
   'meets:packageForMeet',
 ]);

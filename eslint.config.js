@@ -5,6 +5,35 @@ const react = require("eslint-plugin-react");
 const reactNative = require("eslint-plugin-react-native");
 const globals = require("globals");
 
+const uncheckedCasts = [
+  {
+    selector: "TSAsExpression > TSAsExpression > TSUnknownKeyword",
+    message: "Narrow the value field by field instead of casting through unknown.",
+  },
+  {
+    selector: "TSAsExpression > CallExpression[callee.object.name='JSON'][callee.property.name='parse']",
+    message: "JSON.parse answers unknown: check the shape instead of casting it.",
+  },
+];
+
+const WHOLE_REQUEST_TIMEOUT =
+  "A request times out when its bytes stop arriving (startInactivityTimer in src/lib/api/network-policy.ts, which the transport runs), never after a fixed time from its start.";
+
+const wholeRequestTimeouts = [
+  {
+    selector: "MemberExpression[object.name='AbortSignal'][property.name='timeout']",
+    message: WHOLE_REQUEST_TIMEOUT,
+  },
+  {
+    selector: "CallExpression[callee.name='setTimeout'] CallExpression[callee.property.name=/^(abort|cancel)$/]",
+    message: WHOLE_REQUEST_TIMEOUT,
+  },
+  {
+    selector: "CallExpression[callee.name='setTimeout'] CallExpression[callee.name='reject']",
+    message: WHOLE_REQUEST_TIMEOUT,
+  },
+];
+
 module.exports = defineConfig([
   expoConfig,
   {
@@ -87,19 +116,16 @@ module.exports = defineConfig([
         { assertionStyle: "as", objectLiteralTypeAssertions: "never" },
       ],
       "@typescript-eslint/no-unsafe-type-assertion": "error",
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector: "TSAsExpression > TSAsExpression > TSUnknownKeyword",
-          message: "Narrow the value field by field instead of casting through unknown.",
-        },
-        {
-          selector: "TSAsExpression > CallExpression[callee.object.name='JSON'][callee.property.name='parse']",
-          message: "JSON.parse answers unknown: check the shape instead of casting it.",
-        },
-      ],
+      "no-restricted-syntax": ["error", ...uncheckedCasts],
       "max-lines": ["error", { max: 600, skipBlankLines: true, skipComments: true }],
       "react-native/no-color-literals": "error",
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["**/*.test.{ts,tsx}", "src/test-support/**", "src/lib/api/network-policy.ts", "src/lib/api/transport.ts"],
+    rules: {
+      "no-restricted-syntax": ["error", ...uncheckedCasts, ...wholeRequestTimeouts],
     },
   },
   {

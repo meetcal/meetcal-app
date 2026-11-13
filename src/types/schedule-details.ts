@@ -32,6 +32,7 @@ export interface HeaderSectionProps {
 
 // Type for just the athlete data we need
 export interface SessionAthlete {
+  memberId: string;
   name: string;
   age: number;
   club: string;

@@ -65,6 +65,7 @@ export const PREMIUM_FUNCTIONS = [
   'results:yearBests',
   'results:bests',
   'results:groupMedals',
+  'results:athlete',
   // Only with dates: name suggestions alone stay public.
   'results:search',
   'meets:packageForMeet',

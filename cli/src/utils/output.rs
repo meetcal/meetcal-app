@@ -240,6 +240,7 @@ impl Report {
 /// run then ends quietly with status 0, as other command line tools do, instead of panicking
 /// in `println!`. Any other failure to write ends it with status 1.
 pub(crate) fn emit(report: Report) {
+    crate::utils::progress::stop_waiting_line();
     let mut stdout = io::stdout().lock();
     let written = write(&mut stdout, &report, format()).and_then(|()| stdout.flush());
     if let Err(error) = written {

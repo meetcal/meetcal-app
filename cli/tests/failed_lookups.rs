@@ -36,6 +36,7 @@ fn run_against(base_url: &str, args: &[&str]) -> Output {
         .args(args)
         .env("MEETCAL_CONVEX_URL", base_url)
         .env("XDG_CONFIG_HOME", &config)
+        .env("XDG_CACHE_HOME", &config)
         .env("MEETCAL_NO_UPDATE_CHECK", "1")
         .output()
         .expect("run meetcal")

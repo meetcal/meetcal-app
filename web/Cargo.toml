@@ -6,17 +6,15 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.103"
 futures = "0.3.32"
-# Already built for `url`'s IDNA; composes names to NFC as the server does.
 icu_normalizer = { version = "2.2", default-features = false, features = ["compiled_data"] }
 js-sys = "0.3.103"
 leptos = { version = "0.8.20", features = ["csr"] }
 leptos_router = "0.8.14"
-reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = { version = "1.0.149", features = ["raw_value"] }
 wasm-bindgen = "0.2.103"
 wasm-bindgen-futures = "0.4.53"
-web-sys = { version = "0.3.103", features = ["Clipboard", "Document", "Blob", "Element", "File", "FileList", "HtmlElement", "HtmlInputElement", "Navigator", "Window"] }
+web-sys = { version = "0.3.103", features = ["AbortController", "AbortSignal", "Blob", "Clipboard", "Document", "Element", "File", "FileList", "Headers", "HtmlElement", "HtmlInputElement", "Navigator", "RequestInit", "Response", "Window", "XmlHttpRequest", "XmlHttpRequestEventTarget", "XmlHttpRequestUpload"] }
 
 # The site ships as one Wasm binary; size is what a visitor waits for (#203).
 # Trunk also runs wasm-opt -Oz on it (`data-wasm-opt` in index.html).
@@ -36,3 +34,8 @@ expect_used = "deny"
 indexing_slicing = "deny"
 panic = "deny"
 wildcard_enum_match_arm = "deny"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+any_spawner = "0.3.0"
+leptos = { version = "0.8.20", features = ["ssr"] }
+leptos_router = { version = "0.8.14", features = ["ssr"] }

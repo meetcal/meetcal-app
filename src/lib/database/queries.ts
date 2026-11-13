@@ -1,5 +1,5 @@
 import type { Schedule } from '@/types/schedule';
-import type { AthleteMeetResult, LiftResult } from '@/data/types/athletes';
+import type { AthleteLookup, AthleteMeetResult, LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import {
   getMockAthletesWithSession,
@@ -8,7 +8,7 @@ import {
 } from '@/config/dev-mock-meet';
 import { fetchApiAthletes, fetchApiAthletesWithSession, fetchApiRosterTagged, fetchApiSchedule } from '@/lib/api/meets-api';
 import type { TaggedAnswer } from '@/lib/api/revalidated-reads';
-import { fetchApiRecentResultsByNames, fetchApiResultsByNames, searchApi } from '@/lib/api/results-api';
+import { fetchApiRecentResultsByNames, fetchAthlete, searchApi, type AthleteRequest } from '@/lib/api/results-api';
 
 const scheduleInFlight = new Map<MeetName, Promise<Schedule>>();
 const athletesWithSessionInFlight = new Map<string, Promise<LiftResult[]>>();
@@ -104,8 +104,8 @@ export async function searchAthletesByName(query: string): Promise<string[]> {
   }
 }
 
-export async function fetchAllResultsForName(name: string): Promise<AthleteMeetResult[]> {
-  return fetchApiResultsByNames([name]);
+export async function fetchAthleteResults(request: AthleteRequest): Promise<AthleteLookup> {
+  return fetchAthlete(request);
 }
 
 export async function fetchRecentAthleteHistoryForNames(

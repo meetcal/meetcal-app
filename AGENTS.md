@@ -96,6 +96,7 @@ Package manager is **bun**, pinned in `mise.toml`. Do not use npm.
 | Watch tests | `bun run test` |
 | Coverage | `bun run test:coverage` |
 | Coverage gaps | `bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts` |
+| iOS bundle budget | `mise run app:bundle` (exports iOS and checks `scripts/bundle/budget.ts`: the Hermes bundle's size and the packages it must not carry; the App Bundle workflow (`.github/workflows/app-bundle.yml`) runs it when an input of the bundle changes, `mise run check` does not, since an export takes minutes) |
 | Maestro | `bun run maestro:test` (needs a booted simulator; starts its own E2E Metro; see `docs/maestro.md`) |
 | iOS / Android | `bun run ios` / `bun run android` |
 | iOS for iPhone Duo | `DEVELOPER_DIR="/Applications/Xcode copy.app/Contents/Developer" bun run ios --device <duo-udid>` (needs the iOS 27.1 SDK; see `docs/iphone-duo.md`) |

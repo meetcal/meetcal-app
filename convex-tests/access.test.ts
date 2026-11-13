@@ -205,7 +205,7 @@ describe('the premium queries', () => {
     const siriList = [...list.matchAll(/"([^"]+)"/g)].flatMap((match) => match[1] ?? []);
     const called = [...new Set([...swift.matchAll(/\b(?:query|requestBody)\(\s*"([A-Za-z]+:[A-Za-z]+)"/g)].flatMap((match) => match[1] ?? []))];
     const premium: readonly string[] = PREMIUM_FUNCTIONS;
-    expect(called).toEqual(expect.arrayContaining(['meets:list', 'results:byNames', 'reference:records', 'accessPass:pass']));
+    expect(called).toEqual(expect.arrayContaining(['meets:list', 'results:athlete', 'reference:records', 'accessPass:pass']));
     expect(called.filter((name) => premium.includes(name) && !siriList.includes(name))).toEqual([]);
     expect(siriList.filter((name) => !premium.includes(name))).toEqual([]);
   });

@@ -130,6 +130,11 @@ jobs:
           tar -czf dist/${{ matrix.artifact }}.tar.gz -C dist/${{ matrix.artifact }} meetcal
           shasum -a 256 dist/${{ matrix.artifact }}.tar.gz
 
+      - name: Check the Linux x64 binary and its tarball against their size budgets
+        if: matrix.artifact == 'linux-x64'
+        working-directory: cli
+        run: scripts/check-size.sh dist/${{ matrix.artifact }}/meetcal dist/${{ matrix.artifact }}.tar.gz
+
       # A binary that needs a newer glibc than its floor installs through Homebrew and then fails
       # at its first run with "version `GLIBC_2.xx' not found". Weak references are optional at
       # load time, so only strong ones count.

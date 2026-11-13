@@ -225,16 +225,21 @@ pub(crate) async fn wso_age_groups(wso: &str) -> Result<Vec<String>> {
 pub(crate) async fn known_names(kind: NameKind, input: &str) -> Result<Vec<String>> {
     match kind {
         NameKind::Meet | NameKind::ResultsMeet => {
-            let upcoming = upcoming_meets().await?;
-            let completed = completed_meets().await?;
-            let mut names: Vec<String> = upcoming
+            let results_meets = async {
+                if kind == NameKind::ResultsMeet {
+                    results_meets_with_prefixes(meet_prefixes(input)).await
+                } else {
+                    Vec::new()
+                }
+            };
+            let (upcoming, completed, results_meets) =
+                tokio::join!(upcoming_meets(), completed_meets(), results_meets);
+            let mut names: Vec<String> = upcoming?
                 .into_iter()
-                .chain(completed)
+                .chain(completed?)
                 .map(|meet| meet.name)
+                .chain(results_meets)
                 .collect();
-            if kind == NameKind::ResultsMeet {
-                names.extend(results_meets_with_prefixes(meet_prefixes(input)).await);
-            }
             names.sort();
             names.dedup();
             Ok(names)

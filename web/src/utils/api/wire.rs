@@ -1,6 +1,6 @@
 use super::{Body, Query, QueryResponse, read_body};
 use serde::{Deserialize, de::DeserializeOwned};
-use serde_json::{Value, json};
+use serde_json::{Value, json, value::RawValue};
 
 macro_rules! wire_fixture {
     ($name:literal) => {
@@ -63,16 +63,20 @@ pub(crate) fn answers(function: &str, body: Body, fixture: &str) -> Vec<Value> {
         .collect()
 }
 
+fn raw(value: &Value) -> Box<RawValue> {
+    RawValue::from_string(value.to_string()).unwrap()
+}
+
 pub(crate) fn read<T: DeserializeOwned>(query: Query, fixture: &str) -> Vec<T> {
     answers(query.function, query.body, fixture)
         .into_iter()
-        .map(|value| read_body(query, value).unwrap())
+        .map(|value| read_body(query, &raw(&value)).unwrap())
         .collect()
 }
 
 pub(super) fn responses(function: &str, fixture: &str) -> Vec<QueryResponse> {
     answers(function, Body::Value, fixture)
         .into_iter()
-        .map(|value| QueryResponse::Success { value })
+        .map(|value| QueryResponse::Success { value: raw(&value) })
         .collect()
 }
