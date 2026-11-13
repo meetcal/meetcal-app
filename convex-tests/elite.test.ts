@@ -315,8 +315,8 @@ describe('results:wsoElite', () => {
     federation,
   });
 
-  function actionCtx() {
-    const { db } = fakeDb({
+  function actionCtx(more: Record<string, Record<string, unknown>[]> = {}) {
+    const seed: Record<string, Record<string, unknown>[]> = {
       access_passes: PASSES,
       meets: [meet('Nationals 2025', '2025-06-01'), meet('Open 2026', '2026-02-01')],
       athletes: [
@@ -340,7 +340,9 @@ describe('results:wsoElite', () => {
         stored('Cy', '2025-04-01', "Open Women's 63kg", 62, 100, 120),
         stored('Bo', '2025-04-01', "Junior Men's 88kg", 87, 130, 170),
       ],
-    });
+    };
+    for (const [table, rows] of Object.entries(more)) seed[table] = [...(seed[table] ?? []), ...rows];
+    const { db } = fakeDb(seed);
     const handlers: Record<string, unknown> = {
       'accessPass:passes': passes,
       'results:eliteRegistrations': eliteRegistrations,
@@ -369,6 +371,25 @@ describe('results:wsoElite', () => {
     expect(answer.lists.masters.method).toBe('qmasters');
     expect(answer.lists.masters.women).toEqual([expect.objectContaining({ name: 'Bea', age: 46, score: qmasters(140, 62, 'Women', 46) })]);
     expect(answer.lists.youth).toEqual({ method: 'percentA', men: [], women: [] });
+  });
+
+  it('scores a member by their name’s results while no lifter holds any of them, and not once a namesake lifter does or two members share the name', async () => {
+    const womenOf = async (more: Record<string, Record<string, unknown>[]>) =>
+      (await run(actionCtx(more), {})).lists.overall.women.map((row) => row.name);
+    const adaIsL1 = { lifter_memberships: [{ membership: '1', athleteId: 'L1' }] };
+    expect(await womenOf(adaIsL1)).toEqual(['Ada', 'Bea']);
+    expect(
+      await womenOf({ ...adaIsL1, lifting_results: [{ ...stored('Ada', '2023-06-01', "Open Women's 63kg", 62, 70, 90), lifterId: 'L2' }] }),
+    ).toEqual(['Bea']);
+    expect(
+      await womenOf({
+        lifter_memberships: [
+          { membership: '1', athleteId: 'L1' },
+          { membership: '5', athleteId: 'L5' },
+        ],
+        athletes: [registration('5', 'Ada', 'Carolina', 'Nationals 2025', 25)],
+      }),
+    ).toEqual(['Bea']);
   });
 
   it('scores each list by the method asked for', async () => {
