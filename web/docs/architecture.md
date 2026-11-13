@@ -320,17 +320,22 @@ Convex's answer.
   and whether they organize it.
 - A meet with a published schedule (`defaults.published`) opens on it: the page sends
   `base: 'published'` with every preview, export, draft and publish, and the options form's button
-  reads Rebuild From Scratch, which asks first (the same confirmation as Build Again) and then
-  builds from the entries as before. Saved work reopens only when it was made on the same base and
-  version (`basis`, kept with each draft and each browser copy); otherwise the published schedule
-  opens with a line saying the saved work was set aside. A live publish from the published schedule
-  makes the answered `version` the new base and clears the edits.
+  reads Rebuild From Scratch, which asks first (the same confirmation as Build Again, saying that it
+  regroups the start list with Sport80's new lifters and without the ones it no longer lists) and
+  then builds with `base: 'entries'`, keeping the schedule's version, which every publish of a
+  meet with a schedule sends. Drafts and the browser copy keep their base and version (`basis`).
+  Saved work reopens when it was made on the meet's current version, from scratch or not, or, for a
+  meet with no schedule, on its entries; otherwise the page opens on the schedule as it is now (or
+  the entries) with a line saying why the saved work was set aside. Any live publish makes the
+  answered `version` the new base and clears the edits.
 - On the published schedule a Sport80 Changes section reads `preview`'s `changes`: when Sport80
   was last checked, Check Sport80 Now (the action `scheduleBuilderLoad:load` on `defaults.sport80Link`,
-  then the preview again), and each new lifter with "Add to Session N · Platform" (the server's
-  suggestion) and Add To…, the same disclosure list as Move To…, both sending `addAthlete`, plus how
-  many new lifters stay off the start list. Lifters no longer on Sport80 are marked on the board,
-  each with Remove (`removeAthlete`), and the section says how many there are.
+  then the preview again; inside the load's cooldown it says when Sport80 was checked and when it
+  can be checked again, from the answer's `checkedAt` and `nextCheckAt`), and each new lifter with
+  "Add to Session N · Platform" (the server's suggestion) and Add To…, the same disclosure list as
+  Move To…, both sending `addAthlete`, plus how many new lifters stay off the start list. Lifters no
+  longer on Sport80 are marked on the board, each with Remove (`removeAthlete`), and the section
+  says how many there are.
 - A function error's `error` is shown as the sentence the server wrote, and a 401 asks the user to
   sign in again.
 

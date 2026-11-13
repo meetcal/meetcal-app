@@ -102,7 +102,7 @@ function requireWhole(field: keyof typeof BUILDER_LIMITS, value: number): void {
   }
 }
 
-export function checkBuilderOptions(options: BuilderOptions): void {
+export function checkBuilderOptions(options: BuilderOptions, publishedPlatforms: ReadonlySet<string> = new Set()): void {
   if (options.days.length === 0 || options.days.length > MAX_BUILDER_DAYS) {
     throw apiError(400, `days must list 1 to ${MAX_BUILDER_DAYS} meet days`, { max: MAX_BUILDER_DAYS });
   }
@@ -126,6 +126,7 @@ export function checkBuilderOptions(options: BuilderOptions): void {
   }
   const names = new Set<string>();
   for (const platform of options.platforms) {
+    if (publishedPlatforms.has(platform)) continue;
     const name = platform.trim();
     if (name === '' || name.length > MAX_PLATFORM_NAME_LENGTH) throw apiError(400, `a platform name must be 1 to ${MAX_PLATFORM_NAME_LENGTH} characters`);
     if (name !== platform) throw apiError(400, `the platform name ${JSON.stringify(platform)} has spaces around it`);

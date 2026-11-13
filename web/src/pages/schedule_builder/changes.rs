@@ -3,7 +3,8 @@ use super::board::{
 };
 use super::browser::local_date_time;
 use super::models::{
-    AddedEntrant, BuiltSchedule, MoveTarget, added_note, place_targets, withdrawn_note,
+    AddedEntrant, BuiltSchedule, MoveTarget, added_note, cooldown_note, place_targets,
+    withdrawn_note,
 };
 use crate::utils::api::{self, BuilderEdit};
 use leptos::prelude::*;
@@ -25,6 +26,7 @@ pub(crate) fn sport80_panel(
 ) -> AnyView {
     let checking = RwSignal::new(false);
     let problem = RwSignal::new(None::<String>);
+    let cooldown = RwSignal::new(None::<String>);
     let no_link = sport80_link.is_none();
     let link = StoredValue::new(sport80_link.unwrap_or_default());
     let check = move |_| {
@@ -33,11 +35,23 @@ pub(crate) fn sport80_panel(
         }
         checking.set(true);
         problem.set(None);
+        cooldown.set(None);
         spawn_local(async move {
-            if let Err(error) = api::load_builder_meet(&link.get_value()).await {
-                problem.try_set(Some(error.to_string()));
-            } else {
-                checks.try_update(|count| *count += 1);
+            match api::load_builder_meet(&link.get_value()).await {
+                Err(error) => {
+                    problem.try_set(Some(error.to_string()));
+                }
+                Ok(loaded) => match (loaded.refreshed, loaded.checked_at, loaded.next_check_at) {
+                    (false, Some(checked_at), Some(next_check_at)) => {
+                        cooldown.try_set(Some(cooldown_note(
+                            &local_date_time(checked_at),
+                            &local_date_time(next_check_at),
+                        )));
+                    }
+                    _ => {
+                        checks.try_update(|count| *count += 1);
+                    }
+                },
             }
             checking.try_set(false);
         });
@@ -74,6 +88,9 @@ pub(crate) fn sport80_panel(
                 </button>
             </div>
             {move || alert_line(problem.get(), "access-inline-error")}
+            <p class="builder-help" role="status">
+                {move || cooldown.get()}
+            </p>
             {move || board.with(|board| change_lists(board.as_ref(), platforms, actions))}
         </section>
     }

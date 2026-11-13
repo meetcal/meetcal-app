@@ -175,8 +175,8 @@ describe('load bookkeeping', () => {
     const { as } = server();
     expect(await as(null)(claimLoad, { eventId: '15084' })).toEqual({ claim: expect.any(String) });
     const claim = claimOf(await as(null)(claimLoad, { eventId: '15084' }));
-    await as(null)(finishLoad, { claim, meet: MEET });
-    expect(await as(null)(claimLoad, { eventId: '15084' })).toEqual({ recentMeet: MEET });
+    expect(await as(null)(finishLoad, { claim, meet: MEET })).toBe(NOW);
+    expect(await as(null)(claimLoad, { eventId: '15084' })).toEqual({ recentMeet: MEET, loadedAt: NOW });
   });
 
   it('loads again after the cooldown', async () => {
@@ -323,17 +323,17 @@ describe('load', () => {
 
   it('stores a new meet with its event id, follows its entries and stores them, then reuses them within the cooldown', async () => {
     const store = actionServer();
-    expect(await store.load(URL)).toEqual({ meet: 'Turkey Cup', refreshed: true });
+    expect(await store.load(URL)).toEqual({ meet: 'Turkey Cup', refreshed: true, checkedAt: NOW, nextCheckAt: NOW + LOAD_COOLDOWN_MS });
     expect(store.rows('meets').map((m) => [m.name, m.sourceId, m.startDate, m.timeZone])).toEqual([['Turkey Cup', '15084', '2027-03-06', 'America/Chicago']]);
     expect(store.rows('entry_targets').map((t) => t.url)).toEqual([URL]);
     expect(store.rows('athletes').map((a) => a.name)).toEqual(['Ann Lifter']);
-    expect(await store.load(`${URL}?bl=locator`)).toEqual({ meet: 'Turkey Cup', refreshed: false });
+    expect(await store.load(`${URL}?bl=locator`)).toEqual({ meet: 'Turkey Cup', refreshed: false, checkedAt: NOW, nextCheckAt: NOW + LOAD_COOLDOWN_MS });
     expect(fetchEntriesMeetMock).toHaveBeenCalledTimes(1);
   });
 
   it('uses a meet already stored under the event id without reading the listing', async () => {
     const store = actionServer({ meets: [{ ...meetRow, name: 'Stored Cup' }] });
-    expect(await store.load(URL)).toEqual({ meet: 'Stored Cup', refreshed: true });
+    expect(await store.load(URL)).toMatchObject({ meet: 'Stored Cup', refreshed: true });
     expect(fetchWidgetPageMock).not.toHaveBeenCalled();
   });
 
@@ -368,7 +368,7 @@ describe('load', () => {
       'takes the entries list of %s from its row in the upcoming listing, reading the listing once',
       async (link) => {
         const store = actionServer();
-        expect(await store.load(link)).toEqual({ meet: 'Turkey Cup', refreshed: true });
+        expect(await store.load(link)).toMatchObject({ meet: 'Turkey Cup', refreshed: true });
         expect(fetchWidgetPageMock.mock.calls).toEqual([[UPCOMING]]);
         expect(fetchEntriesMeetMock).toHaveBeenCalledWith(URL);
         expect(store.rows('entry_targets').map((t) => t.url)).toEqual([URL]);
@@ -379,8 +379,8 @@ describe('load', () => {
     it('shares the cooldown with the entries link of the same event', async () => {
       const store = actionServer();
       await store.load(URL);
-      expect(await store.load(MEET_PAGE)).toEqual({ meet: 'Turkey Cup', refreshed: false });
-      expect(await store.load(WIZARD)).toEqual({ meet: 'Turkey Cup', refreshed: false });
+      expect(await store.load(MEET_PAGE)).toMatchObject({ meet: 'Turkey Cup', refreshed: false });
+      expect(await store.load(WIZARD)).toMatchObject({ meet: 'Turkey Cup', refreshed: false });
       expect(fetchWidgetPageMock).toHaveBeenCalledTimes(1);
       expect(fetchEntriesMeetMock).toHaveBeenCalledTimes(1);
     });
@@ -426,7 +426,7 @@ describe('load', () => {
       expect(await afterTheBudget(store.load(URL), LOAD_BUDGET_MS)).toEqual(SLOW);
       expect(store.rows('schedule_builder_loads').map((row) => row.meet)).toEqual(['']);
       jest.useRealTimers();
-      expect(await store.load(URL)).toEqual({ meet: 'Turkey Cup', refreshed: true });
+      expect(await store.load(URL)).toMatchObject({ meet: 'Turkey Cup', refreshed: true });
     });
 
     it('stops before the next Sport80 read once an earlier one used up the budget', async () => {
@@ -451,7 +451,7 @@ describe('load', () => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const store = actionServer();
     expect(await failure(store.load(URL))).toEqual({ status: 502, error: 'Sport80 did not answer; try again in a minute' });
-    expect(await store.load(URL)).toEqual({ meet: 'Turkey Cup', refreshed: true });
+    expect(await store.load(URL)).toMatchObject({ meet: 'Turkey Cup', refreshed: true });
   });
 });
 

@@ -351,6 +351,8 @@ export default defineSchema({
     edits: v.array(builderEditValidator),
     base: v.optional(scheduleBaseValidator),
     baseVersion: v.optional(baseVersionValidator),
+    added: v.optional(v.array(v.string())),
+    removed: v.optional(v.array(v.string())),
     status: v.union(v.literal('pending'), v.literal('live'), v.literal('approved'), v.literal('rejected'), v.literal('superseded'), v.literal('expired')),
     createdAt: v.number(),
     decidedAt: v.optional(v.number()),
@@ -385,6 +387,8 @@ export default defineSchema({
   }).index('by_meet', ['meet']),
 
   sport80_entrant_checks: defineTable({ meet: v.string(), checkedAt: v.number(), count: v.number() }).index('by_meet', ['meet']),
+
+  schedule_revisions: defineTable({ meet: v.string(), revision: v.number(), options: v.optional(builderOptionsValidator) }).index('by_meet', ['meet']),
 
   // A user's `Subscriptions` entitlement as RevenueCat's API last reported it
   // (`convex/entitlements.ts`), one row per Clerk user id (RevenueCat's app

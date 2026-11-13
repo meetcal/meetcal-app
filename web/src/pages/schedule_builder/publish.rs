@@ -51,7 +51,7 @@ fn after_publish(
     edits: Vec<BuilderEdit>,
     outcome: &PublishOutcome,
 ) -> (Basis, Vec<BuilderEdit>) {
-    if outcome.status == PublishStatus::Live && basis.base == ScheduleBase::Published {
+    if outcome.status == PublishStatus::Live {
         (
             Basis {
                 base: ScheduleBase::Published,
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn a_live_publish_from_the_published_schedule_becomes_the_new_base() {
+    fn a_live_publish_makes_the_schedule_it_wrote_the_new_base() {
         let live = PublishOutcome {
             status: PublishStatus::Live,
             sessions: 2,
@@ -439,8 +439,22 @@ mod tests {
             after_publish(opened.clone(), vec![edit.clone()], &pending),
             (opened, vec![edit.clone()])
         );
+        let from_scratch = Basis {
+            base: ScheduleBase::Entries,
+            base_version: Some("p1".to_owned()),
+        };
         assert_eq!(
-            after_publish(Basis::default(), vec![edit.clone()], &live),
+            after_publish(from_scratch, vec![edit.clone()], &live),
+            (
+                Basis {
+                    base: ScheduleBase::Published,
+                    base_version: Some("p2".to_owned())
+                },
+                Vec::new()
+            )
+        );
+        assert_eq!(
+            after_publish(Basis::default(), vec![edit.clone()], &pending),
             (Basis::default(), vec![edit])
         );
     }

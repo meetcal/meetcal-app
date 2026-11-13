@@ -2,7 +2,8 @@ import { chunks } from './concurrency';
 import { groupOfAge } from './elite';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import { normalizeName } from './names';
-import { hasSession } from './roster';
+import { hasNoMemberId } from './memberIds';
+import { hasSession, sameNameAndGender } from './roster';
 import { platformLabel } from './schedulePublishing';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { bareWeightClass } from './weightClass';
@@ -28,6 +29,7 @@ export type BuilderEntrant = {
   gender: string;
   weightClass: string;
   entryTotal: number;
+  rosterId?: string;
 };
 
 export type AgePool = 'youth' | 'open' | 'masters' | '';
@@ -77,8 +79,9 @@ export function ageGroupOf(age: number, separate: boolean): AgePool {
 }
 
 function builtAthleteOf(entrant: BuilderEntrant): BuiltAthlete {
-  const { memberId, name, age, club, gender, weightClass, entryTotal } = entrant;
-  return { memberId, name, age, club, gender: normalizeGender(gender), weightClass: bareWeightClass(weightClass), entryTotal, key: athleteKey(entrant) };
+  const { memberId, name, age, club, gender, weightClass, entryTotal, rosterId } = entrant;
+  const built = { memberId, name, age, club, gender: normalizeGender(gender), weightClass: bareWeightClass(weightClass), entryTotal, key: athleteKey(entrant) };
+  return rosterId === undefined ? built : { ...built, rosterId };
 }
 
 const byTotal = (a: BuiltAthlete, b: BuiltAthlete) => a.entryTotal - b.entryTotal || compareCollated(a.name, b.name) || compareBytes(a.key, b.key);
@@ -380,7 +383,9 @@ export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinute
   return warnings;
 }
 
-function finish(slots: readonly Slot[], options: BuilderOptions, athletes: number, skipped: number): BuiltSchedule {
+type Numbering = 'inTimeOrder' | 'asPublished';
+
+function finish(slots: readonly Slot[], options: BuilderOptions, athletes: number, skipped: number, numbering: Numbering = 'inTimeOrder'): BuiltSchedule {
   const warnings: BuilderWarning[] = [];
   const editedSplits = new Set(slots.flatMap((slot) => [...slot.groups.values()].filter((g) => g.edited && g.splitOf !== '').map((g) => g.splitOf)));
   const kept = slots
@@ -399,13 +404,14 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       return compareBytes(a.slot.date, b.slot.date) || (aStart ?? 0) - (bStart ?? 0) || a.slot.id - b.slot.id;
     });
   const sessions = kept.map(({ slot, groups }, i): BuiltSession => {
+    const number = numbering === 'asPublished' ? slot.id : i + 1;
     const scheduled = slot.start !== null && slot.date !== '';
     const builtGroups = groups.map(({ platform, group }): BuiltGroup => {
       const sorted = [...group.athletes].sort(byTotal);
       const labels = groupLabels(group, sorted, options, editedSplits);
-      if (labels.mixed) warnings.push({ code: 'mixedGroup', message: `Session ${i + 1} ${platform} mixes women and men.` });
+      if (labels.mixed) warnings.push({ code: 'mixedGroup', message: `Session ${number} ${platform} mixes women and men.` });
       if (sorted.length > options.maxAthletesPerPlatform) {
-        warnings.push({ code: 'overCapacity', message: `Session ${i + 1} ${platform} has ${sorted.length} athletes, more than the ${options.maxAthletesPerPlatform} allowed.` });
+        warnings.push({ code: 'overCapacity', message: `Session ${number} ${platform} has ${sorted.length} athletes, more than the ${options.maxAthletesPerPlatform} allowed.` });
       }
       return {
         platform,
@@ -418,7 +424,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
     });
     return {
       id: slot.id,
-      number: i + 1,
+      number,
       date: scheduled ? slot.date : '',
       startTime: scheduled ? storedClockOf(slot.start ?? 0) : '',
       weighInTime: scheduled ? storedClockOf((slot.start ?? 0) - WEIGH_IN_MINUTES) : '',
@@ -445,7 +451,7 @@ export function buildSchedule(entrants: readonly BuilderEntrant[], options: Buil
   return finish(slots, options, entrants.length, skipped);
 }
 
-export type RosterAthlete = BuilderEntrant & { sessionNumber?: number; sessionPlatform?: string; adaptive: boolean };
+export type RosterAthlete = BuilderEntrant & { _id: string; sessionNumber?: number; sessionPlatform?: string; adaptive: boolean };
 
 export type PublishedRow = { sessionId: number; date: string; startTime: string; platform: string; weightClass: string };
 
@@ -455,16 +461,35 @@ export type PublishedBase = { rows: readonly PublishedRow[]; roster: readonly Ro
 
 export type PublishedBuild = BuiltSchedule & { unplaced: BuiltAthlete[]; removed: BuiltAthlete[] };
 
-export type Sport80Diff = { added: Sport80Entrant[]; withdrawnKeys: ReadonlySet<string> };
+export type Sport80Diff = { added: Sport80Entrant[]; withdrawnIds: ReadonlySet<string> };
+
+function unnumberedMatch(rosterAthlete: RosterAthlete, entrant: Sport80Entrant): boolean {
+  return (hasNoMemberId(rosterAthlete.memberId) || hasNoMemberId(entrant.memberId)) && sameNameAndGender(rosterAthlete, entrant);
+}
 
 export function sport80Diff(base: PublishedBase): Sport80Diff {
-  if (base.sport80 === null) return { added: [], withdrawnKeys: new Set() };
-  const rosterKeys = new Set(base.roster.map(athleteKey));
-  const listedKeys = new Set(base.sport80.map(athleteKey));
-  return {
-    added: base.sport80.filter((entrant) => !rosterKeys.has(athleteKey(entrant))),
-    withdrawnKeys: new Set(base.roster.filter((a) => hasSession(a) && !a.adaptive && !listedKeys.has(athleteKey(a))).map(athleteKey)),
-  };
+  if (base.sport80 === null) return { added: [], withdrawnIds: new Set() };
+  const unlisted = new Map(base.roster.map((athlete) => [athlete._id, athlete]));
+  const notByIdentity: Sport80Entrant[] = [];
+  for (const entrant of base.sport80) {
+    const key = athleteKey(entrant);
+    const same = [...unlisted.values()].filter((athlete) => athleteKey(athlete) === key);
+    for (const athlete of same) unlisted.delete(athlete._id);
+    if (same.length === 0) notByIdentity.push(entrant);
+  }
+  const added = notByIdentity.filter((entrant) => {
+    const same = [...unlisted.values()].filter((athlete) => unnumberedMatch(athlete, entrant));
+    for (const athlete of same) unlisted.delete(athlete._id);
+    return same.length === 0;
+  });
+  return { added, withdrawnIds: new Set([...unlisted.values()].filter((athlete) => hasSession(athlete) && !athlete.adaptive).map((athlete) => athlete._id)) };
+}
+
+export const rosterEntrant = (athlete: RosterAthlete): BuilderEntrant => ({ ...athlete, rosterId: athlete._id });
+
+export function scratchEntrants(base: PublishedBase): BuilderEntrant[] {
+  const { added, withdrawnIds } = sport80Diff(base);
+  return [...base.roster.filter((athlete) => !withdrawnIds.has(athlete._id)).map(rosterEntrant), ...added];
 }
 
 const SPLIT_LETTERS = Array.from({ length: 26 }, (_, i) => String.fromCharCode('A'.charCodeAt(0) + i));
@@ -488,7 +513,12 @@ function publishedGroupLabels(group: Group, label: string, separate: boolean): P
   return { ageGroup: pools.length === 1 && pool !== undefined ? pool : '', split: '', splitOf: '' };
 }
 
-function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnKeys: ReadonlySet<string>): Slot[] {
+export function publishedPlatforms(base: Pick<PublishedBase, 'rows' | 'roster'>): Set<string> {
+  const fromRoster = base.roster.filter(hasSession).map((athlete) => (athlete.sessionPlatform ?? '').trim());
+  return new Set([...base.rows.map((row) => row.platform.trim()), ...fromRoster].filter((platform) => platform !== ''));
+}
+
+function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnIds: ReadonlySet<string>): Slot[] {
   const slots = new Map<number, Slot>();
   const labels = new Map<string, string>();
   for (const row of [...base.rows].sort((a, b) => a.sessionId - b.sessionId)) {
@@ -501,10 +531,10 @@ function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnK
     const platform = (athlete.sessionPlatform ?? '').trim();
     const slot = slots.get(id) ?? { id, date: '', start: null, groups: new Map<string, Group>() };
     slots.set(id, slot);
-    const built = builtAthleteOf(athlete);
+    const built = builtAthleteOf(rosterEntrant(athlete));
     const group = slot.groups.get(platform) ?? { gender: built.gender, ageGroup: '', split: '', splitOf: '', athletes: [], edited: false };
     slot.groups.set(platform, group);
-    group.athletes.push(withdrawnKeys.has(built.key) ? { ...built, withdrawn: true } : built);
+    group.athletes.push(withdrawnIds.has(athlete._id) ? { ...built, withdrawn: true } : built);
   }
   for (const slot of slots.values()) {
     for (const [platform, group] of slot.groups) Object.assign(group, publishedGroupLabels(group, labels.get(`${slot.id}|${platform}`) ?? '', options.separateAgeGroups));
@@ -521,21 +551,41 @@ const outsideTheBoard = (athlete: BuiltAthlete): BuiltAthlete => ({ ...athlete, 
 
 export function buildFromPublished(base: PublishedBase, options: BuilderOptions, edits: readonly BuilderEdit[] = []): PublishedBuild {
   const diff = sport80Diff(base);
-  const slots = publishedSlots(base, options, diff.withdrawnKeys);
+  const slots = publishedSlots(base, options, diff.withdrawnIds);
   const effective = withPublishedPlatforms(options, slots);
   const unplaced = diff.added.map(builtAthleteOf).sort((a, b) => compareCollated(a.name, b.name) || compareBytes(a.key, b.key));
   const bench: Bench = { unplaced, removed: [], addedKeys: new Set(unplaced.map((a) => a.key)) };
   let skipped = 0;
   for (const edit of edits) if (applyEdit(slots, edit, effective, bench) === 'skipped') skipped++;
   const placed = slots.reduce((sum, slot) => sum + [...slot.groups.values()].reduce((n, group) => n + group.athletes.length, 0), 0);
-  return { ...finish(slots, effective, placed, skipped), unplaced: bench.unplaced.map(outsideTheBoard), removed: bench.removed.map(outsideTheBoard) };
+  return {
+    ...finish(slots, effective, placed, skipped, 'asPublished'),
+    unplaced: bench.unplaced.map(outsideTheBoard),
+    removed: bench.removed.map(outsideTheBoard),
+  };
 }
 
-export type RosterChanges = { add: readonly Sport80Entrant[]; remove: readonly string[] };
+export type RosterRemoval = { id: string; name: string };
+
+export type RosterChanges = { add: readonly Sport80Entrant[]; remove: readonly RosterRemoval[] };
+
+export const NO_ROSTER_CHANGES: RosterChanges = { add: [], remove: [] };
 
 export function rosterChangesOf(base: PublishedBase, build: PublishedBuild): RosterChanges {
   const unplaced = new Set(build.unplaced.map((athlete) => athlete.key));
-  return { add: sport80Diff(base).added.filter((entrant) => !unplaced.has(athleteKey(entrant))), remove: build.removed.map((athlete) => athlete.key) };
+  return {
+    add: sport80Diff(base).added.filter((entrant) => !unplaced.has(athleteKey(entrant))),
+    remove: build.removed.flatMap((athlete) => (athlete.rosterId === undefined ? [] : [{ id: athlete.rosterId, name: athlete.name }])),
+  };
+}
+
+export function scratchRosterChanges(base: PublishedBase): RosterChanges {
+  const { added, withdrawnIds } = sport80Diff(base);
+  return { add: added, remove: base.roster.filter((athlete) => withdrawnIds.has(athlete._id)).map((athlete) => ({ id: athlete._id, name: athlete.name })) };
+}
+
+export function unlistedRemovals(build: PublishedBuild): string[] {
+  return build.removed.filter((athlete) => !athlete.withdrawn).map((athlete) => athlete.name);
 }
 
 export function publishedOptions(rows: readonly PublishedRow[], meet: { startDate: string; endDate: string }): BuilderOptions {

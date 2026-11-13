@@ -1,12 +1,26 @@
 import { v } from 'convex/values';
 import { internalMutation, mutation, query, type QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
+import type { PublishedRow, RosterAthlete, RosterChanges } from './lib/scheduleBuilder';
 import { MEET_ROSTER_MAX, MEET_SESSIONS_MAX, readAll } from './lib/boundedRead';
 import { requireUserId } from './lib/access';
 import { meetByName } from './lib/meetData';
 import { hasSession } from './lib/roster';
 import { apiError, requireNonEmpty } from './lib/validation';
-import { buildFromPublished, buildSchedule, publishedOptions, type BuilderEntrant, type BuiltSchedule, type PublishedBase, type PublishedBuild } from './lib/scheduleBuilder';
+import {
+  buildFromPublished,
+  buildSchedule,
+  NO_ROSTER_CHANGES,
+  publishedOptions,
+  publishedPlatforms,
+  rosterChangesOf,
+  rosterEntrant,
+  scratchEntrants,
+  scratchRosterChanges,
+  type BuiltSchedule,
+  type PublishedBase,
+  type PublishedBuild,
+} from './lib/scheduleBuilder';
 import { sport80Changes } from './lib/scheduleChanges';
 import { platformLabel } from './lib/schedulePublishing';
 import { meetPageUrl } from './scrapers/parse/entries';
@@ -32,7 +46,6 @@ export const LOAD_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
 export const MAX_SEARCHES_PER_HOUR = 120;
 const HOUR_MS = 60 * 60 * 1000;
 const LOAD_LOG_PRUNE_BATCH = 20;
-const MEET_PUBLICATIONS_READ = 50;
 
 export const NOT_PUBLISHED = "This meet's schedule is no longer published. Open it again to start from what's on MeetCal now.";
 
@@ -43,44 +56,43 @@ export async function requireMeet(ctx: QueryCtx, meet: string) {
   return row;
 }
 
-export async function entrantsOf(ctx: QueryCtx, meet: string): Promise<BuilderEntrant[]> {
-  const rows = await readAll(
+async function rosterOf(ctx: QueryCtx, meet: string): Promise<RosterAthlete[]> {
+  return readAll(
     ctx.db.query('athletes').withIndex('by_meet', (q) => q.eq('meet', meet)),
     MEET_ROSTER_MAX,
     'athletes of one meet',
   );
-  return rows.map(({ memberId, name, age, club, gender, weightClass, entryTotal }) => ({ memberId, name, age, club, gender, weightClass, entryTotal }));
 }
 
-export function checked(options: BuilderOptions, edits: readonly BuilderEdit[]): void {
-  checkBuilderOptions(options);
+export function checked(options: BuilderOptions, edits: readonly BuilderEdit[], base: ScheduleBase = 'entries'): void {
+  checkBuilderOptions(options, base === 'published' ? new Set(options.platforms) : undefined);
   checkBuilderEdits(edits);
 }
 
-export async function latestLivePublication(ctx: QueryCtx, meet: string): Promise<Doc<'schedule_publications'> | null> {
-  const recent = await ctx.db
-    .query('schedule_publications')
-    .withIndex('by_meet_and_createdAt', (q) => q.eq('meet', meet))
-    .order('desc')
-    .take(MEET_PUBLICATIONS_READ);
-  const wentLiveAt = (p: Doc<'schedule_publications'>) => p.decidedAt ?? p.createdAt;
-  return recent.filter((p) => p.status === 'live' || p.status === 'approved').reduce<Doc<'schedule_publications'> | null>((latest, p) => (latest === null || wentLiveAt(p) > wentLiveAt(latest) ? p : latest), null);
+async function revisionOf(ctx: QueryCtx, meet: string): Promise<Doc<'schedule_revisions'> | null> {
+  return ctx.db
+    .query('schedule_revisions')
+    .withIndex('by_meet', (q) => q.eq('meet', meet))
+    .first();
 }
 
-export type PublishedMeet = { version: string | null; options: BuilderOptions; base: PublishedBase; checkedAt: number | null };
+const versionOf = (revision: Doc<'schedule_revisions'> | null): string => String(revision?.revision ?? 0);
 
-export async function publishedMeetOf(ctx: QueryCtx, meet: Pick<Doc<'meets'>, 'name' | 'startDate' | 'endDate'>): Promise<PublishedMeet | null> {
-  const roster = await readAll(
-    ctx.db.query('athletes').withIndex('by_meet', (q) => q.eq('meet', meet.name)),
-    MEET_ROSTER_MAX,
-    'athletes of one meet',
-  );
-  if (!roster.some(hasSession)) return null;
-  const rows = await readAll(
-    ctx.db.query('session_schedule').withIndex('by_meet', (q) => q.eq('meet', meet.name)),
+async function scheduleRowsOf(ctx: QueryCtx, meet: string): Promise<PublishedRow[]> {
+  return readAll(
+    ctx.db.query('session_schedule').withIndex('by_meet', (q) => q.eq('meet', meet)),
     MEET_SESSIONS_MAX,
     'sessions of one meet',
   );
+}
+
+type MeetDates = Pick<Doc<'meets'>, 'name' | 'startDate' | 'endDate'>;
+
+export type PublishedMeet = { version: string; options: BuilderOptions; base: PublishedBase; checkedAt: number | null };
+
+async function publishedMeetFrom(ctx: QueryCtx, meet: MeetDates, roster: RosterAthlete[]): Promise<PublishedMeet | null> {
+  if (!roster.some(hasSession)) return null;
+  const rows = await scheduleRowsOf(ctx, meet.name);
   const check = await ctx.db
     .query('sport80_entrant_checks')
     .withIndex('by_meet', (q) => q.eq('meet', meet.name))
@@ -92,34 +104,41 @@ export async function publishedMeetOf(ctx: QueryCtx, meet: Pick<Doc<'meets'>, 'n
         'Sport80 entrants of one meet',
       )
     : null;
-  const live = await latestLivePublication(ctx, meet.name);
-  return {
-    version: live?._id ?? null,
-    options: live?.options ?? publishedOptions(rows, meet),
-    base: { rows, roster, sport80 },
-    checkedAt: check?.checkedAt ?? null,
-  };
+  const revision = await revisionOf(ctx, meet.name);
+  return { version: versionOf(revision), options: revision?.options ?? publishedOptions(rows, meet), base: { rows, roster, sport80 }, checkedAt: check?.checkedAt ?? null };
 }
 
-export async function requirePublishedMeet(ctx: QueryCtx, meet: Pick<Doc<'meets'>, 'name' | 'startDate' | 'endDate'>): Promise<PublishedMeet> {
-  const published = await publishedMeetOf(ctx, meet);
+export async function publishedMeetOf(ctx: QueryCtx, meet: MeetDates): Promise<PublishedMeet | null> {
+  return publishedMeetFrom(ctx, meet, await rosterOf(ctx, meet.name));
+}
+
+export type BaseBuild =
+  | { base: 'entries'; schedule: BuiltSchedule; published: PublishedMeet | null; changes: RosterChanges }
+  | { base: 'published'; schedule: PublishedBuild; published: PublishedMeet; changes: RosterChanges };
+
+export async function buildOn(ctx: QueryCtx, meet: MeetDates, base: ScheduleBase, options: BuilderOptions, edits: readonly BuilderEdit[]): Promise<BaseBuild> {
+  const roster = await rosterOf(ctx, meet.name);
+  const published = await publishedMeetFrom(ctx, meet, roster);
+  if (base === 'entries') {
+    if (!published) return { base, schedule: buildSchedule(roster.map(rosterEntrant), options, edits), published, changes: NO_ROSTER_CHANGES };
+    return { base, schedule: buildSchedule(scratchEntrants(published.base), options, edits), published, changes: scratchRosterChanges(published.base) };
+  }
   if (!published) throw apiError(409, NOT_PUBLISHED);
-  return published;
+  checkBuilderOptions(options, publishedPlatforms(published.base));
+  const schedule = buildFromPublished(published.base, options, edits);
+  return { base, schedule, published, changes: rosterChangesOf(published.base, schedule) };
 }
 
-export type BaseBuild = { base: 'entries'; schedule: BuiltSchedule } | { base: 'published'; schedule: PublishedBuild; published: PublishedMeet };
-
-export async function buildOn(ctx: QueryCtx, meet: Pick<Doc<'meets'>, 'name' | 'startDate' | 'endDate'>, base: ScheduleBase, options: BuilderOptions, edits: readonly BuilderEdit[]): Promise<BaseBuild> {
-  if (base === 'entries') return { base, schedule: buildSchedule(await entrantsOf(ctx, meet.name), options, edits) };
-  const published = await requirePublishedMeet(ctx, meet);
-  return { base, schedule: buildFromPublished(published.base, options, edits), published };
+async function publishedSummaryOf(ctx: QueryCtx, meet: MeetDates): Promise<{ version: string; options: BuilderOptions } | null> {
+  if (!(await rosterOf(ctx, meet.name)).some(hasSession)) return null;
+  const revision = await revisionOf(ctx, meet.name);
+  return { version: versionOf(revision), options: revision?.options ?? publishedOptions(await scheduleRowsOf(ctx, meet.name), meet) };
 }
 
 export const defaults = query({
   args: { meet: v.string() },
   handler: async (ctx, { meet }) => {
     const row = await requireMeet(ctx, meet);
-    const published = await publishedMeetOf(ctx, row);
     return {
       meet: row.name,
       startDate: row.startDate,
@@ -128,7 +147,7 @@ export const defaults = query({
       status: row.status,
       options: defaultBuilderOptions(row),
       sport80Link: row.sourceId === undefined ? null : meetPageUrl(row.sourceId),
-      published: published ? { version: published.version, options: published.options } : null,
+      published: await publishedSummaryOf(ctx, row),
     };
   },
 });
@@ -144,7 +163,7 @@ export function withGroupLabels({ athletes, sessions, warnings }: BuiltSchedule)
 export const preview = query({
   args: { meet: v.string(), options: builderOptionsValidator, edits: v.array(builderEditValidator), base: v.optional(scheduleBaseValidator) },
   handler: async (ctx, { meet, options, edits, base }) => {
-    checked(options, edits);
+    checked(options, edits, base);
     const row = await requireMeet(ctx, meet);
     const built = await buildOn(ctx, row, base ?? 'entries', options, edits);
     if (built.base === 'entries') return withGroupLabels(built.schedule);
@@ -171,7 +190,7 @@ export const exportFile = query({
     format: v.union(v.literal('csv'), v.literal('xlsx')),
   },
   handler: async (ctx, { meet, options, edits, base, format }) => {
-    checked(options, edits);
+    checked(options, edits, base);
     const row = await requireMeet(ctx, meet);
     const { schedule } = await buildOn(ctx, row, base ?? 'entries', options, edits);
     const fileName = exportFileName(row.name, format);
@@ -220,7 +239,7 @@ export const saveDraft = mutation({
   },
   handler: async (ctx, { meet, options, edits, base, baseVersion }) => {
     const userId = await requireUserId(ctx);
-    checked(options, edits);
+    checked(options, edits, base);
     const row = await requireMeet(ctx, meet);
     const now = Date.now();
     const existing = await draftOf(ctx, userId, row.name);
@@ -253,7 +272,7 @@ export const deleteDraft = mutation({
 
 export const claimLoad = internalMutation({
   args: { eventId: v.string() },
-  handler: async (ctx, { eventId }): Promise<{ recentMeet: string } | { claim: Id<'schedule_builder_loads'> }> => {
+  handler: async (ctx, { eventId }): Promise<{ recentMeet: string; loadedAt: number } | { claim: Id<'schedule_builder_loads'> }> => {
     const now = Date.now();
     const stale = await ctx.db
       .query('schedule_builder_loads')
@@ -266,7 +285,7 @@ export const claimLoad = internalMutation({
       .order('desc')
       .take(MAX_LOADS_PER_HOUR);
     const finished = recent.find((row) => row.meet !== '');
-    if (finished) return { recentMeet: finished.meet };
+    if (finished) return { recentMeet: finished.meet, loadedAt: finished.loadedAt };
     const lastHour = await ctx.db
       .query('schedule_builder_loads')
       .withIndex('by_loadedAt', (q) => q.gt('loadedAt', now - HOUR_MS))
@@ -280,8 +299,10 @@ export const claimLoad = internalMutation({
 
 export const finishLoad = internalMutation({
   args: { claim: v.id('schedule_builder_loads'), meet: v.string() },
-  handler: async (ctx, { claim, meet }) => {
-    await ctx.db.patch(claim, { meet, loadedAt: Date.now() });
+  handler: async (ctx, { claim, meet }): Promise<number> => {
+    const loadedAt = Date.now();
+    await ctx.db.patch(claim, { meet, loadedAt });
+    return loadedAt;
   },
 });
 

@@ -7,12 +7,13 @@ import { normalizeGender } from '../lib/normalize';
 import { hasNoMemberId, ONE_OFF_MEMBER_ID, placeholderMemberId } from '../lib/memberIds';
 import { normalizeName } from '../lib/names';
 import { exceedsShrink } from '../lib/shrinkGuard';
-import { acceptedEntries, halfSession, hasSession, rosterProblems } from '../lib/roster';
+import { acceptedEntries, halfSession, hasSession, rosterProblems, sameNameAndGender } from '../lib/roster';
 import { athletesFields, sessionScheduleFields } from '../schema';
 import { recordWrite } from './hints';
 import { apiError } from '../lib/validation';
 import type { PublishedSchedule } from '../lib/schedulePublishing';
-import { athleteKey, type RosterChanges, type Sport80Entrant } from '../lib/scheduleBuilder';
+import { athleteKey, NO_ROSTER_CHANGES, type RosterChanges, type Sport80Entrant } from '../lib/scheduleBuilder';
+import type { BuilderOptions } from '../lib/scheduleBuilderOptions';
 
 /**
  * An empty start list or schedule is a failed load, not a meet without
@@ -63,6 +64,7 @@ export const replaceMeetAthletes = internalMutation({
       const memberId = row.memberId.trim() === '' ? placeholderMemberId(row.name) : row.memberId;
       await ctx.db.insert('athletes', { ...row, memberId, gender: normalizeGender(row.gender) });
     }
+    await bumpScheduleRevision(ctx, meet);
     await recordWrite(ctx, 'athletes', [
       { kind: 'meet', key: meet },
       { kind: 'table', key: 'athletes' },
@@ -91,6 +93,7 @@ export const replaceMeetSchedule = internalMutation({
     for (const row of existing) await ctx.db.delete(row._id);
     for (const row of rows) await ctx.db.insert('session_schedule', row);
     await recordWrite(ctx, 'session_schedule', [{ kind: 'meet', key: meet }]);
+    await bumpScheduleRevision(ctx, meet);
     return { deleted: existing.length, inserted: rows.length };
   },
 });
@@ -202,7 +205,7 @@ export const upsertEntryAthletes = internalMutation({
       const idless = hasNoMemberId(row.memberId);
       let match: Doc<'athletes'> | undefined;
       if (idless) {
-        const sameName = existing.filter((a) => unclaimed(a) && normalizeName(a.name) === nameKey && normalizeGender(a.gender) === gender);
+        const sameName = existing.filter((a) => unclaimed(a) && sameNameAndGender(a, row));
         match = sameName.find((a) => hasNoMemberId(a.memberId));
         for (const a of sameName) {
           if (match) break;
@@ -226,7 +229,7 @@ export const upsertEntryAthletes = internalMutation({
         // could be another athlete of the name.
         const minted: Doc<'athletes'>[] = [];
         for (const a of existing) {
-          if (!unclaimed(a) || hasSession(a) || normalizeName(a.name) !== nameKey || normalizeGender(a.gender) !== gender) continue;
+          if (!unclaimed(a) || hasSession(a) || !sameNameAndGender(a, row)) continue;
           // The same age, give or take the year it turns over: another
           // athlete of the same name keeps their row.
           if (Math.abs(a.age - row.age) > 1) continue;
@@ -309,12 +312,16 @@ export const upsertEntryAthletes = internalMutation({
   },
 });
 
-const NO_ROSTER_CHANGES: RosterChanges = { add: [], remove: [] };
-
-function countsOf(keys: readonly string[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
-  return counts;
+export async function bumpScheduleRevision(ctx: MutationCtx, meet: string, options?: BuilderOptions): Promise<number> {
+  const row = await ctx.db
+    .query('schedule_revisions')
+    .withIndex('by_meet', (q) => q.eq('meet', meet))
+    .first();
+  const revision = (row?.revision ?? 0) + 1;
+  const values = { meet, revision, ...(options ? { options } : {}) };
+  if (row) await ctx.db.replace(row._id, values);
+  else await ctx.db.insert('schedule_revisions', values);
+  return revision;
 }
 
 export async function writeBuiltSchedule(
@@ -322,39 +329,50 @@ export async function writeBuiltSchedule(
   meet: string,
   published: PublishedSchedule,
   changes: RosterChanges = NO_ROSTER_CHANGES,
-): Promise<{ sessions: number; placed: number; cleared: number; added: number; removed: number }> {
+  options?: BuilderOptions,
+): Promise<{ sessions: number; placed: number; cleared: number; added: number; removed: number; revision: number }> {
   const roster = await readAll(
     ctx.db.query('athletes').withIndex('by_meet', (q) => q.eq('meet', meet)),
     MEET_ROSTER_MAX,
     'athletes of one meet',
   );
+  const byId = new Map(roster.map((row) => [String(row._id), row]));
+  const taken = new Set<string>();
   const rowsByKey = new Map<string, Doc<'athletes'>[]>();
   for (const row of roster) rowsByKey.set(athleteKey(row), [...(rowsByKey.get(athleteKey(row)) ?? []), row]);
   const addable = new Map(changes.add.map((entrant) => [athleteKey(entrant), entrant]));
   const placed = new Map<string, { sessionNumber: number; platform: string }>();
   const additions: { entrant: Sport80Entrant; sessionNumber: number; platform: string }[] = [];
+  const entriesChanged = (name: string) => apiError(409, `the entries changed since this schedule was built (${name} is no longer entered); build it again`);
   for (const placement of published.placements) {
+    if (placement.rosterId === undefined) continue;
+    const row = byId.get(placement.rosterId);
+    if (!row || taken.has(placement.rosterId)) throw entriesChanged(placement.name);
+    taken.add(placement.rosterId);
+    placed.set(placement.rosterId, { sessionNumber: placement.sessionNumber, platform: placement.platform });
+  }
+  for (const placement of published.placements) {
+    if (placement.rosterId !== undefined) continue;
     const key = athleteKey(placement);
-    const row = rowsByKey.get(key)?.shift();
+    const row = rowsByKey.get(key)?.find((candidate) => !taken.has(String(candidate._id)));
     const entrant = row ? undefined : addable.get(key);
     if (entrant) {
       addable.delete(key);
       additions.push({ entrant, sessionNumber: placement.sessionNumber, platform: placement.platform });
       continue;
     }
-    if (!row) throw apiError(409, `the entries changed since this schedule was built (${placement.name} is no longer entered); build it again`);
-    placed.set(row._id, { sessionNumber: placement.sessionNumber, platform: placement.platform });
+    if (!row) throw entriesChanged(placement.name);
+    taken.add(String(row._id));
+    placed.set(String(row._id), { sessionNumber: placement.sessionNumber, platform: placement.platform });
   }
-  const removals = countsOf(changes.remove);
+  const removable = new Set(changes.remove.map((removal) => removal.id));
   let cleared = 0;
   let removed = 0;
   for (const row of roster) {
-    const place = placed.get(row._id);
-    const removable = removals.get(athleteKey(row)) ?? 0;
+    const place = placed.get(String(row._id));
     if (place) {
       if (row.sessionNumber !== place.sessionNumber || row.sessionPlatform !== place.platform) await ctx.db.patch(row._id, { sessionNumber: place.sessionNumber, sessionPlatform: place.platform });
-    } else if (removable > 0) {
-      removals.set(athleteKey(row), removable - 1);
+    } else if (removable.has(String(row._id))) {
       await ctx.db.delete(row._id);
       removed++;
     } else if (hasSession(row)) {
@@ -391,7 +409,8 @@ export async function writeBuiltSchedule(
     { kind: 'table', key: 'athletes' },
   ]);
   await recordWrite(ctx, 'session_schedule', [{ kind: 'meet', key: meet }]);
-  return { sessions: new Set(published.rows.map((r) => r.sessionId)).size, placed: placed.size + additions.length, cleared, added: additions.length, removed };
+  const revision = await bumpScheduleRevision(ctx, meet, options);
+  return { sessions: new Set(published.rows.map((r) => r.sessionId)).size, placed: placed.size + additions.length, cleared, added: additions.length, removed, revision };
 }
 
 async function sport80RowsOf(ctx: MutationCtx, meet: string) {

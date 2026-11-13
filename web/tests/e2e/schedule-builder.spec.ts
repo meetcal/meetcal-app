@@ -684,6 +684,13 @@ test("a published meet opens on its schedule, folds in Sport80's changes, and as
   await changes.getByRole("button", { name: "Check Sport80 Now" }).click();
   await expect.poll(() => calls.loads.map((call) => call.args)).toEqual([{ url: MEET_PAGE_URL }]);
   await expect(changes.getByRole("button", { name: "Check Sport80 Now" })).toBeEnabled();
+  const previewsAfterCheck = calls.previews.length;
+  await routeAction(page, "scheduleBuilderLoad:load", (route) =>
+    route.fulfill(valueAnswer({ meet: MEET, refreshed: false, checkedAt: Date.UTC(2026, 10, 12, 15), nextCheckAt: Date.UTC(2026, 10, 12, 15, 10) })),
+  );
+  await changes.getByRole("button", { name: "Check Sport80 Now" }).click();
+  await expect(changes.getByRole("status")).toContainText("a few minutes ago. Check again after");
+  expect(calls.previews.length).toBe(previewsAfterCheck);
 
   const publish = page.getByRole("region", { name: "Publish to MeetCal" });
   await publish.getByRole("button", { name: "Publish", exact: true }).click();

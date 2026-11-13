@@ -11,7 +11,7 @@ export type PublicationStatus = 'pending' | 'live' | 'approved' | 'rejected' | '
 export const PENDING_PUBLICATION_DAYS = 14;
 
 export type PublishedScheduleRow = { date: string; sessionId: number; startTime: string; weighInTime: string; platform: string; weightClass: string };
-export type Placement = { memberId: string; name: string; sessionNumber: number; platform: string };
+export type Placement = { memberId: string; name: string; sessionNumber: number; platform: string; rosterId?: string };
 export type PublishedSchedule = { rows: PublishedScheduleRow[]; placements: Placement[] };
 
 const AGE_GROUP_LABELS: Record<BuiltGroup['ageGroup'], string> = { youth: ' (Youth)', masters: ' (Masters)', open: '', '': '' };
@@ -39,11 +39,16 @@ export function publishedSchedule(schedule: BuiltSchedule): PublishedSchedule {
   for (const session of schedule.sessions) {
     for (const group of session.groups) {
       rows.push({ date: session.date, sessionId: session.number, startTime: session.startTime, weighInTime: session.weighInTime, platform: group.platform, weightClass: platformLabel(group) });
-      for (const athlete of group.athletes) placements.push({ memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: group.platform });
+      for (const athlete of group.athletes) {
+        const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: group.platform };
+        placements.push(athlete.rosterId === undefined ? placement : { ...placement, rosterId: athlete.rosterId });
+      }
     }
   }
   return { rows, placements };
 }
+
+export type ChangeNames = { added: readonly string[]; removed: readonly string[] };
 
 export type PublicationEmailContent = {
   meet: string;
@@ -51,6 +56,7 @@ export type PublicationEmailContent = {
   contactEmail?: string;
   userId: string;
   schedule: BuiltSchedule;
+  changes: ChangeNames;
   lastLiveAt: number | null;
   hasSchedule: boolean;
   reviewUrl?: string;
@@ -65,10 +71,15 @@ function sessionLines(schedule: BuiltSchedule): string {
     .join('');
 }
 
+function changeLines({ added, removed }: ChangeNames): string {
+  const line = (what: string, names: readonly string[]) => (names.length > 0 ? `<p>${what}: ${escapeHtml(names.join(', '))}.</p>` : '');
+  return line('Adds to the start list', added) + line('Takes off the start list', removed);
+}
+
 export function renderPublicationEmail(content: PublicationEmailContent): { subject: string; html: string } {
   const from = content.contactEmail ? escapeHtml(content.contactEmail) : 'no email given';
   const warnings = content.schedule.warnings.length ? `<p>Warnings:</p><ul>${content.schedule.warnings.map((w) => `<li>${escapeHtml(w.message)}</li>`).join('')}</ul>` : '';
-  const summary = `<p>${escapeHtml(content.meet)}: ${content.schedule.athletes} athletes in ${content.schedule.sessions.length} sessions, from ${from} (${escapeHtml(content.userId)}).</p>${warnings}<ul>${sessionLines(content.schedule)}</ul>`;
+  const summary = `<p>${escapeHtml(content.meet)}: ${content.schedule.athletes} athletes in ${content.schedule.sessions.length} sessions, from ${from} (${escapeHtml(content.userId)}).</p>${changeLines(content.changes)}${warnings}<ul>${sessionLines(content.schedule)}</ul>`;
   if (content.status === 'live') {
     return { subject: `Schedule updated: ${content.meet}`, html: `<p>The meet's organizer published a new schedule. It is live.</p>${summary}` };
   }
@@ -98,6 +109,8 @@ export type ReviewPageContent = {
   contactEmail?: string;
   userId: string;
   schedule: BuiltSchedule;
+  changes: ChangeNames;
+  problem: string | null;
   lastLiveAt: number | null;
   hasSchedule: boolean;
   publicationId: string;
@@ -111,13 +124,16 @@ export function renderReviewPage(content: ReviewPageContent): string {
     ...(content.contactEmail ? { contactEmail: content.contactEmail } : {}),
     userId: content.userId,
     schedule: content.schedule,
+    changes: content.changes,
     lastLiveAt: content.lastLiveAt,
     hasSchedule: content.hasSchedule,
   });
   const hidden = `<input type="hidden" name="id" value="${escapeHtml(content.publicationId)}"><input type="hidden" name="token" value="${escapeHtml(content.token)}">`;
+  const approve = content.problem === null ? '<button name="decision" value="approve">Approve</button>' : '';
+  const problem = content.problem === null ? '' : `<p><strong>${escapeHtml(content.problem)}</strong></p>`;
   const actions =
     content.status === 'pending'
-      ? `<form method="post">${hidden}<button name="decision" value="approve">Approve</button><button name="decision" value="reject">Reject</button></form>`
+      ? `${problem}<form method="post">${hidden}${approve}<button name="decision" value="reject">Reject</button></form>`
       : `<p>This schedule is already ${escapeHtml(content.status)}.</p>`;
   return page(`Review: ${content.meet}`, `<h1>Review Schedule</h1>${html}${actions}`);
 }

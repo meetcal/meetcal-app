@@ -43,6 +43,10 @@ export function isStoredMemberId(memberId: string): boolean {
   return /^\d+$/.test(memberId) || isPlaceholderMemberId(memberId);
 }
 
+export function sameNameAndGender(a: { name: string; gender: string }, b: { name: string; gender: string }): boolean {
+  return normalizeName(a.name) === normalizeName(b.name) && normalizeGender(a.gender) === normalizeGender(b.gender);
+}
+
 export function acceptedEntries<Row extends { name: string; memberId: string }>(rows: readonly Row[]): { accepted: Row[]; rejected: number } {
   const storable = rows.filter((row) => !isJunkEntrant(row) && isStoredMemberId(row.memberId));
   const lastListingOfEachEntrant = new Map<string, Row>();

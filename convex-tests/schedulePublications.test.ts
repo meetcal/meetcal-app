@@ -144,7 +144,8 @@ describe('publish', () => {
   it("puts an organizer's publish live at once", async () => {
     const store = server({ meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] });
     const answer = await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] });
-    expect(answer).toEqual({ status: 'live', sessions: 2, athletes: 3, version: String(store.docs('schedule_publications')[0]?._id) });
+    expect(answer).toEqual({ status: 'live', sessions: 2, athletes: 3, version: '1' });
+    expect(store.rows('schedule_revisions')).toEqual([{ meet: MEET, revision: 1, options: options() }]);
     expect(sessionsOf(store)).toEqual([
       ['Ann', 1, 'Red'],
       ['Bea', 1, 'Red'],
@@ -341,6 +342,6 @@ describe('email', () => {
   it('builds review links on the deployment site', () => {
     expect(reviewUrl('https://x.convex.site/', 'id1', 'abc')).toBe('https://x.convex.site/schedule-builder/review?id=id1&token=abc');
     const schedule = buildSchedule(roster(), options());
-    expect(renderPublicationEmail({ meet: '<b>Cup</b>', status: 'pending', userId: 'u', schedule, lastLiveAt: null, hasSchedule: false }).html).toContain('&lt;b&gt;Cup&lt;/b&gt;');
+    expect(renderPublicationEmail({ meet: '<b>Cup</b>', status: 'pending', userId: 'u', schedule, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: false }).html).toContain('&lt;b&gt;Cup&lt;/b&gt;');
   });
 });

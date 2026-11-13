@@ -227,10 +227,11 @@ pub(crate) struct Start {
     pub edits: Vec<BuilderEdit>,
     pub basis: Basis,
     pub built: bool,
-    pub set_aside: bool,
+    pub notice: Option<&'static str>,
 }
 
-pub(crate) const SET_ASIDE_NOTICE: &str = "Your saved schedule was made before this meet’s latest publish, so the builder opens on the published schedule.";
+pub(crate) const STALE_WORK_NOTICE: &str = "Your saved schedule was made before this meet’s schedule last changed, so the builder opens on the schedule as it is now.";
+pub(crate) const UNPUBLISHED_WORK_NOTICE: &str = "Your saved schedule was made on a published schedule that’s no longer on MeetCal, so the builder starts from the meet’s entries.";
 
 pub(crate) fn published_basis(published: &PublishedSchedule) -> Basis {
     Basis {
@@ -252,31 +253,41 @@ pub(crate) fn starting_point(
         (None, Some(local)) => Some((local.options, local.edits, local.basis)),
         (None, None) => None,
     };
-    let wanted = defaults
+    let current = defaults
         .published
         .as_ref()
-        .map_or_else(Basis::default, published_basis);
+        .and_then(|published| published.version.as_ref());
+    let fits = |basis: &Basis| match current {
+        Some(version) => basis.base_version.as_ref() == Some(version),
+        None => basis.base == ScheduleBase::Entries && basis.base_version.is_none(),
+    };
+    let notice = match (&newest, &defaults.published) {
+        (Some((_, _, basis)), _) if fits(basis) => None,
+        (Some(_), Some(_)) => Some(STALE_WORK_NOTICE),
+        (Some(_), None) => Some(UNPUBLISHED_WORK_NOTICE),
+        (None, _) => None,
+    };
     match (newest, defaults.published.as_ref()) {
-        (Some((options, edits, basis)), _) if basis == wanted => Start {
+        (Some((options, edits, basis)), _) if notice.is_none() => Start {
             options,
             edits,
             basis,
             built: true,
-            set_aside: false,
+            notice,
         },
-        (saved, Some(published)) => Start {
+        (_, Some(published)) => Start {
             options: published.options.clone(),
             edits: Vec::new(),
-            basis: wanted,
+            basis: published_basis(published),
             built: true,
-            set_aside: saved.is_some(),
+            notice,
         },
         (_, None) => Start {
             options: defaults.options.clone(),
             edits: Vec::new(),
-            basis: wanted,
+            basis: Basis::default(),
             built: false,
-            set_aside: false,
+            notice,
         },
     }
 }
@@ -535,10 +546,18 @@ pub(crate) fn rebuild_warning(published: bool, edits: usize) -> String {
         format!("your {edits} edits")
     };
     match (published, edits) {
-        (true, 0) => "Rebuilding from scratch regroups every entrant and replaces the published sessions when you publish.".to_owned(),
-        (true, _) => format!("Rebuilding from scratch regroups every entrant, replaces the published sessions when you publish, and discards {your_edits}."),
+        (true, 0) => REBUILD_PUBLISHED.to_owned(),
+        (true, _) => format!("{REBUILD_PUBLISHED} It also discards {your_edits}."),
         (false, _) => format!("Building again discards {your_edits}."),
     }
+}
+
+const REBUILD_PUBLISHED: &str = "Rebuilding from scratch regroups the start list, with Sport80’s new lifters added and the lifters it no longer lists taken off, and replaces the published sessions when you publish.";
+
+pub(crate) fn cooldown_note(checked_at: &str, next_check_at: &str) -> String {
+    format!(
+        "Sport80 was checked at {checked_at}, a few minutes ago. Check again after {next_check_at}."
+    )
 }
 
 pub(crate) fn session_when(session: &BuiltSession) -> String {
@@ -889,7 +908,7 @@ mod tests {
                 edits: Vec::new(),
                 basis: entries_basis(),
                 built: false,
-                set_aside: false,
+                notice: None,
             }
         );
         assert_eq!(
@@ -928,14 +947,30 @@ mod tests {
         let fresh = starting_point(&defaults, None, None);
         assert_eq!(fresh.options, published_options);
         assert_eq!(fresh.basis, published_on("p2"));
-        assert!(fresh.built && !fresh.set_aside && fresh.edits.is_empty());
+        assert!(fresh.built && fresh.notice.is_none() && fresh.edits.is_empty());
         let resumed = starting_point(&defaults, None, Some(work(published_on("p2"))));
         assert_eq!(resumed.edits, vec![edit.clone()]);
-        assert!(!resumed.set_aside);
+        assert_eq!(resumed.notice, None);
+        let from_scratch = Basis {
+            base: ScheduleBase::Entries,
+            base_version: Some("p2".to_owned()),
+        };
+        let rebuilt = starting_point(&defaults, None, Some(work(from_scratch.clone())));
+        assert_eq!(rebuilt.basis, from_scratch);
+        assert_eq!(rebuilt.edits, vec![edit.clone()]);
+        assert_eq!(rebuilt.notice, None);
         for stale in [published_on("p1"), entries_basis()] {
             let start = starting_point(&defaults, None, Some(work(stale)));
             assert_eq!(start.basis, published_on("p2"));
-            assert!(start.edits.is_empty() && start.set_aside);
+            assert!(start.edits.is_empty());
+            assert_eq!(start.notice, Some(STALE_WORK_NOTICE));
+        }
+        let unpublished = meet_defaults(None);
+        for gone in [published_on("p2"), from_scratch] {
+            let start = starting_point(&unpublished, None, Some(work(gone)));
+            assert_eq!(start.basis, entries_basis());
+            assert!(!start.built && start.edits.is_empty());
+            assert_eq!(start.notice, Some(UNPUBLISHED_WORK_NOTICE));
         }
         let saved: SavedDraft = serde_json::from_value(serde_json::json!({
             "options": serde_json::to_value(options()).unwrap(),
@@ -983,11 +1018,15 @@ mod tests {
         );
         assert_eq!(
             rebuild_warning(true, 0),
-            "Rebuilding from scratch regroups every entrant and replaces the published sessions when you publish."
+            "Rebuilding from scratch regroups the start list, with Sport80’s new lifters added and the lifters it no longer lists taken off, and replaces the published sessions when you publish."
         );
         assert_eq!(
             rebuild_warning(true, 2),
-            "Rebuilding from scratch regroups every entrant, replaces the published sessions when you publish, and discards your 2 edits."
+            "Rebuilding from scratch regroups the start list, with Sport80’s new lifters added and the lifters it no longer lists taken off, and replaces the published sessions when you publish. It also discards your 2 edits."
+        );
+        assert_eq!(
+            cooldown_note("7:20 PM", "7:30 PM"),
+            "Sport80 was checked at 7:20 PM, a few minutes ago. Check again after 7:30 PM."
         );
     }
 

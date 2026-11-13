@@ -970,6 +970,18 @@ fn schedule_builder_errors_show_the_servers_sentence() {
     )
     .unwrap();
     assert_eq!(loaded.meet, "Turkey Cup");
+    assert!(loaded.refreshed);
+    let reused: LoadedMeet = read_builder_answer(
+        BUILDER_LOAD,
+        answer(json!({ "status": "success", "value": {
+            "meet": "Turkey Cup", "refreshed": false, "checkedAt": 1_794_539_803_443_u64, "nextCheckAt": 1_794_540_403_443_u64
+        } })),
+    )
+    .unwrap();
+    assert_eq!(
+        (reused.refreshed, reused.checked_at, reused.next_check_at),
+        (false, Some(1_794_539_803_443.0), Some(1_794_540_403_443.0))
+    );
 }
 
 #[test]

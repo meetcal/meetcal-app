@@ -1,7 +1,9 @@
 import { ConvexError } from 'convex/values';
 import { changes, defaults, NOT_PUBLISHED, preview } from '../convex/scheduleBuilder';
-import { approve, publish, STALE_APPROVAL, STALE_BASE } from '../convex/schedulePublications';
-import { forgetSport80Entrants, recordSport80Entrants } from '../convex/ingest';
+import { approve, BASE_GONE, emailContent, publish, reviewByToken, STALE_APPROVAL, STALE_BASE, stillListedProblem } from '../convex/schedulePublications';
+import { forgetSport80Entrants, recordSport80Entrants, replaceMeetAthletes, replaceMeetSchedule } from '../convex/ingest';
+import { platformLabel, renderPublicationEmail, renderReviewPage, type PublicationEmailContent, type ReviewPageContent } from '../convex/lib/schedulePublishing';
+import { sha256Hex } from '../convex/lib/tokens';
 import { buildSchedule } from '../convex/lib/scheduleBuilder';
 import { suggestedPlace } from '../convex/lib/scheduleChanges';
 import { defaultBuilderOptions, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
@@ -252,19 +254,40 @@ describe('building on the published schedule', () => {
   });
 });
 
-describe('publishing from the published schedule', () => {
-  const organizer = { meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] };
-  const foldIn = [
-    { kind: 'addAthlete', athlete: keyOf(fay), toSession: 1, toPlatform: 'Red' },
-    { kind: 'removeAthlete', athlete: keyOf(dan), fromSession: 2, fromPlatform: 'Red', occurrence: 0 },
-  ];
+async function opened(store: ReturnType<typeof server>): Promise<{ options: BuilderOptions; version: string }> {
+  const answer = (await store.as(null)(defaults, { meet: MEET })) as { published: { options: BuilderOptions; version: string } | null };
+  if (!answer.published) throw new Error('the meet should be published');
+  return answer.published;
+}
 
+const organizer = { meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] };
+const foldIn = [
+  { kind: 'addAthlete', athlete: keyOf(fay), toSession: 1, toPlatform: 'Red' },
+  { kind: 'removeAthlete', athlete: keyOf(dan), fromSession: 2, fromPlatform: 'Red', occurrence: 0 },
+];
+
+async function publishAs(store: ReturnType<typeof server>, who: string, base: 'published' | 'entries', baseVersion: string | null, edits: Args[] = []) {
+  const { options } = await opened(store);
+  return store.as(who)(publish, { meet: MEET, options, edits, base, baseVersion }) as Promise<{ status: string; version: string | null }>;
+}
+
+const pendingId = (store: ReturnType<typeof server>) => String(store.docs('schedule_publications').find((p) => p.status === 'pending')?._id);
+
+async function withReviewToken(store: ReturnType<typeof server>, publicationId: string) {
+  const tokenHash = await sha256Hex('review-token');
+  await (store.ctx.db as { patch: (id: string, value: Row) => Promise<void> }).patch(publicationId, { reviewTokenHash: tokenHash, reviewTokenExpiresAt: NOW + 60_000 });
+  return { id: publicationId, tokenHash };
+}
+
+type ReviewContent = Omit<ReviewPageContent, 'publicationId' | 'token'>;
+
+describe('publishing from the published schedule', () => {
   it('adds the placed new entrants, deletes the removed lifters and leaves the unplaced ones off', async () => {
     const store = server(organizer);
     await store.record(sport80Today());
-    const options = await publishedOptions(store);
-    const answer = (await store.as('user_a')(publish, { meet: MEET, options, edits: foldIn, base: 'published', baseVersion: null })) as { status: string; version: string };
-    expect(answer.status).toBe('live');
+    expect((await opened(store)).version).toBe('0');
+    const answer = await publishAs(store, 'user_a', 'published', '0', foldIn);
+    expect(answer).toMatchObject({ status: 'live', version: '1' });
     const athletes = store.rows('athletes');
     expect(athletes.find((a) => a.name === 'Fay Lund')).toMatchObject({ memberId: '109', gender: 'Women', sessionNumber: 1, sessionPlatform: 'Red', adaptive: false });
     expect(athletes.map((a) => a.name)).not.toContain('Dan Fox');
@@ -276,27 +299,196 @@ describe('publishing from the published schedule', () => {
       [3, 'W 63 B'],
       [4, 'W 63 A'],
     ]);
-    expect(store.rows('schedule_publications')).toEqual([expect.objectContaining({ base: 'published', baseVersion: null, status: 'live' })]);
-    expect(answer.version).toBe(String(store.docs('schedule_publications')[0]?._id));
-    expect(((await store.as(null)(defaults, { meet: MEET })) as { published: { version: string } }).published.version).toBe(answer.version);
+    expect(store.rows('schedule_publications')).toEqual([expect.objectContaining({ base: 'published', baseVersion: '0', status: 'live', added: ['Fay Lund'], removed: ['Dan Fox'] })]);
+    expect((await opened(store)).version).toBe('1');
+  });
+
+  it("keeps every session's published number when a session before it empties", async () => {
+    const store = server({ ...organizer, athletes: [rostered(ann, 1), rostered(cal, 2), rostered(gia, 3)], session_schedule: [scheduleRow(1, '09:00:00', 'W 58'), scheduleRow(2, '11:00:00', 'M 89'), scheduleRow(3, '13:00:00', 'W 63')] });
+    const emptied = [{ kind: 'removeAthlete', athlete: keyOf(cal), fromSession: 2, fromPlatform: 'Red', occurrence: 0 }];
+    expect((await board(store, emptied)).sessions.map((s) => s.number)).toEqual([1, 3]);
+    await publishAs(store, 'user_a', 'published', '0', emptied);
+    expect(store.rows('session_schedule').map((r) => [r.sessionId, r.weightClass])).toEqual([
+      [1, 'W 58'],
+      [3, 'W 63'],
+    ]);
+    expect(store.rows('athletes').map((a) => [a.name, a.sessionNumber])).toEqual([
+      ['Ann Lee', 1],
+      ['Gia Hu', 3],
+    ]);
+  });
+
+  it('keeps the numbers of a hand-loaded schedule, out of time order too', async () => {
+    const store = server({ athletes: [rostered(ann, 5), rostered(cal, 2)], session_schedule: [scheduleRow(5, '09:00:00', 'W 58'), scheduleRow(2, '11:00:00', 'M 89')] });
+    expect((await board(store)).sessions.map((s) => [s.number, s.groups[0]?.label])).toEqual([
+      [5, 'W 58'],
+      [2, 'M 89'],
+    ]);
+  });
+
+  it('takes off exactly the lifter removed when two share an identity, and keeps the other in their session', async () => {
+    const sam = (weightClass: string, session: number) => rostered({ memberId: 'noid:sam-lee', name: 'Sam Lee', gender: 'Women', weightClass, entryTotal: 80 }, session);
+    for (const [removeFrom, keptIn, keptClass] of [
+      [2, 1, '58'],
+      [1, 2, '63'],
+    ] as const) {
+      const store = server({
+        ...organizer,
+        athletes: [sam('63', 2), sam('58', 1), rostered(cal, 3)],
+        session_schedule: [scheduleRow(1, '09:00:00', 'W 58'), scheduleRow(2, '11:00:00', 'W 63'), scheduleRow(3, '13:00:00', 'M 89')],
+      });
+      await publishAs(store, 'user_a', 'published', '0', [{ kind: 'removeAthlete', athlete: 'noid:sam-lee|sam lee', fromSession: removeFrom, fromPlatform: 'Red', occurrence: 0 }]);
+      expect(store.rows('athletes').filter((a) => a.name === 'Sam Lee').map((a) => [a.sessionNumber, a.weightClass])).toEqual([[keptIn, keptClass]]);
+    }
   });
 
   it('refuses a publish whose base someone else has published over since', async () => {
     const store = server(organizer);
     await store.record(sport80Today());
-    const options = await publishedOptions(store);
-    await store.as('user_a')(publish, { meet: MEET, options, edits: [], base: 'published', baseVersion: null });
-    expect(await failure(store.as('user_a')(publish, { meet: MEET, options, edits: foldIn, base: 'published', baseVersion: null }))).toEqual({ status: 409, error: STALE_BASE });
+    await publishAs(store, 'user_a', 'published', '0');
+    expect(await failure(publishAs(store, 'user_a', 'published', '0', foldIn))).toEqual({ status: 409, error: STALE_BASE });
   });
 
-  it('refuses to approve a publish whose base was published over while it waited', async () => {
+  it('refuses any publish, from scratch too, once a start list or schedule was loaded by hand since it was opened', async () => {
+    const store = server(organizer);
+    const { version } = await opened(store);
+    await store.as(null)(replaceMeetSchedule, { meet: MEET, rows: publishedRows().map((row) => ({ ...row, startTime: '10:00:00' })) });
+    expect(await failure(publishAs(store, 'user_a', 'published', version))).toEqual({ status: 409, error: STALE_BASE });
+    expect(await failure(publishAs(store, 'user_a', 'entries', version))).toEqual({ status: 409, error: STALE_BASE });
+    expect(await publishAs(store, 'user_a', 'published', '1')).toMatchObject({ status: 'live', version: '2' });
+  });
+
+  it('refuses to approve a publication made before the schedule changed', async () => {
+    for (const change of ['publish', 'handLoad'] as const) {
+      const store = server(organizer);
+      await store.record(sport80Today());
+      await publishAs(store, 'user_b', 'published', '0', foldIn);
+      const waiting = pendingId(store);
+      if (change === 'publish') await publishAs(store, 'user_a', 'published', '0');
+      else await store.as(null)(replaceMeetAthletes, { meet: MEET, rows: roster(), allowUnchecked: true });
+      expect(await failure(store.as(null)(approve, { publicationId: waiting }))).toEqual({ status: 409, error: STALE_APPROVAL });
+      expect(store.rows('athletes').map((a) => a.name)).toContain('Dan Fox');
+    }
+  });
+
+  it('lets someone who does not organize the meet take off only lifters Sport80 no longer lists', async () => {
     const store = server(organizer);
     await store.record(sport80Today());
-    const options = await publishedOptions(store);
-    await store.as('user_b')(publish, { meet: MEET, options, edits: foldIn, base: 'published', baseVersion: null });
-    const pendingId = String(store.docs('schedule_publications')[0]?._id);
-    await store.as('user_a')(publish, { meet: MEET, options, edits: [], base: 'published', baseVersion: null });
-    expect(await failure(store.as(null)(approve, { publicationId: pendingId }))).toEqual({ status: 409, error: STALE_APPROVAL });
-    expect(store.rows('athletes').map((a) => a.name)).toContain('Dan Fox');
+    const takeOffAnn = [{ kind: 'removeAthlete', athlete: keyOf(ann), fromSession: 1, fromPlatform: 'Red', occurrence: 0 }];
+    expect(await failure(publishAs(store, 'user_b', 'published', '0', takeOffAnn))).toEqual({ status: 400, error: stillListedProblem(['Ann Lee']) });
+    expect(stillListedProblem(['Ann Lee'])).toBe('Ann Lee is still on Sport80, and only lifters Sport80 no longer lists can be taken off the start list before the publisher organizes this meet.');
+    expect(await publishAs(store, 'user_b', 'published', '0', foldIn)).toMatchObject({ status: 'pending', version: '0' });
+    expect(await publishAs(store, 'user_a', 'published', '0', takeOffAnn)).toMatchObject({ status: 'live' });
+  });
+
+  it('names the lifters a publication adds and takes off, in its email and on its review page', async () => {
+    const store = server(organizer);
+    await store.record(sport80Today());
+    await publishAs(store, 'user_b', 'published', '0', foldIn);
+    const publicationId = pendingId(store);
+    const email = (await store.as(null)(emailContent, { publicationId })) as PublicationEmailContent;
+    expect(email.changes).toEqual({ added: ['Fay Lund'], removed: ['Dan Fox'] });
+    const { html } = renderPublicationEmail(email);
+    expect(html).toContain('<p>Adds to the start list: Fay Lund.</p>');
+    expect(html).toContain('<p>Takes off the start list: Dan Fox.</p>');
+    const review = (await store.as(null)(reviewByToken, await withReviewToken(store, publicationId))) as ReviewContent;
+    expect(review).toMatchObject({ changes: { added: ['Fay Lund'], removed: ['Dan Fox'] }, problem: null });
+    const page = renderReviewPage({ ...review, publicationId, token: 'review-token' });
+    expect(page).toContain('Adds to the start list: Fay Lund.');
+    expect(page).toContain('Takes off the start list: Dan Fox.');
+    expect(page).toContain('value="approve"');
+  });
+
+  it('emails a live publication as it was written, without applying its edits a second time', async () => {
+    const store = server(organizer);
+    await store.record(sport80Today());
+    await publishAs(store, 'user_a', 'published', '0', [{ kind: 'swapSessions', session: 1, withSession: 2 }, ...foldIn.slice(0, 1).map((edit) => ({ ...edit, toSession: 2 }))]);
+    const publicationId = String(store.docs('schedule_publications')[0]?._id);
+    const email = (await store.as(null)(emailContent, { publicationId })) as PublicationEmailContent;
+    const written = store.rows('session_schedule').map((row) => [row.sessionId, row.weightClass]);
+    expect(email.schedule.sessions.flatMap((session) => session.groups.map((group) => [session.number, platformLabel(group)]))).toEqual(written);
+    expect(written.slice(0, 2)).toEqual([
+      [1, 'M 89, 96'],
+      [2, 'W 58'],
+    ]);
+    expect(email.schedule.warnings.map((warning) => warning.code)).not.toContain('skippedEdit');
+    expect(email.changes).toEqual({ added: ['Fay Lund'], removed: [] });
+  });
+
+  it("says on the review page that a publication made on a schedule that's gone can't be approved", async () => {
+    const store = server(organizer);
+    await store.record(sport80Today());
+    await publishAs(store, 'user_b', 'published', '0', foldIn);
+    const publicationId = pendingId(store);
+    await store.as(null)(replaceMeetAthletes, { meet: MEET, rows: roster().map(({ sessionNumber: _n, sessionPlatform: _p, ...row }) => row), allowUnchecked: true });
+    const review = (await store.as(null)(reviewByToken, await withReviewToken(store, publicationId))) as ReviewContent;
+    expect(review.problem).toBe(BASE_GONE);
+    const page = renderReviewPage({ ...review, publicationId, token: 'review-token' });
+    expect(page).toContain(BASE_GONE);
+    expect(page).not.toContain('value="approve"');
+    expect(page).toContain('value="reject"');
+  });
+});
+
+describe('rebuilding a published meet from scratch', () => {
+  it("regroups the start list with Sport80's new lifters and without the withdrawn, and writes both", async () => {
+    const store = server(organizer);
+    await store.record(sport80Today());
+    const { options, version } = await opened(store);
+    const built = (await store.as(null)(preview, { meet: MEET, options, edits: [], base: 'entries' })) as Board;
+    const names = built.sessions.flatMap((s) => s.groups.flatMap((g) => g.athletes.map((a) => a.name)));
+    expect(names).toEqual(expect.arrayContaining(['Fay Lund', 'Gus Mora', 'Eve Gray', 'Ann Lee']));
+    expect(names).not.toContain('Dan Fox');
+    expect(built.athletes).toBe(9);
+    expect(await publishAs(store, 'user_a', 'entries', version)).toMatchObject({ status: 'live', version: '1' });
+    const athletes = store.rows('athletes');
+    expect(athletes.map((a) => a.name)).not.toContain('Dan Fox');
+    expect(athletes.filter((a) => a.name === 'Fay Lund' || a.name === 'Gus Mora').every((a) => typeof a.sessionNumber === 'number')).toBe(true);
+    expect(store.rows('schedule_publications')).toEqual([expect.objectContaining({ base: 'entries', baseVersion: '0', added: ['Fay Lund', 'Gus Mora'], removed: ['Dan Fox'] })]);
+  });
+});
+
+describe('lifters without a member id', () => {
+  it('match by name and gender when either side has no member id, so nobody reads as new and withdrawn at once', async () => {
+    const store = server({
+      athletes: [rostered({ ...ann, memberId: 'noid:ann-lee' }, 1), rostered(bea, 1), rostered(cal, 2)],
+      session_schedule: [scheduleRow(1, '09:00:00', 'W 58'), scheduleRow(2, '11:00:00', 'M 89')],
+    });
+    await store.record([listed(ann), listed({ ...bea, memberId: 'noid:bea-cho' }), listed(cal)]);
+    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: NOW, added: [], withdrawn: [] });
+  });
+});
+
+describe('hand-loaded platform names', () => {
+  const longName = 'The Main Competition Platform By The Doors';
+  const handLoaded = () =>
+    server({
+      athletes: [rostered(ann, 1), rostered(cal, 1, { sessionPlatform: 'red' }), rostered(gia, 2, { sessionPlatform: longName })],
+      session_schedule: [scheduleRow(1, '09:00:00', 'W 58'), { ...scheduleRow(1, '09:00:00', 'M 89'), platform: 'red' }, { ...scheduleRow(2, '11:00:00', 'W 63'), platform: longName }],
+    });
+
+  it('are taken as they are on the published schedule, and still checked when building from scratch', async () => {
+    const store = handLoaded();
+    const { options } = await opened(store);
+    expect(options.platforms).toEqual(['Red', 'red', longName]);
+    expect((await board(store)).sessions.map((s) => s.groups.map((g) => g.platform))).toEqual([['Red', 'red'], [longName]]);
+    expect(await failure(store.as(null)(preview, { meet: MEET, options, edits: [], base: 'entries' }))).toMatchObject({ status: 400 });
+  });
+});
+
+describe('what opening the builder reads', () => {
+  it("reads neither the meet's publications nor its Sport80 list", async () => {
+    const quiet = server();
+    const busy = server({
+      sport80_entrants: Array.from({ length: 200 }, (_, i) => listed({ ...ann, memberId: String(5000 + i), name: `Lifter ${i}` })),
+      sport80_entrant_checks: [{ meet: MEET, checkedAt: 1, count: 200 }],
+      schedule_publications: Array.from({ length: 40 }, (_, i) => ({ meet: MEET, userId: 'user_a', options: defaultBuilderOptions(meetRow), edits: [], status: 'superseded', createdAt: i })),
+    });
+    const readsOf = async (store: ReturnType<typeof server>) => {
+      const before = store.reads.count;
+      await store.as(null)(defaults, { meet: MEET });
+      return store.reads.count - before;
+    };
+    expect(await readsOf(busy)).toBe(await readsOf(quiet));
   });
 });

@@ -24,9 +24,8 @@ use leptos::task::spawn_local;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use models::{
-    BuiltSchedule, Defaults, LocalWork, MAX_BUILDER_EDITS, SET_ASIDE_NOTICE, SavedDraft, Start,
-    checked_options, form_of, is_sport80_link, match_details, rebuild_warning, starting_point,
-    unbuilt_message,
+    BuiltSchedule, Defaults, LocalWork, MAX_BUILDER_EDITS, SavedDraft, Start, checked_options,
+    form_of, is_sport80_link, match_details, rebuild_warning, starting_point, unbuilt_message,
 };
 use publish::PublishPanel;
 
@@ -357,7 +356,7 @@ fn Workspace(meet: String, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView
         };
         let local = read_local_work(&meet.get_value());
         let start = starting_point(&defaults, saved, local);
-        let notice = notice.or_else(|| start.set_aside.then(|| SET_ASIDE_NOTICE.to_owned()));
+        let notice = notice.or_else(|| start.notice.map(str::to_owned));
         opened.set(Some(Opened {
             defaults,
             start,
@@ -480,7 +479,7 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
             )));
         }
         edits.set(Vec::new());
-        basis.set(Basis::default());
+        basis.update(|basis| basis.base = ScheduleBase::Entries);
         applied.set(Some(options));
     };
     Effect::new(move |_| {

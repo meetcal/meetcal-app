@@ -143,9 +143,16 @@ pub(crate) struct ExportFile {
     pub content: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct LoadedMeet {
     pub meet: String,
+    #[serde(default)]
+    pub refreshed: bool,
+    #[serde(default)]
+    pub checked_at: Option<f64>,
+    #[serde(default)]
+    pub next_check_at: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
