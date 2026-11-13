@@ -44,3 +44,13 @@ test("canonical URLs, the sitemap and robots.txt name www.meetcal.app", async ()
   const robots = await readFile(new URL("../../public/robots.txt", import.meta.url), "utf8");
   assert.match(robots, /^Sitemap: https:\/\/www\.meetcal\.app\/sitemap\.xml$/m);
 });
+
+test("the browser tests' server serves the Schedule Builder its own app, as Vercel does", async () => {
+  const serve = JSON.parse(await readFile(new URL("../serve.json", import.meta.url), "utf8"));
+  const [builder, everythingElse] = serve.rewrites;
+  assert.deepEqual(builder, config.rewrites.find(({ source }) => source === "/schedule-builder"));
+  assert.deepEqual(everythingElse, { source: "/:path([^.]*)", destination: "/index.html" });
+  assert.equal(serve.rewrites.length, 2);
+  const playwright = await readFile(new URL("../../playwright.config.ts", import.meta.url), "utf8");
+  assert.match(playwright, /command: "npx serve dist -l 4173 -c \.\.\/tests\/serve\.json"/);
+});

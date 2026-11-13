@@ -15,17 +15,18 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 
 | Path | Role |
 |---|---|
-| `src/app.rs` | The router: every route, and which ones sit behind `SubscriptionGate` (`/wrapped` and `/schedule-builder` are free, even signed out, and `/link` and `/submit-meet` need sign-in but no subscription, so none of them does) |
+| `src/app.rs` | The router: `SiteRoutes` (the site's app) and `ScheduleBuilderRoutes` (the Schedule Builder's own app), in one shared frame, and `link_rel`, which makes a link into the other app a whole-page load; every route, and which ones sit behind `SubscriptionGate` (`/wrapped` and `/schedule-builder` are free, even signed out, and `/link` and `/submit-meet` need sign-in but no subscription, so none of them does) |
 | `src/utils/api/` | The only data access, in eight modules (`transport.rs`: the HTTP call, its retries, timeouts and messages, over the browser's `fetch` in `../http.rs`; `catalog.rs`: the queries and the premium lists; `pass.rs`: fetching, holding and renewing the access pass; `kept_answers.rs`: the answers kept with their tags for revalidation, in memory and in IndexedDB through `src/answer_store.js`; `device_login.rs`, `meet_submissions.rs` and `schedule_builder.rs`: the `/link`, `/submit-meet` and `/schedule-builder` calls; `mod.rs`: the entry points pages call, re-exporting the rest): every Convex query the site reads (`queries::*`), which of them carry the access pass, the HTTP call with its retries, and fetching and holding the pass (`accessPass:pass`, with `entitlements:refresh` when Convex does not know the subscriber yet), the `/link` page's `deviceLogin` query and mutations and `apiTokens:revokeAllCli`, `/submit-meet`'s `meetSubmissions` mutations and file uploads, and `/schedule-builder`'s `scheduleBuilderLoad`, `scheduleBuilder` and `schedulePublications` calls |
 | `src/auth.rs`, `src/auth_bridge.js` | Clerk sign-in, through a small JavaScript bridge to Clerk's web SDK |
 | `src/components/` | Header, footer, feature cards, route metadata (`seo.rs`), the subscription gate |
 | `src/pages/` | Public pages (home, features, privacy, terms); `link.rs`: `/link`, where a signed-in user approves or denies a `meetcal login` from the CLI (no subscription needed, in no menu, noindex); `submit_meet.rs`: `/submit-meet`, where a signed-in user sends the schedule and start lists of a meet MeetCal does not cover yet (no subscription needed, in the header, noindex); and `schedule_builder/`: `/schedule-builder`, where a meet organizer builds, edits, exports and publishes a meet's sessions from its Sport80 entries (public, in the header, indexed; drafts and publishing need sign-in). `/atlas` redirects to the Atlas home page at atlas.meetcal.app, which the Atlas repository serves |
 | `src/pages/comp_data/` | The competition data pages, one file each, plus their shared pieces: `models.rs` (answer types), `loading.rs`, `filters.rs`, `format.rs`, `ui.rs`, `catalog.rs` (the data page list, and each page's `Access`: subscription or free). `wrapped.rs` shows the server's Wrapped answer (`results:wrapped`) and scores nothing itself |
 | `styles.css` | All styling |
-| `index.html`, `scripts/generate-bootstrap.sh`, `shells/` | The page shell, each route's prerendered first frame (`shells/`, kept equal to the app by `tests/shells.rs`; `UPDATE_SHELLS=1 cargo test --test shells` rewrites it), and the post-build hook that writes the Wasm bootstrap, the preloads and one shell per route under `dist/seo/` |
+| `src/main.rs`, `src/bin/meetcal-web-schedule-builder.rs` | The two Wasm apps: the site, and `/schedule-builder` alone, so the builder adds nothing to any other page's download ([docs/architecture.md](docs/architecture.md#two-apps-the-site-and-the-schedule-builder)) |
+| `index.html`, `schedule-builder.html`, `scripts/generate-bootstrap.sh`, `shells/` | The page shell (`schedule-builder.html` is `index.html` building the builder's binary), each route's prerendered first frame (`shells/`, kept equal to the app by `tests/shells.rs`; `UPDATE_SHELLS=1 cargo test --test shells` rewrites it), and the post-build hook that writes each app's Wasm bootstrap, the preloads and one shell per route under `dist/seo/`, and builds the Schedule Builder's app into `dist/` after the site's |
 | `vercel.json` | Build command, security headers (the CSP), and the rewrites that serve each route's metadata shell |
 | `tests/e2e/` | Playwright: routes, layout, accessibility, security headers, visual baselines, the data pages against mocked Convex answers, and `performance.spec.ts`: each main route's bytes, requests, LCP and CLS, and the filters' blocking time, on a Slow 4G phone (mobile Chromium only) |
-| `tests/config/` | Node tests of `vercel.json` and the built shells, including the Wasm's raw and brotli-11 size budgets and the cap on files asked for before it (`loading.test.mjs`) |
+| `tests/config/` | Node tests of `vercel.json` and the built shells, including each app's Wasm raw and brotli-11 size budgets and the cap on files asked for before it (`loading.test.mjs`) |
 | `tests/budgets.json` | Every size, request and timing budget the config tests and `performance.spec.ts` hold the site to; raising one is an edit here in the pull request that needs it |
 | `docs/` | [architecture.md](docs/architecture.md) (how the pieces fit, and adding a page), [testing.md](docs/testing.md) |
 
@@ -35,12 +36,12 @@ Run from this folder.
 
 | Task | Command |
 |---|---|
-| Dev server (http://localhost:3000) | `mise run run` |
+| Dev server (http://localhost:3000) | `mise run run` (the site; `mise run run-schedule-builder` serves the Schedule Builder on http://localhost:3001/schedule-builder) |
 | Format (Leptos `view!` included) | `mise run fmt` |
 | Lint | `mise run lint` (`cargo fmt --check` + `clippy -D warnings`) |
 | Rust tests | `cargo test --locked` |
 | Rust gate | `mise run check-all` |
-| Release build | `mise run build` (into `dist/`) |
+| Release build | `mise run build` (both apps, into `dist/`) |
 | Browser tests | see [docs/testing.md](docs/testing.md) |
 | Dependency audit | `mise run audit` and `npm audit --audit-level=high` |
 
@@ -76,4 +77,5 @@ CI (`.github/workflows/web.yml` at the root) runs the same gates plus both audit
 - Convex's HTTP API writes the numbers of a value answer as floats (`2.0`). `utils/api` turns whole numbers back into integers so integer fields parse; answers sent as JSON text (`{ json }`) never had the problem. Mocks in tests use integers, so they cannot catch a regression here: keep the unit test in `utils/api`.
 - A Convex view is fresh while its source tables are unchanged, whatever code built it. A page that needs a new field from a view-backed answer will not see it on production until the view is rebuilt (`../docs/backend.md`).
 - Every read is a JSON `POST`, so the browser sends a CORS preflight first. Playwright mocks must answer `OPTIONS` (`routeQuery` in `tests/e2e/support/api.ts` does).
+- `/schedule-builder` is its own Wasm app. A link from it to another page, or from another page to it, must be a whole-page load: link through `link_rel` (`attr:rel=link_rel(path)`), never a bare `<A>` or `use_navigate` across the two. Code the builder imports from elsewhere in the crate ships in its Wasm too, and code only the builder uses must stay out of the site's binary (`src/main.rs` mounts `SiteRoutes`, which has no builder route).
 - `trunk serve` has no CSP; only a Vercel deploy (or `tests/e2e/security.spec.ts`) shows a CSP violation.

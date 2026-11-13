@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/schedule-builder", "destination": "/seo/schedule-builder.html" },
+    { "source": "/:path([^.]*)", "destination": "/index.html" }
+  ]
+}

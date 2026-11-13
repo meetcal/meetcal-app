@@ -26,14 +26,55 @@ use leptos::prelude::*;
 use leptos_router::components::*;
 use leptos_router::path;
 
+pub const SCHEDULE_BUILDER_PATH: &str = "/schedule-builder";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WasmApp {
+    Site,
+    ScheduleBuilder,
+}
+
+impl WasmApp {
+    pub fn serving(path: &str) -> Self {
+        if path == SCHEDULE_BUILDER_PATH {
+            Self::ScheduleBuilder
+        } else {
+            Self::Site
+        }
+    }
+
+    pub fn link_rel(self, href: &str) -> Option<&'static str> {
+        let path = href.split(['?', '#']).next().unwrap_or_default();
+        let leaves_this_app = path.starts_with('/') && Self::serving(path) != self;
+        leaves_this_app.then_some("external")
+    }
+}
+
+pub fn link_rel(href: &str) -> Option<&'static str> {
+    use_context::<WasmApp>()
+        .unwrap_or(WasmApp::Site)
+        .link_rel(href)
+}
+
 #[component]
-pub fn SiteRoutes(#[prop(default = true)] footer: bool) -> impl IntoView {
+fn SiteFrame(footer: bool, children: Children) -> impl IntoView {
     view! {
         <Router>
             <RouteMetadata />
             <div class="site-shell">
             <Header />
-            <main id="main-content">
+            <main id="main-content">{children()}</main>
+            {footer.then(|| view! { <Footer /> })}
+            </div>
+        </Router>
+    }
+}
+
+#[component]
+pub fn SiteRoutes(#[prop(default = true)] footer: bool) -> impl IntoView {
+    provide_context(WasmApp::Site);
+    view! {
+        <SiteFrame footer>
                 <Routes fallback=|| view! { <NotFound /> }>
                     <Route path=path!("/") view=Home />
                     <Route path=path!("/comp-data") view=|| view! { <SubscriptionGate page=catalog::DATA_HOME><CompData /></SubscriptionGate> } />
@@ -53,14 +94,73 @@ pub fn SiteRoutes(#[prop(default = true)] footer: bool) -> impl IntoView {
                     <Route path=path!("/subscription") view=MobileSubscriptionPage />
                     <Route path=path!("/link") view=LinkPage />
                     <Route path=path!("/submit-meet") view=SubmitMeetPage />
-                    <Route path=path!("/schedule-builder") view=ScheduleBuilderPage />
                     <Route path=path!("/features") view=FeaturesPage />
                     <Route path=path!("/privacy") view=PrivacyPage />
                     <Route path=path!("/terms") view=TermsPage />
                 </Routes>
-            </main>
-            {footer.then(|| view! { <Footer /> })}
-            </div>
-        </Router>
+        </SiteFrame>
+    }
+}
+
+#[component]
+pub fn ScheduleBuilderRoutes(#[prop(default = true)] footer: bool) -> impl IntoView {
+    provide_context(WasmApp::ScheduleBuilder);
+    view! {
+        <SiteFrame footer>
+            <Routes fallback=|| view! { <NotFound /> }>
+                <Route path=path!("/schedule-builder") view=ScheduleBuilderPage />
+            </Routes>
+        </SiteFrame>
+    }
+}
+
+#[component]
+pub fn WasmAppRoutes(app: WasmApp, #[prop(default = true)] footer: bool) -> impl IntoView {
+    match app {
+        WasmApp::Site => view! { <SiteRoutes footer /> }.into_any(),
+        WasmApp::ScheduleBuilder => view! { <ScheduleBuilderRoutes footer /> }.into_any(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_schedule_builder_path_is_served_by_its_own_app() {
+        assert_eq!(
+            WasmApp::serving("/schedule-builder"),
+            WasmApp::ScheduleBuilder
+        );
+        for path in ["/", "/records", "/schedule-builder/extra", "/wrapped"] {
+            assert_eq!(WasmApp::serving(path), WasmApp::Site, "{path}");
+        }
+    }
+
+    #[test]
+    fn a_link_into_the_other_app_loads_a_whole_page() {
+        assert_eq!(
+            WasmApp::Site.link_rel("/schedule-builder"),
+            Some("external")
+        );
+        assert_eq!(
+            WasmApp::Site.link_rel("/schedule-builder?meet=Open"),
+            Some("external")
+        );
+        assert_eq!(WasmApp::Site.link_rel("/records"), None);
+        assert_eq!(WasmApp::ScheduleBuilder.link_rel("/schedule-builder"), None);
+        assert_eq!(
+            WasmApp::ScheduleBuilder.link_rel("/schedule-builder?meet=Open"),
+            None
+        );
+        assert_eq!(WasmApp::ScheduleBuilder.link_rel("/"), Some("external"));
+        assert_eq!(
+            WasmApp::ScheduleBuilder.link_rel("/privacy"),
+            Some("external")
+        );
+        for app in [WasmApp::Site, WasmApp::ScheduleBuilder] {
+            assert_eq!(app.link_rel("mailto:maddisen@meetcal.app"), None);
+            assert_eq!(app.link_rel("https://atlas.meetcal.app/"), None);
+        }
     }
 }

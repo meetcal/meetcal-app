@@ -101,7 +101,22 @@ npm run test:e2e
 ```
 
 The non-secret placeholder key compiles the authenticated test path into the
-Wasm build; Playwright stands in for Clerk and never reaches it.
+Wasm build; Playwright stands in for Clerk and never reaches it. The one build
+writes both apps, the site and the Schedule Builder, into `dist/`.
+
+Playwright serves `dist/` with `serve` and `tests/serve.json`: `/schedule-builder`
+gets the builder's own document (`seo/schedule-builder.html`, as Vercel's rewrite
+serves it), and every other path without a dot gets `index.html`, the site's
+app. A config test keeps the builder's rewrite equal to `vercel.json`'s.
+
+Size budgets live in `tests/budgets.json`. `npm run test:config` holds each
+app's Wasm to its own raw and brotli-11 budget (`wasmRawBytes` and
+`wasmBrotli11Bytes` for the site, `scheduleBuilderWasmRawBytes` and
+`scheduleBuilderWasmBrotli11Bytes` for the builder), checks that every page
+preloads only its own app's glue and Wasm, and caps the files asked for before
+it. `tests/e2e/performance.spec.ts` loads each main route, `/schedule-builder`
+included, on a throttled Slow 4G phone and holds it to its entry under
+`slow4gPhone.routes`.
 
 The suite exercises every route in Chromium and WebKit, including Pixel, iPhone,
 and small-phone viewports. It also checks deep links, subscription handoffs,

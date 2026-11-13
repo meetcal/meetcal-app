@@ -3,15 +3,28 @@
 set -euo pipefail
 
 dist_dir="${TRUNK_STAGING_DIR:?Trunk must provide TRUNK_STAGING_DIR}"
-shells_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../shells" && pwd)"
+html_file="${TRUNK_HTML_FILE:?Trunk must provide TRUNK_HTML_FILE}"
+web_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+shells_dir="${web_dir}/shells"
 analytics_idle_timeout_ms=4000
+schedule_builder_stem="schedule-builder"
 shopt -s nullglob
-javascript_candidates=("${dist_dir}"/meetcal-web-*.js)
-wasm_candidates=("${dist_dir}"/meetcal-web-*_bg.wasm)
+
+case "$(basename "${html_file}")" in
+  index.html) app="meetcal-web" ;;
+  schedule-builder.html) app="meetcal-web-schedule-builder" ;;
+  *)
+    echo "No MeetCal app is built from ${html_file}" >&2
+    exit 1
+    ;;
+esac
+
+javascript_candidates=("${dist_dir}/${app}"-[0-9a-f]*.js)
+wasm_candidates=("${dist_dir}/${app}"-[0-9a-f]*_bg.wasm)
 snippet_candidates=("${dist_dir}"/snippets/meetcal-web-*/src/*.js)
 
 if [[ ${#javascript_candidates[@]} -ne 1 || ${#wasm_candidates[@]} -ne 1 || ${#snippet_candidates[@]} -eq 0 ]]; then
-  echo "Expected one MeetCal JavaScript loader, one Wasm binary and its snippets in ${dist_dir}" >&2
+  echo "Expected one ${app} JavaScript loader, one Wasm binary and its snippets in ${dist_dir}" >&2
   exit 1
 fi
 
@@ -25,7 +38,7 @@ snippet_hash="$(cd "${snippet_dir}" && find . -type f -print | LC_ALL=C sort | x
 hashed_snippet_crate="${snippet_crate}-${snippet_hash}"
 mv "${snippet_dir}" "${dist_dir}/snippets/${hashed_snippet_crate}"
 sed -i -E "s#(from [\"']\./snippets/)${snippet_crate}/#\1${hashed_snippet_crate}/#g" "${javascript_candidates[0]}"
-javascript_file="meetcal-web-$(content_hash < "${javascript_candidates[0]}").js"
+javascript_file="${app}-$(content_hash < "${javascript_candidates[0]}").js"
 mv "${javascript_candidates[0]}" "${dist_dir}/${javascript_file}"
 
 wasm_file="$(basename "${wasm_candidates[0]}")"
@@ -156,6 +169,12 @@ render_page() {
 }
 
 while IFS='|' read -r stem path title description robots; do
+  if [[ "${app}" == "meetcal-web-schedule-builder" ]]; then
+    [[ "${stem}" == "${schedule_builder_stem}" ]] || continue
+    render_page "${stem}" "${path}" "${title}" "${description}" "${robots}" "${dist_dir}/index.html"
+  elif [[ "${stem}" == "${schedule_builder_stem}" ]]; then
+    continue
+  fi
   case "${stem}" in
     index) output="${dist_dir}/index.html" ;;
     404) output="${dist_dir}/404.html" ;;
@@ -163,3 +182,27 @@ while IFS='|' read -r stem path title description robots; do
   esac
   render_page "${stem}" "${path}" "${title}" "${description}" "${robots}" "${output}"
 done < "${shells_dir}/routes.txt"
+
+if [[ "${app}" == "meetcal-web" ]]; then
+  builder_dist="$(mktemp -d)"
+  trap 'rm -f "${template}"; rm -rf "${builder_dist}"' EXIT
+  profile_flags=()
+  if [[ "${TRUNK_PROFILE:-debug}" == "release" ]]; then
+    profile_flags=(--release)
+  fi
+  (cd "${web_dir}" && env -u NO_COLOR trunk build --locked "${profile_flags[@]}" --dist "${builder_dist}" schedule-builder.html)
+  builder_files=(
+    "${builder_dist}"/meetcal-web-schedule-builder-*.js
+    "${builder_dist}"/meetcal-web-schedule-builder-*_bg.wasm
+    "${builder_dist}"/app-bootstrap-*.js
+    "${builder_dist}/seo/${schedule_builder_stem}.html"
+  )
+  if [[ ${#builder_files[@]} -ne 4 || ! -f "${builder_dist}/seo/${schedule_builder_stem}.html" ]]; then
+    echo "Expected the Schedule Builder's loader, Wasm binary, bootstrap and shell in ${builder_dist}" >&2
+    exit 1
+  fi
+  cp "${builder_files[@]:0:3}" "${dist_dir}/"
+  cp "${builder_dist}/seo/${schedule_builder_stem}.html" "${seo_dir}/"
+  cp -R "${builder_dist}/snippets/." "${dist_dir}/snippets/"
+  cp "${builder_dist}"/styles-*.css "${dist_dir}/"
+fi

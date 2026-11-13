@@ -1,3 +1,4 @@
+use crate::app::link_rel;
 use crate::auth::{AuthContext, AuthState, mount_user_button, unmount_user_button};
 use crate::pages::comp_data::catalog::DATA_PAGES;
 use leptos::prelude::*;
@@ -33,7 +34,7 @@ pub fn Header() -> impl IntoView {
 
     view! {
         <header class="site-header">
-            <A href="/" attr:class="brand-link">
+            <A href="/" attr:class="brand-link" attr:rel=link_rel("/")>
                 <img class="brand-logo" src="/images/logo.png" alt="MeetCal" width="34" height="34" />
                 <span>"MeetCal"</span>
             </A>
@@ -61,17 +62,17 @@ pub fn Header() -> impl IntoView {
                     on:pointerleave=move |_| allow_menus()
                     on:click=move |_| dismiss_menus()
                 >
-                    <A href="/comp-data" attr:class="nav-menu-trigger">"Competition Data"</A>
+                    <A href="/comp-data" attr:class="nav-menu-trigger" attr:rel=link_rel("/comp-data")>"Competition Data"</A>
                     <div class="nav-menu-panel">
                         {DATA_PAGES
                             .iter()
-                            .map(|page| view! { <A href=page.path>{page.label}</A> })
+                            .map(|page| view! { <A href=page.path attr:rel=link_rel(page.path)>{page.label}</A> })
                             .collect_view()}
                     </div>
                 </div>
-                <A href="/features">"Features"</A>
-                <A href="/schedule-builder">"Schedule Builder"</A>
-                <A href="/submit-meet">"Submit a Meet"</A>
+                <A href="/features" attr:rel=link_rel("/features")>"Features"</A>
+                <A href="/schedule-builder" attr:rel=link_rel("/schedule-builder")>"Schedule Builder"</A>
+                <A href="/submit-meet" attr:rel=link_rel("/submit-meet")>"Submit a Meet"</A>
                 <A href="mailto:maddisen@meetcal.app">"Contact Us"</A>
             </nav>
             <details class="mobile-nav" node_ref=mobile_nav>
@@ -82,10 +83,10 @@ pub fn Header() -> impl IntoView {
                     <span class="mobile-nav-heading">"Products"</span>
                     <a href="https://wargames.meetcal.app">"War Games"</a>
                     <a href="https://atlas.meetcal.app/">"Atlas"</a>
-                    <A href="/comp-data">"Competition Data"</A>
-                    <A href="/features">"Features"</A>
-                    <A href="/schedule-builder">"Schedule Builder"</A>
-                    <A href="/submit-meet">"Submit a Meet"</A>
+                    <A href="/comp-data" attr:rel=link_rel("/comp-data")>"Competition Data"</A>
+                    <A href="/features" attr:rel=link_rel("/features")>"Features"</A>
+                    <A href="/schedule-builder" attr:rel=link_rel("/schedule-builder")>"Schedule Builder"</A>
+                    <A href="/submit-meet" attr:rel=link_rel("/submit-meet")>"Submit a Meet"</A>
                     <A href="mailto:maddisen@meetcal.app">"Contact Us"</A>
                     <div class="mobile-nav-socials">
                         <a

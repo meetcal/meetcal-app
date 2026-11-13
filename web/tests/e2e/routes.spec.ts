@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mockAuth } from "./support/api";
 import { protectedDataRoutes, publicRoutes, signedInRoutes } from "./support/routes";
 
@@ -185,4 +185,40 @@ test("every page has one top-level banner, main and contentinfo landmark", async
       .analyze();
     expect(results.violations, `${path} landmark violations`).toEqual([]);
   }
+});
+
+async function clickHeaderLink(page: Page, name: string) {
+  const mobileMenu = page.locator('summary[aria-label="Open navigation menu"]');
+  if (await mobileMenu.isVisible()) await mobileMenu.click();
+  await page.locator("header.site-header").getByRole("link", { name, exact: true }).filter({ visible: true }).first().click();
+}
+
+const markDocument = (page: Page) => page.evaluate(() => Object.assign(window, { __sameDocument: true }));
+const isSameDocument = (page: Page) => page.evaluate(() => "__sameDocument" in window);
+const loadedWasm = (page: Page) =>
+  page.evaluate(() => performance.getEntriesByType("resource").map(({ name }) => new URL(name).pathname).filter((path) => path.endsWith("_bg.wasm")));
+
+test("the Schedule Builder is its own app: links into it and out of it load a whole page", async ({ page }) => {
+  await mockAuth(page, { signedIn: false });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: "Your Competition Schedule, Simplified" })).toBeVisible();
+  expect(await loadedWasm(page)).toEqual([expect.stringMatching(/^\/meetcal-web-[0-9a-f]+_bg\.wasm$/)]);
+
+  await markDocument(page);
+  await clickHeaderLink(page, "Features");
+  await expect(page).toHaveURL(/\/features$/);
+  expect(await isSameDocument(page), "a link inside the site stays in the site's app").toBe(true);
+
+  await clickHeaderLink(page, "Schedule Builder");
+  await expect(page).toHaveURL(/\/schedule-builder$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Schedule Builder" })).toBeVisible();
+  expect(await isSameDocument(page), "the header's Schedule Builder link loads the builder's own page").toBe(false);
+  expect(await loadedWasm(page)).toEqual([expect.stringMatching(/^\/meetcal-web-schedule-builder-[0-9a-f]+_bg\.wasm$/)]);
+
+  await markDocument(page);
+  await clickHeaderLink(page, "Features");
+  await expect(page).toHaveURL(/\/features$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Everything you need before the bar is loaded" })).toBeVisible();
+  expect(await isSameDocument(page), "a link out of the builder loads the site's page").toBe(false);
+  expect(await loadedWasm(page)).toEqual([expect.stringMatching(/^\/meetcal-web-[0-9a-f]+_bg\.wasm$/)]);
 });

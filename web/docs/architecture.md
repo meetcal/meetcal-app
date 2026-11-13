@@ -1,9 +1,35 @@
 # Architecture
 
-meetcal.app is a client-side rendered Leptos app. Trunk compiles it to WebAssembly; Vercel serves
-the static output and a small HTML shell per route. There is no server of its own: data comes from
+meetcal.app is a client-side rendered Leptos app. Trunk compiles it to WebAssembly, as two apps
+built from one crate (below); Vercel serves the static output and a small HTML shell per route. There is no server of its own: data comes from
 Convex and sign-in from Clerk, both called from the browser. Convex alone decides who sees the
 subscription data, through its access pass.
+
+## Two apps: the site and the Schedule Builder
+
+`/schedule-builder` is its own WebAssembly app, so its code never adds to the download of any other
+page. Both apps are binaries of the one `meetcal-web` crate and share everything else through its
+library (`src/lib.rs`): the header, footer, route metadata, auth, `utils/api` and `styles.css`.
+
+| App | Binary | Trunk page | Routes |
+|---|---|---|---|
+| The site | `meetcal-web` (`src/main.rs`, `SiteRoutes`) | `index.html` | Every route except `/schedule-builder` |
+| The Schedule Builder | `meetcal-web-schedule-builder` (`src/bin/meetcal-web-schedule-builder.rs`, `ScheduleBuilderRoutes`) | `schedule-builder.html` | `/schedule-builder` |
+
+- Both route sets sit in the same frame (`SiteFrame` in `src/app.rs`: the router, route metadata,
+  header, `<main>` and footer). `WasmApp::serving(path)` names the app that serves a path, and each
+  app provides its `WasmApp` as context.
+- A link into the other app is a whole-page load: `link_rel` gives it `rel="external"`, which the
+  router leaves to the browser. The header, footer and Not Found page use it on every link to a
+  page of the site, so the site's Schedule Builder link and the builder's links back to the site
+  load the other app's document and Wasm.
+- Trunk builds one app per page, so `trunk build` builds the site from `index.html`, and its
+  post-build hook (`scripts/generate-bootstrap.sh`) builds the builder from `schedule-builder.html`
+  into a temporary folder and copies its loader, Wasm, bootstrap, shell and snippets into the
+  site's `dist/`. The two pages differ only in their `data-bin` (a config test compares them).
+  Every `trunk build --release --locked` (CI, `scripts/vercel-build.sh`, `mise run build`) builds
+  both.
+- `mise run run` serves the site; `mise run run-schedule-builder` serves the builder on port 3001.
 
 ## Data: Convex over HTTP
 
@@ -248,7 +274,8 @@ Meet organizers build a meet's sessions from its Sport80 entries (`src/pages/sch
 calls in `src/utils/api/schedule_builder.rs`, backend in `../convex/scheduleBuilder.ts`,
 `../convex/scheduleBuilderLoad.ts` and `../convex/schedulePublications.ts`). The page is public and
 indexable, in the sitemap, and linked as "Schedule Builder" in the header; signing in adds drafts
-and publishing. Like every public page, it loads Clerk only when the browser has a Clerk session or
+and publishing. It is its own Wasm app ([Two apps](#two-apps-the-site-and-the-schedule-builder)),
+downloaded only when someone opens `/schedule-builder`, with its own size budget. Like every public page, it loads Clerk only when the browser has a Clerk session or
 the visitor taps Sign in, and its shell is the empty Load a Meet form. The page computes nothing about a schedule: it sends options and edits and shows
 Convex's answer.
 
@@ -295,7 +322,8 @@ Convex's answer.
 
 Each route needs a document that search engines and link previews can read before the Wasm loads:
 
-- Every route's first frame is in its HTML: `tests/shells.rs` renders the app's own `SiteRoutes`
+- Every route's first frame is in its HTML: `tests/shells.rs` renders the route set of the app
+  that serves it (`WasmAppRoutes`: `SiteRoutes`, or `ScheduleBuilderRoutes` for `/schedule-builder`)
   natively (Leptos' `ssr` feature, on in native tests only) for each route, as the app's first
   frame shows it before Clerk answers (the header, and for a gated route the page's heading, intro
   and a table skeleton from `catalog.rs`), and keeps `shells/<route>.html` and `shells/routes.txt`
@@ -311,7 +339,11 @@ Each route needs a document that search engines and link previews can read befor
   starts PostHog once the app has mounted), adds `modulepreload` for the glue and the auth bridge
   and `preload` for the Wasm, so all three download with the HTML, and renders every line of
   `shells/routes.txt` into its document (`index.html`, `404.html`, `dist/seo/<name>.html`), each
-  with its own title, description, canonical URL and robots directive and its route's shell. Competition data pages are
+  with its own title, description, canonical URL and robots directive and its route's shell. The
+  script runs once per app (`TRUNK_HTML_FILE` names which): the site's run renders every line but
+  `schedule-builder`, then builds the Schedule Builder, whose run writes its own bootstrap and
+  preloads (`meetcal-web-schedule-builder-<hash>.js` and `_bg.wasm`) into
+  `dist/seo/schedule-builder.html`; the site's run copies them into `dist/`. Competition data pages are
   `noindex, nofollow`, except the free `/wrapped`, which is `index, follow`, has its own
   description and is in `public/sitemap.xml`, as is `/schedule-builder`.
 - `vercel.json` rewrites each route to its shell (`/records` to `/seo/records.html`).
@@ -347,7 +379,7 @@ instead; `/submit-meet`, which the header links to, has its own spec.
 
 Vercel's project `meetcal-web` builds this folder (project root `web/`) with
 `scripts/vercel-build.sh`: it installs Rust and Trunk, writes `public/posthog-env.js` from
-`POSTHOG_API_KEY`, and runs `trunk build --release --locked` into `dist/`. Production deploys from
+`POSTHOG_API_KEY`, and runs `trunk build --release --locked` into `dist/`, which builds both apps. Production deploys from
 `master`; every pull request gets a preview. `vercel.json` also sets the security headers,
 including the CSP, for every response.
 
@@ -355,7 +387,7 @@ Analytics: once the app has mounted, the bootstrap loads `public/posthog-env.js`
 `public/posthog-init.js` when the browser is idle, which start PostHog with the key the build
 wrote: autocapture, pageviews and web vitals, without surveys or dead-click capture.
 
-Caching (`vercel.json`): every content-hashed file (the glue, the Wasm, the stylesheet, the
-bootstrap and everything under `/snippets/`) is `immutable` for a year, and a config test checks
+Caching (`vercel.json`): every content-hashed file (both apps' glue and Wasm, which
+`/meetcal-web-(.*)` covers, the stylesheet, the bootstraps and everything under `/snippets/`) is `immutable` for a year, and a config test checks
 each hashed file in `dist/` against the rules. Images, icons and the manifest are cached for a day,
 the PostHog files for an hour, and the HTML revalidates on every visit.
