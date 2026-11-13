@@ -107,8 +107,6 @@ pub(crate) struct Sport80Changes {
     pub checked_at: Option<f64>,
     pub added: Vec<AddedEntrant>,
     pub withdrawn: Vec<serde::de::IgnoredAny>,
-    #[serde(default)]
-    pub locked_withdrawn: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -133,11 +131,13 @@ pub(crate) struct BuiltSession {
     pub start_time: String,
     pub weigh_in_time: String,
     pub groups: Vec<BuiltGroup>,
-    #[serde(default)]
-    pub locked: bool,
 }
 
 impl BuiltSession {
+    pub(crate) fn is_locked(&self) -> bool {
+        self.groups.iter().any(|group| group.locked)
+    }
+
     pub(crate) fn is_scheduled(&self) -> bool {
         !self.start_time.is_empty() && !self.date.is_empty()
     }
@@ -551,21 +551,15 @@ pub(crate) fn added_note(count: usize) -> String {
     }
 }
 
-pub(crate) fn withdrawn_note(count: usize, locked: usize) -> String {
-    let note = match count {
+pub(crate) fn withdrawn_note(count: usize) -> String {
+    match count {
         0 => "Every published lifter is still on Sport80.".to_owned(),
         1 => "1 lifter is marked on the board. Remove takes them off the start list when you publish.".to_owned(),
         count => format!(
             "{count} lifters are marked on the board. Remove takes them off the start list when you publish."
         ),
-    };
-    if locked == 0 {
-        return note;
     }
-    format!("{note} {LOCKED_WITHDRAWN}")
 }
-
-pub(crate) const LOCKED_WITHDRAWN: &str = "A platform with several published rows has no Remove: use Rebuild From Scratch to take its lifters off.";
 
 pub(crate) fn rebuild_warning(published: bool, edits: usize) -> String {
     let your_edits = if edits == 1 {
@@ -1043,18 +1037,12 @@ mod tests {
             "3 new lifters aren’t placed, so they stay off the start list when you publish."
         );
         assert_eq!(
-            withdrawn_note(0, 0),
+            withdrawn_note(0),
             "Every published lifter is still on Sport80."
         );
         assert_eq!(
-            withdrawn_note(2, 0),
+            withdrawn_note(2),
             "2 lifters are marked on the board. Remove takes them off the start list when you publish."
-        );
-        assert_eq!(
-            withdrawn_note(1, 1),
-            format!(
-                "1 lifter is marked on the board. Remove takes them off the start list when you publish. {LOCKED_WITHDRAWN}"
-            )
         );
         assert_eq!(
             rebuild_warning(false, 1),
@@ -1127,7 +1115,6 @@ mod tests {
             start_time: "09:00:00".to_owned(),
             weigh_in_time: "07:00:00".to_owned(),
             groups: Vec::new(),
-            locked: false,
         }
     }
 

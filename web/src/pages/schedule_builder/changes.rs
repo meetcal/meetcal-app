@@ -129,7 +129,7 @@ fn change_lists(
             {added}
         </ul>
         <h3 class="builder-subheading">"No Longer on Sport80"</h3>
-        <p class="builder-help">{withdrawn_note(changes.withdrawn.len(), changes.locked_withdrawn)}</p>
+        <p class="builder-help">{withdrawn_note(changes.withdrawn.len())}</p>
     }
     .into_any()
 }

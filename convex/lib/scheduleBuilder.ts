@@ -64,7 +64,7 @@ export type BuiltSession = {
   locked?: boolean;
 };
 
-export type BuilderWarningCode = 'noEntrants' | 'unscheduled' | 'overCapacity' | 'mixedGroup' | 'overlap' | 'skippedEdit' | 'lockedEdit';
+export type BuilderWarningCode = 'noEntrants' | 'unscheduled' | 'overCapacity' | 'mixedGroup' | 'overlap' | 'skippedEdit' | 'lockedEdit' | 'lockedWithdrawn';
 
 export type BuilderWarning = { code: BuilderWarningCode; message: string };
 
@@ -550,6 +550,11 @@ function lockedPlace(slots: readonly Slot[], edit: BuilderEdit): LockedPlace | n
   }
 }
 
+function lockedWithdrawnWarning(count: number): BuilderWarning {
+  const lifters = count === 1 ? '1 lifter Sport80 no longer lists is' : `${count} lifters Sport80 no longer lists are`;
+  return { code: 'lockedWithdrawn', message: `${lifters} on a platform with several published rows, which has no Remove. Use Rebuild From Scratch to take them off.` };
+}
+
 function lockedWarning(count: number): BuilderWarning {
   return {
     code: 'lockedEdit',
@@ -695,9 +700,10 @@ export function buildFromPublished(base: PublishedBase, diff: Sport80Diff, optio
   }
   const placed = slots.reduce((sum, slot) => sum + [...slot.groups.values()].reduce((n, group) => n + group.athletes.length, 0), 0);
   const built = finish(slots, effective, placed, skipped, 'asPublished');
+  const lockedWithdrawn = built.sessions.flatMap((session) => session.groups.filter((group) => group.locked).flatMap((group) => group.athletes.filter((athlete) => athlete.withdrawn))).length;
   return {
     ...built,
-    warnings: locked.length > 0 ? [...built.warnings, lockedWarning(locked.length)] : built.warnings,
+    warnings: [...built.warnings, ...(locked.length > 0 ? [lockedWarning(locked.length)] : []), ...(lockedWithdrawn > 0 ? [lockedWithdrawnWarning(lockedWithdrawn)] : [])],
     unplaced: bench.unplaced.map(outsideTheBoard),
     removed: bench.removed.map(outsideTheBoard),
     locked,

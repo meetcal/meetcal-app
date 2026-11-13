@@ -156,7 +156,7 @@ describe("recording Sport80's list", () => {
 describe('the changes on Sport80', () => {
   it('lists nothing before Sport80 was checked, rather than everyone as withdrawn', async () => {
     const store = server();
-    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: null, added: [], withdrawn: [], lockedWithdrawn: 0 });
+    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: null, added: [], withdrawn: [] });
   });
 
   it('answers the new entrants with a session each and the withdrawn with where they lift, never an adaptive athlete', async () => {
@@ -206,7 +206,7 @@ describe('building on the published schedule', () => {
       [4, [['W 63 A', ['Ida Ito', 'Jo Kim']]]],
     ]);
     expect(answer.sessions.map((s) => s.id)).toEqual([1, 2, 3, 4]);
-    expect(answer.changes).toEqual({ checkedAt: null, added: [], withdrawn: [], lockedWithdrawn: 0 });
+    expect(answer.changes).toEqual({ checkedAt: null, added: [], withdrawn: [] });
   });
 
   it('marks the withdrawn on the board, places a new entrant and removes a withdrawn one', async () => {
@@ -457,7 +457,7 @@ describe('lifters without a member id', () => {
       session_schedule: [scheduleRow(1, '09:00:00', 'W 58'), scheduleRow(2, '11:00:00', 'M 89')],
     });
     await store.record([listed(ann), listed({ ...bea, memberId: 'noid:bea-cho' }), listed(cal)]);
-    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: NOW, added: [], withdrawn: [], lockedWithdrawn: 0 });
+    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: NOW, added: [], withdrawn: [] });
   });
 });
 
@@ -901,7 +901,9 @@ describe('a platform with several published rows', () => {
     const answer = await board(store);
     expect(answer.changes.added.map((a) => [a.athlete.name, a.suggestion])).toEqual([['Nia Ruiz', { session: 2, number: 2, platform: 'Red' }]]);
     expect(answer.changes.withdrawn.map((w) => w.athlete.name)).toEqual(['Lea Orr']);
-    expect((answer.changes as { lockedWithdrawn?: number }).lockedWithdrawn).toBe(1);
+    expect(answer.warnings.filter((w) => w.code === 'lockedWithdrawn').map((w) => (w as { message?: string }).message)).toEqual([
+      '1 lifter Sport80 no longer lists is on a platform with several published rows, which has no Remove. Use Rebuild From Scratch to take them off.',
+    ]);
   });
 
   it("lists each lifter at every row of the platform, as MeetCal's start list does", async () => {

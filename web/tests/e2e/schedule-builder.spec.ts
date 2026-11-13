@@ -95,7 +95,6 @@ function publishedBoard(edits: Edit[], checkedAt: number, locked = false) {
       checkedAt,
       added: add ? [] : [{ athlete: newcomer, suggestion: { session: 1, number: 1, platform: "Red" } }],
       withdrawn,
-      lockedWithdrawn: locked ? 1 : 0,
     },
   };
 }
@@ -672,7 +671,6 @@ test("a platform with several published rows offers no edit that would touch it"
   await changes.getByRole("button", { name: "Ella Late: Add To…" }).click();
   await expect(page.getByRole("group", { name: "Add To…" }).getByRole("button", { name: "Session 1 · Red" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Add To…" }).getByRole("button", { name: "Session 2 · Red" })).toHaveCount(0);
-  await expect(changes).toContainText("A platform with several published rows has no Remove: use Rebuild From Scratch to take its lifters off.");
 });
 
 test("a publish on its way holds Rebuild From Scratch and the Sport80 changes too", async ({ page }) => {

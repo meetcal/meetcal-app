@@ -280,7 +280,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
     let number = session.number;
     let times = session_times(&session);
     let unscheduled = !session.is_scheduled();
-    let locked = session.locked;
+    let locked = session.is_locked();
     let start = StoredValue::new((session.date.clone(), session.start_time.clone()));
     let swap_trigger = StoredValue::new(format!("builder-swap-{id}"));
     let time_trigger = StoredValue::new(format!("builder-time-{id}"));
@@ -305,7 +305,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                                 .with_value(|sessions| {
                                     sessions
                                         .iter()
-                                        .filter(|other| other.id != id && !other.locked)
+                                        .filter(|other| other.id != id && !other.is_locked())
                                         .map(|other| {
                                             view! {
                                                 <MenuItem
@@ -761,7 +761,6 @@ mod tests {
             start_time: "09:00:00".to_owned(),
             weigh_in_time: "07:00:00".to_owned(),
             groups: Vec::new(),
-            locked: false,
         };
         assert_eq!(
             session_times(&session),

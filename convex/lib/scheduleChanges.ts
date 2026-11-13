@@ -7,7 +7,7 @@ export type AddedEntrant = { athlete: BuiltAthlete; suggestion: BoardPlace | nul
 
 export type WithdrawnAthlete = { athlete: BuiltAthlete; place: BoardPlace; occurrence: number };
 
-export type Sport80Changes = { checkedAt: number | null; added: AddedEntrant[]; withdrawn: WithdrawnAthlete[]; lockedWithdrawn: number };
+export type Sport80Changes = { checkedAt: number | null; added: AddedEntrant[]; withdrawn: WithdrawnAthlete[] };
 
 type Candidate = { session: BuiltSession; group: BuiltGroup };
 
@@ -61,6 +61,5 @@ export function sport80Changes(build: PublishedBuild, checkedAt: number | null, 
     checkedAt,
     added: build.unplaced.map((athlete) => ({ athlete, suggestion: suggestedPlace(athlete, build.sessions, separateAgeGroups) })),
     withdrawn: build.sessions.flatMap((session) => session.groups.flatMap((group) => withdrawnOf(session, group))),
-    lockedWithdrawn: build.sessions.flatMap((session) => session.groups.filter((group) => group.locked).flatMap((group) => group.athletes.filter((athlete) => athlete.withdrawn))).length,
   };
 }
