@@ -29,12 +29,6 @@ async function currentPassAnswer(ctx: QueryCtx): Promise<PassAnswer> {
   return { pass: passes.current, rotatesAt: passes.rotatedAt + ACCESS_PASS_ROTATION_MS };
 }
 
-/**
- * The current pass, for a subscriber signed in with Clerk or a MeetCal-issued
- * token: `{ pass, rotatesAt }`, `rotatesAt` being when to ask again. 401
- * signed out, 403 without an active entitlement (the app then asks
- * `entitlements:refresh` and tries again).
- */
 export const pass = query({
   args: {},
   handler: async (ctx): Promise<PassAnswer> => {
