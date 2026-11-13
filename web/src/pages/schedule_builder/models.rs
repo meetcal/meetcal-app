@@ -1,5 +1,5 @@
 use crate::utils::api::{
-    BuilderDay, BuilderEdit, BuilderOptions, Grouping, MeetMatch, SessionOrder,
+    Basis, BuilderDay, BuilderEdit, BuilderOptions, Grouping, MeetMatch, ScheduleBase, SessionOrder,
 };
 use serde::{Deserialize, Serialize};
 
@@ -45,9 +45,22 @@ pub(crate) const MAX_SESSIONS_PER_DAY: Limit = Limit {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct PublishedSchedule {
+    pub version: Option<String>,
+    pub options: BuilderOptions,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Defaults {
     pub meet: String,
     pub options: BuilderOptions,
+    #[serde(default)]
+    pub sport80_link: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub published: Option<PublishedSchedule>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -65,6 +78,42 @@ pub(crate) struct BuiltAthlete {
     pub club: String,
     pub weight_class: String,
     pub entry_total: f64,
+    #[serde(default)]
+    pub withdrawn: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub(crate) struct BoardPlace {
+    pub session: u32,
+    pub number: u32,
+    pub platform: String,
+}
+
+impl BoardPlace {
+    pub(crate) fn label(&self) -> String {
+        place_label(self.number, &self.platform)
+    }
+}
+
+pub(crate) fn place_label(number: u32, place: &str) -> String {
+    format!("Session {number} · {place}")
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub(crate) struct AddedEntrant {
+    pub athlete: BuiltAthlete,
+    pub suggestion: Option<BoardPlace>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Sport80Changes {
+    pub checked_at: Option<f64>,
+    pub added: Vec<AddedEntrant>,
+    #[serde(default)]
+    pub added_note: String,
+    #[serde(default)]
+    pub withdrawn_note: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -74,6 +123,10 @@ pub(crate) struct BuiltGroup {
     pub label: String,
     pub weight_classes: Vec<String>,
     pub athletes: Vec<BuiltAthlete>,
+    #[serde(default)]
+    pub own_times: Option<String>,
+    #[serde(default)]
+    pub locked: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -85,9 +138,15 @@ pub(crate) struct BuiltSession {
     pub start_time: String,
     pub weigh_in_time: String,
     pub groups: Vec<BuiltGroup>,
+    #[serde(default)]
+    pub locked_platforms: Vec<String>,
 }
 
 impl BuiltSession {
+    pub(crate) fn is_locked(&self) -> bool {
+        !self.locked_platforms.is_empty()
+    }
+
     pub(crate) fn is_scheduled(&self) -> bool {
         !self.start_time.is_empty() && !self.date.is_empty()
     }
@@ -98,6 +157,8 @@ pub(crate) struct BuiltSchedule {
     pub athletes: u32,
     pub sessions: Vec<BuiltSession>,
     pub warnings: Vec<BuilderWarning>,
+    #[serde(default)]
+    pub changes: Option<Sport80Changes>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -112,6 +173,7 @@ pub(crate) struct DraftSummary {
 pub(crate) struct SavedDraft {
     pub options: BuilderOptions,
     pub edits: Vec<BuilderEdit>,
+    pub basis: Basis,
     pub updated_at: f64,
 }
 
@@ -173,6 +235,8 @@ pub(crate) fn publication_status_label(status: &str) -> &'static str {
 pub(crate) struct LocalWork {
     pub options: BuilderOptions,
     pub edits: Vec<BuilderEdit>,
+    #[serde(default)]
+    pub basis: Basis,
     pub saved_at: f64,
 }
 
@@ -180,32 +244,73 @@ pub(crate) struct LocalWork {
 pub(crate) struct Start {
     pub options: BuilderOptions,
     pub edits: Vec<BuilderEdit>,
+    pub basis: Basis,
     pub built: bool,
+    pub notice: Option<&'static str>,
+}
+
+pub(crate) const STALE_WORK_NOTICE: &str = "Your saved schedule was made before this meet’s schedule last changed, so the builder opens on the schedule as it is now.";
+pub(crate) const UNPUBLISHED_WORK_NOTICE: &str = "Your saved schedule was made on a published schedule that’s no longer on MeetCal, so the builder starts from the meet’s entries.";
+
+pub(crate) fn published_basis(published: &PublishedSchedule) -> Basis {
+    Basis {
+        base: ScheduleBase::Published,
+        base_version: published.version.clone(),
+    }
 }
 
 pub(crate) fn starting_point(
-    defaults: &BuilderOptions,
+    defaults: &Defaults,
     draft: Option<SavedDraft>,
     local: Option<LocalWork>,
 ) -> Start {
     let newest = match (draft, local) {
         (Some(draft), Some(local)) if local.saved_at > draft.updated_at => {
-            Some((local.options, local.edits))
+            Some((local.options, local.edits, local.basis))
         }
-        (Some(draft), _) => Some((draft.options, draft.edits)),
-        (None, Some(local)) => Some((local.options, local.edits)),
+        (Some(draft), _) => Some((draft.options, draft.edits, draft.basis)),
+        (None, Some(local)) => Some((local.options, local.edits, local.basis)),
         (None, None) => None,
     };
-    match newest {
-        Some((options, edits)) => Start {
+    let fits = |basis: &Basis| match &defaults.published {
+        Some(published) => basis.base_version == published.version,
+        None => basis.base == ScheduleBase::Entries,
+    };
+    let entries_now = Basis {
+        base: ScheduleBase::Entries,
+        base_version: defaults.version.clone(),
+    };
+    let notice = match (&newest, &defaults.published) {
+        (Some((_, _, basis)), _) if fits(basis) => None,
+        (Some(_), Some(_)) => Some(STALE_WORK_NOTICE),
+        (Some(_), None) => Some(UNPUBLISHED_WORK_NOTICE),
+        (None, _) => None,
+    };
+    match (newest, defaults.published.as_ref()) {
+        (Some((options, edits, basis)), published) if notice.is_none() => Start {
             options,
             edits,
+            basis: if published.is_some() {
+                basis
+            } else {
+                entries_now
+            },
             built: true,
+            notice,
         },
-        None => Start {
-            options: defaults.clone(),
+        (_, Some(published)) => Start {
+            options: published.options.clone(),
             edits: Vec::new(),
+            basis: published_basis(published),
+            built: true,
+            notice,
+        },
+        (_, None) => Start {
+            options: defaults.options.clone(),
+            edits: Vec::new(),
+            basis: entries_now,
             built: false,
+            notice,
         },
     }
 }
@@ -411,25 +516,53 @@ pub(crate) struct MoveTarget {
     pub label: String,
 }
 
+pub(crate) fn place_targets(sessions: &[BuiltSession], platforms: &[String]) -> Vec<MoveTarget> {
+    sessions
+        .iter()
+        .flat_map(|session| {
+            platforms
+                .iter()
+                .filter(move |platform| !session.locked_platforms.contains(platform))
+                .map(move |platform| MoveTarget {
+                    session: session.id,
+                    platform: platform.clone(),
+                    label: place_label(session.number, platform),
+                })
+        })
+        .collect()
+}
+
 pub(crate) fn move_targets(
     sessions: &[BuiltSession],
     platforms: &[String],
     from_session: u32,
     from_platform: &str,
 ) -> Vec<MoveTarget> {
-    sessions
-        .iter()
-        .flat_map(|session| {
-            platforms
-                .iter()
-                .filter(move |platform| session.id != from_session || *platform != from_platform)
-                .map(move |platform| MoveTarget {
-                    session: session.id,
-                    platform: platform.clone(),
-                    label: format!("Session {} · {platform}", session.number),
-                })
-        })
+    place_targets(sessions, platforms)
+        .into_iter()
+        .filter(|target| target.session != from_session || target.platform != from_platform)
         .collect()
+}
+
+pub(crate) fn rebuild_warning(published: bool, edits: usize) -> String {
+    let your_edits = if edits == 1 {
+        "your edit".to_owned()
+    } else {
+        format!("your {edits} edits")
+    };
+    match (published, edits) {
+        (true, 0) => REBUILD_PUBLISHED.to_owned(),
+        (true, _) => format!("{REBUILD_PUBLISHED} It also discards {your_edits}."),
+        (false, _) => format!("Building again discards {your_edits}."),
+    }
+}
+
+const REBUILD_PUBLISHED: &str = "Rebuilding from scratch regroups the start list, with Sport80’s new lifters added and the lifters it no longer lists taken off, and replaces the published sessions when you publish.";
+
+pub(crate) fn cooldown_note(checked_at: &str, next_check_at: &str) -> String {
+    format!(
+        "Sport80 was checked at {checked_at}, a few minutes ago. Check again after {next_check_at}."
+    )
 }
 
 pub(crate) fn session_when(session: &BuiltSession) -> String {
@@ -734,9 +867,32 @@ mod tests {
         );
     }
 
+    fn meet_defaults(published: Option<PublishedSchedule>) -> Defaults {
+        Defaults {
+            meet: "Turkey Cup".to_owned(),
+            options: options(),
+            sport80_link: None,
+            version: published
+                .as_ref()
+                .and_then(|published| published.version.clone()),
+            published,
+        }
+    }
+
+    fn entries_basis() -> Basis {
+        Basis::default()
+    }
+
+    fn published_on(version: &str) -> Basis {
+        Basis {
+            base: ScheduleBase::Published,
+            base_version: Some(version.to_owned()),
+        }
+    }
+
     #[test]
     fn the_newest_saved_work_wins_and_none_starts_unbuilt() {
-        let defaults = options();
+        let defaults = meet_defaults(None);
         let mut drafted = options();
         drafted.session_minutes = 90;
         let mut local = options();
@@ -744,19 +900,23 @@ mod tests {
         let draft = |at: f64| SavedDraft {
             options: drafted.clone(),
             edits: Vec::new(),
+            basis: entries_basis(),
             updated_at: at,
         };
         let work = |at: f64| LocalWork {
             options: local.clone(),
             edits: Vec::new(),
+            basis: entries_basis(),
             saved_at: at,
         };
         assert_eq!(
             starting_point(&defaults, None, None),
             Start {
-                options: defaults.clone(),
+                options: options(),
                 edits: Vec::new(),
-                built: false
+                basis: entries_basis(),
+                built: false,
+                notice: None,
             }
         );
         assert_eq!(
@@ -774,6 +934,150 @@ mod tests {
         assert!(starting_point(&defaults, None, Some(work(1.0))).built);
     }
 
+    #[test]
+    fn a_published_meet_opens_on_its_schedule_unless_the_work_was_made_on_it() {
+        let mut published_options = options();
+        published_options.platforms = vec!["Red".to_owned(), "Blue".to_owned()];
+        let defaults = meet_defaults(Some(PublishedSchedule {
+            version: Some("p2".to_owned()),
+            options: published_options.clone(),
+        }));
+        let edit = BuilderEdit::SwapSessions {
+            session: 1,
+            with_session: 2,
+        };
+        let work = |basis: Basis| LocalWork {
+            options: options(),
+            edits: vec![edit.clone()],
+            basis,
+            saved_at: 1.0,
+        };
+        let fresh = starting_point(&defaults, None, None);
+        assert_eq!(fresh.options, published_options);
+        assert_eq!(fresh.basis, published_on("p2"));
+        assert!(fresh.built && fresh.notice.is_none() && fresh.edits.is_empty());
+        let resumed = starting_point(&defaults, None, Some(work(published_on("p2"))));
+        assert_eq!(resumed.edits, vec![edit.clone()]);
+        assert_eq!(resumed.notice, None);
+        let from_scratch = Basis {
+            base: ScheduleBase::Entries,
+            base_version: Some("p2".to_owned()),
+        };
+        let rebuilt = starting_point(&defaults, None, Some(work(from_scratch.clone())));
+        assert_eq!(rebuilt.basis, from_scratch);
+        assert_eq!(rebuilt.edits, vec![edit.clone()]);
+        assert_eq!(rebuilt.notice, None);
+        for stale in [published_on("p1"), entries_basis()] {
+            let start = starting_point(&defaults, None, Some(work(stale)));
+            assert_eq!(start.basis, published_on("p2"));
+            assert!(start.edits.is_empty());
+            assert_eq!(start.notice, Some(STALE_WORK_NOTICE));
+        }
+        let mut unpublished = meet_defaults(None);
+        unpublished.version = Some("p3".to_owned());
+        let gone = starting_point(&unpublished, None, Some(work(published_on("p2"))));
+        assert_eq!(gone.basis.base_version.as_deref(), Some("p3"));
+        assert!(!gone.built && gone.edits.is_empty());
+        assert_eq!(gone.notice, Some(UNPUBLISHED_WORK_NOTICE));
+        let entries_work = starting_point(&unpublished, None, Some(work(from_scratch)));
+        assert_eq!(
+            entries_work.basis,
+            Basis {
+                base: ScheduleBase::Entries,
+                base_version: Some("p3".to_owned())
+            }
+        );
+        assert_eq!(entries_work.edits, vec![edit.clone()]);
+        assert_eq!(entries_work.notice, None);
+        let opened_fresh = starting_point(&unpublished, None, None);
+        assert_eq!(opened_fresh.basis.base_version.as_deref(), Some("p3"));
+        let saved: SavedDraft = serde_json::from_value(serde_json::json!({
+            "options": serde_json::to_value(options()).unwrap(),
+            "edits": [],
+            "basis": { "base": "published", "baseVersion": "p2" },
+            "updatedAt": 1
+        }))
+        .unwrap();
+        assert_eq!(saved.basis, published_on("p2"));
+        let older: LocalWork = serde_json::from_value(serde_json::json!({
+            "options": serde_json::to_value(options()).unwrap(),
+            "edits": [],
+            "savedAt": 1
+        }))
+        .unwrap();
+        assert_eq!(older.basis, entries_basis());
+    }
+
+    #[test]
+    fn rebuilding_says_what_it_discards() {
+        assert_eq!(
+            rebuild_warning(false, 1),
+            "Building again discards your edit."
+        );
+        assert_eq!(
+            rebuild_warning(false, 4),
+            "Building again discards your 4 edits."
+        );
+        assert_eq!(
+            rebuild_warning(true, 0),
+            "Rebuilding from scratch regroups the start list, with Sport80’s new lifters added and the lifters it no longer lists taken off, and replaces the published sessions when you publish."
+        );
+        assert_eq!(
+            rebuild_warning(true, 2),
+            "Rebuilding from scratch regroups the start list, with Sport80’s new lifters added and the lifters it no longer lists taken off, and replaces the published sessions when you publish. It also discards your 2 edits."
+        );
+        assert_eq!(
+            cooldown_note("7:20 PM", "7:30 PM"),
+            "Sport80 was checked at 7:20 PM, a few minutes ago. Check again after 7:30 PM."
+        );
+    }
+
+    #[test]
+    fn a_published_base_answer_parses_with_its_sport80_changes() {
+        let preview: BuiltSchedule = serde_json::from_value(serde_json::json!({
+            "athletes": 1,
+            "sessions": [{
+                "id": 3, "number": 1, "date": "2026-11-14", "startTime": "09:00:00", "weighInTime": "07:00:00",
+                "groups": [{
+                    "platform": "Red", "gender": "Female", "ageGroup": "open", "split": "", "label": "W 48",
+                    "weightClasses": ["48"],
+                    "athletes": [{ "key": "1|ann", "memberId": "1", "name": "Ann", "age": 25, "club": "Club", "gender": "Female", "weightClass": "48", "entryTotal": 100, "withdrawn": true }]
+                }]
+            }],
+            "warnings": [],
+            "changes": {
+                "checkedAt": 1700000000000_u64,
+                "added": [{
+                    "athlete": { "key": "2|bea", "memberId": "2", "name": "Bea", "age": 22, "club": "", "gender": "Female", "weightClass": "48", "entryTotal": 90 },
+                    "suggestion": { "session": 3, "number": 1, "platform": "Red" }
+                }],
+                "withdrawn": [{
+                    "athlete": { "key": "1|ann", "memberId": "1", "name": "Ann", "age": 25, "club": "Club", "gender": "Female", "weightClass": "48", "entryTotal": 100, "withdrawn": true },
+                    "place": { "session": 3, "number": 1, "platform": "Red" },
+                    "occurrence": 0
+                }],
+                "addedNote": "1 new lifter isn’t placed, so they stay off the start list when you publish.",
+                "withdrawnNote": "1 lifter is marked on the board. Remove takes them off the start list when you publish."
+            }
+        }))
+        .unwrap();
+        let athlete = &preview.sessions[0].groups[0].athletes[0];
+        assert!(athlete.withdrawn);
+        let changes = preview.changes.unwrap();
+        assert_eq!(
+            changes.added[0]
+                .suggestion
+                .as_ref()
+                .map(BoardPlace::label)
+                .as_deref(),
+            Some("Session 1 · Red")
+        );
+        assert_eq!(
+            changes.withdrawn_note,
+            "1 lifter is marked on the board. Remove takes them off the start list when you publish."
+        );
+    }
+
     fn session(id: u32, number: u32) -> BuiltSession {
         BuiltSession {
             id,
@@ -782,13 +1086,29 @@ mod tests {
             start_time: "09:00:00".to_owned(),
             weigh_in_time: "07:00:00".to_owned(),
             groups: Vec::new(),
+            locked_platforms: Vec::new(),
         }
+    }
+
+    #[test]
+    fn no_target_opens_onto_a_platform_convex_answers_as_locked() {
+        let locked = BuiltSession {
+            locked_platforms: vec!["Red".to_owned(), "red".to_owned()],
+            ..session(1, 1)
+        };
+        let platforms = ["Red".to_owned(), "red".to_owned()];
+        let labels = place_targets(&[locked, session(2, 2)], &platforms)
+            .into_iter()
+            .map(|target| target.label)
+            .collect::<Vec<_>>();
+        assert_eq!(labels, ["Session 2 · Red", "Session 2 · red"]);
     }
 
     #[test]
     fn an_athlete_can_move_to_every_other_session_and_platform() {
         let sessions = [session(4, 1), session(2, 2)];
         let platforms = ["Red".to_owned(), "Blue".to_owned()];
+        assert_eq!(place_targets(&sessions, &platforms).len(), 4);
         let labels = move_targets(&sessions, &platforms, 4, "Red")
             .into_iter()
             .map(|target| (target.session, target.platform, target.label))
@@ -801,6 +1121,24 @@ mod tests {
                 (2, "Blue".to_owned(), "Session 2 · Blue".to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn a_platform_reads_its_own_times_from_the_answer() {
+        let answer: BuiltGroup = serde_json::from_value(serde_json::json!({
+            "platform": "Blue", "label": "M 89", "weightClasses": ["89"], "athletes": [],
+            "ownTimes": "Weigh-In 8:00 AM · Start 9:30 AM"
+        }))
+        .unwrap();
+        assert_eq!(
+            answer.own_times.as_deref(),
+            Some("Weigh-In 8:00 AM · Start 9:30 AM")
+        );
+        let same: BuiltGroup = serde_json::from_value(serde_json::json!({
+            "platform": "Red", "label": "W 58", "weightClasses": ["58"], "athletes": [], "ownTimes": null
+        }))
+        .unwrap();
+        assert_eq!(same.own_times, None);
     }
 
     #[test]

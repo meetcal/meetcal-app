@@ -126,7 +126,7 @@ describe('what a publish writes', () => {
 describe('publish', () => {
   it('holds a first publish for review without changing the meet, and emails it', async () => {
     const store = server();
-    expect(await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [], contactEmail: 'coach@example.com' })).toEqual({ status: 'pending', sessions: 2, athletes: 3 });
+    expect(await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [], contactEmail: 'coach@example.com' })).toEqual({ status: 'pending', sessions: 2, athletes: 3, version: null });
     expect(store.rows('session_schedule')).toEqual([]);
     expect(sessionsOf(store).every(([, session]) => session === null)).toBe(true);
     expect(store.rows('schedule_publications').map((p) => [p.status, p.contactEmail])).toEqual([['pending', 'coach@example.com']]);
@@ -143,7 +143,9 @@ describe('publish', () => {
 
   it("puts an organizer's publish live at once", async () => {
     const store = server({ meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] });
-    expect(await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] })).toEqual({ status: 'live', sessions: 2, athletes: 3 });
+    const answer = await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] });
+    expect(answer).toEqual({ status: 'live', sessions: 2, athletes: 3, version: '1' });
+    expect(store.rows('schedule_revisions')).toEqual([{ meet: MEET, revision: 1, options: options() }]);
     expect(sessionsOf(store)).toEqual([
       ['Ann', 1, 'Red'],
       ['Bea', 1, 'Red'],
@@ -248,6 +250,13 @@ describe('review', () => {
     expect(await store.as(null)(decideByToken, { id: publicationId, tokenHash: await sha256Hex('secret'), decision: 'approve' })).toBeNull();
   });
 
+  it('shows a plain page, not a server error, when the review cannot be read', async () => {
+    const failing = { runQuery: async () => Promise.reject(new ConvexError({ status: 400, error: 'the platform name is too long' })) };
+    const page = await handlerOf<Request, Response>(reviewPageHttp)(failing, new Request('https://x.convex.site/schedule-builder/review?id=p1&token=secret'));
+    expect(page.status).toBe(409);
+    expect(await page.text()).toContain("This schedule can't be reviewed: the platform name is too long");
+  });
+
   it('shows a review page for a valid link, and acts only on a posted decision', async () => {
     const store = server();
     const publicationId = await pendingPublication(store);
@@ -297,7 +306,8 @@ describe('email', () => {
   it("says when a pending publish would replace an organizer's live schedule", async () => {
     const store = server({ meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] });
     await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] });
-    await store.as('user_b')(publish, { meet: MEET, options: options(), edits: [] });
+    expect(await failure(store.as('user_b')(publish, { meet: MEET, options: options(), edits: [] }))).toMatchObject({ status: 409 });
+    await store.as('user_b')(publish, { meet: MEET, options: options(), edits: [], baseVersion: '1' });
     const pendingRow = store.docs('schedule_publications').find((p) => p.status === 'pending');
     await store.action(email, { publicationId: pendingRow?._id, attempt: 0 });
     const html = String(sendEmailMock.mock.calls[0]?.[2]);
@@ -340,6 +350,6 @@ describe('email', () => {
   it('builds review links on the deployment site', () => {
     expect(reviewUrl('https://x.convex.site/', 'id1', 'abc')).toBe('https://x.convex.site/schedule-builder/review?id=id1&token=abc');
     const schedule = buildSchedule(roster(), options());
-    expect(renderPublicationEmail({ meet: '<b>Cup</b>', status: 'pending', userId: 'u', schedule, lastLiveAt: null, hasSchedule: false }).html).toContain('&lt;b&gt;Cup&lt;/b&gt;');
+    expect(renderPublicationEmail({ meet: '<b>Cup</b>', status: 'pending', userId: 'u', schedule, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: false }).html).toContain('&lt;b&gt;Cup&lt;/b&gt;');
   });
 });

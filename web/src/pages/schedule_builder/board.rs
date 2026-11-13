@@ -1,7 +1,7 @@
 use super::browser::focus_element;
 use super::models::{
     BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, MoveTarget, is_clock, move_targets,
-    session_when,
+    place_label, session_when,
 };
 use crate::pages::comp_data::format::{
     display_weight_class, format_us_date, format_us_time, reference_value,
@@ -10,6 +10,39 @@ use crate::utils::api::{BuilderEdit, BuilderOptions};
 use leptos::prelude::*;
 
 pub(crate) const UNDO_BUTTON_ID: &str = "builder-undo";
+
+pub(crate) fn edit_button(
+    id: String,
+    name: &str,
+    label: String,
+    edit: BuilderEdit,
+    actions: BoardActions,
+) -> AnyView {
+    let pressed = id.clone();
+    view! {
+        <button
+            id=id
+            class="builder-button-quiet"
+            type="button"
+            on:click=move |_| actions.edit_from(&pressed, edit.clone())
+        >
+            <span class="visually-hidden">{format!("{name}: ")}</span>
+            {label}
+        </button>
+    }
+    .into_any()
+}
+
+pub(crate) fn alert_line(message: Option<String>, class: &'static str) -> Option<AnyView> {
+    message.map(|message| {
+        view! {
+            <p class=class role="alert">
+                {message}
+            </p>
+        }
+        .into_any()
+    })
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum MenuId {
@@ -26,6 +59,7 @@ pub(crate) enum MenuId {
     },
     Swap(u32),
     Time(u32),
+    Add(String),
     Export,
 }
 
@@ -37,7 +71,7 @@ pub(crate) struct BoardActions {
 }
 
 impl BoardActions {
-    fn edit_from(self, trigger_id: &str, edit: BuilderEdit) {
+    pub(crate) fn edit_from(self, trigger_id: &str, edit: BuilderEdit) {
         self.open_menu.set(None);
         focus_element(trigger_id);
         if self.add_edit.run(edit) {
@@ -62,7 +96,7 @@ impl BoardData {
     }
 }
 
-fn move_items(
+pub(crate) fn move_items(
     targets: Vec<MoveTarget>,
     trigger_id: String,
     actions: BoardActions,
@@ -244,11 +278,17 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
     let number = session.number;
     let times = session_times(&session);
     let unscheduled = !session.is_scheduled();
+    let locked = session.is_locked();
     let start = StoredValue::new((session.date.clone(), session.start_time.clone()));
     let swap_trigger = StoredValue::new(format!("builder-swap-{id}"));
     let time_trigger = StoredValue::new(format!("builder-time-{id}"));
+    let whose = format!("Session {number}: ");
     view! {
-        <article class="builder-session" class:builder-session-unscheduled=unscheduled>
+        <article
+            class="builder-session"
+            class:builder-session-unscheduled=unscheduled
+            class:builder-locked=locked
+        >
             <header class="builder-session-head">
                 <div class="builder-session-title">
                     <h3>{format!("Session {number}")}</h3>
@@ -260,7 +300,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                         open_menu=actions.open_menu
                         trigger_id=swap_trigger.get_value()
                         label="Swap With…"
-                        whose=format!("Session {number}: ")
+                        whose=whose.clone()
                         title="Swap With…"
                     >
                         {move || {
@@ -268,16 +308,15 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                                 .with_value(|sessions| {
                                     sessions
                                         .iter()
-                                        .filter(|other| other.id != id)
+                                        .filter(|other| other.id != id && !other.is_locked())
                                         .map(|other| {
                                             view! {
                                                 <MenuItem
                                                     actions
                                                     trigger_id=swap_trigger.get_value()
-                                                    label=format!(
-                                                        "Session {} · {}",
+                                                    label=place_label(
                                                         other.number,
-                                                        session_when(other),
+                                                        &session_when(other),
                                                     )
                                                     edit=BuilderEdit::SwapSessions {
                                                         session: id,
@@ -295,7 +334,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                         open_menu=actions.open_menu
                         trigger_id=time_trigger.get_value()
                         label="Edit Time"
-                        whose=format!("Session {number}: ")
+                        whose=whose
                         title="Edit Time"
                         kind=MenuKind::Dialog
                     >
@@ -416,17 +455,7 @@ fn TimeForm(
                     }
                 />
             </label>
-            {move || {
-                problem
-                    .get()
-                    .map(|message| {
-                        view! {
-                            <p class="access-inline-error" role="alert">
-                                {message}
-                            </p>
-                        }
-                    })
-            }}
+            {move || alert_line(problem.get().map(str::to_owned), "access-inline-error")}
             <button class="builder-button" type="submit">
                 "Save Time"
             </button>
@@ -452,12 +481,17 @@ fn GroupView(
 ) -> impl IntoView {
     let platform = StoredValue::new(group.platform.clone());
     let count = athlete_count(group.athletes.len());
+    let same_times = group.own_times.is_none();
+    let locked = group.locked;
     view! {
-        <section class="builder-group">
+        <section class="builder-group" class:builder-locked=locked>
             <h4 class="builder-group-head">
                 <span class="builder-platform">{group.platform.clone()}</span>
                 <span class="builder-group-label">{group.label.clone()}</span>
                 <span class="builder-group-count">{count}</span>
+                <span class="builder-group-time" hidden=same_times>
+                    {group.own_times.clone()}
+                </span>
             </h4>
             <div class="builder-classes">
                 {group
@@ -558,7 +592,7 @@ fn athlete_menu_id(session: u32, platform: &str, row: usize, athlete: &BuiltAthl
     }
 }
 
-fn athlete_details(athlete: &BuiltAthlete) -> String {
+pub(crate) fn athlete_details(athlete: &BuiltAthlete) -> String {
     let mut details = vec![
         format!("Age {}", athlete.age),
         display_weight_class(&athlete.weight_class),
@@ -582,6 +616,26 @@ fn AthleteRow(
     actions: BoardActions,
 ) -> impl IntoView {
     let details = athlete_details(&athlete);
+    let withdrawn = athlete.withdrawn.then(|| {
+        let remove = edit_button(
+            format!("{trigger_id}-remove"),
+            &athlete.name,
+            "Remove".to_owned(),
+            BuilderEdit::RemoveAthlete {
+                athlete: athlete.key.clone(),
+                from_session: session,
+                from_platform: platform.clone(),
+                occurrence,
+            },
+            actions,
+        );
+        view! {
+            <span class="builder-withdrawn-line">
+                <span class="builder-status-pill builder-withdrawn">"No Longer on Sport80"</span>
+                {remove}
+            </span>
+        }
+    });
     let menu_id = athlete_menu_id(session, &platform, row, &athlete);
     let key = StoredValue::new(athlete.key.clone());
     let platform = StoredValue::new(platform);
@@ -591,6 +645,7 @@ fn AthleteRow(
             <div class="builder-athlete-text">
                 <span class="builder-athlete-name">{athlete.name.clone()}</span>
                 <span class="builder-athlete-detail">{details}</span>
+                {withdrawn}
             </div>
             <Menu
                 id=menu_id
@@ -633,6 +688,7 @@ mod tests {
             club: " Barbell Club ".to_owned(),
             weight_class: "48".to_owned(),
             entry_total: 100.0,
+            withdrawn: false,
         };
         assert_eq!(
             athlete_details(&athlete),
@@ -663,6 +719,7 @@ mod tests {
             club: String::new(),
             weight_class: "77".to_owned(),
             entry_total: 120.0,
+            withdrawn: false,
         };
         let first = athlete_menu_id(2, "Red", 0, &twin);
         assert_ne!(first, athlete_menu_id(2, "Red", 1, &twin));
@@ -680,6 +737,7 @@ mod tests {
             club: String::new(),
             weight_class: "77".to_owned(),
             entry_total: 120.0,
+            withdrawn: false,
         };
         let group = [lifter("3|mia lee"), lifter("4|ann"), lifter("3|mia lee")];
         assert_eq!(
@@ -700,6 +758,7 @@ mod tests {
             start_time: "09:00:00".to_owned(),
             weigh_in_time: "07:00:00".to_owned(),
             groups: Vec::new(),
+            locked_platforms: Vec::new(),
         };
         assert_eq!(
             session_times(&session),

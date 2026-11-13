@@ -16,11 +16,22 @@ fn local_storage() -> Option<web_sys::Storage> {
 
 pub(crate) fn read_local_work(meet: &str) -> Option<LocalWork> {
     let text = local_storage()?.get_item(&local_work_key(meet)).ok()??;
-    serde_json::from_str(&text).ok()
+    local_work_of(&text)
+}
+
+pub(crate) fn local_work_of(text: &str) -> Option<LocalWork> {
+    let value = serde_json::from_str::<serde_json::Value>(text).ok()?;
+    serde_json::from_value(value).ok()
+}
+
+pub(crate) fn local_work_text(work: &LocalWork) -> Option<String> {
+    serde_json::to_value(work)
+        .ok()
+        .map(|value| value.to_string())
 }
 
 pub(crate) fn write_local_work(meet: &str, work: &LocalWork) {
-    let (Some(storage), Ok(text)) = (local_storage(), serde_json::to_string(work)) else {
+    let (Some(storage), Some(text)) = (local_storage(), local_work_text(work)) else {
         return;
     };
     if storage.set_item(&local_work_key(meet), &text).is_err() {
@@ -98,4 +109,64 @@ pub(crate) fn local_date(ms: f64) -> String {
         .to_locale_date_string("en-US", &wasm_bindgen::JsValue::UNDEFINED)
         .as_string()
         .unwrap_or_default()
+}
+
+pub(crate) fn local_date_time(ms: f64) -> String {
+    let style = js_sys::Object::new();
+    for (field, value) in [("dateStyle", "medium"), ("timeStyle", "short")] {
+        let _ = js_sys::Reflect::set(&style, &field.into(), &value.into());
+    }
+    js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ms))
+        .to_locale_string("en-US", &style)
+        .as_string()
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::api::{
+        Basis, BuilderDay, BuilderEdit, BuilderOptions, Grouping, ScheduleBase, SessionOrder,
+    };
+
+    #[test]
+    fn work_kept_in_the_browser_reads_back_as_it_was_written() {
+        let work = LocalWork {
+            options: BuilderOptions {
+                days: vec![BuilderDay {
+                    date: "2026-11-21".to_owned(),
+                    first_start: "08:30".to_owned(),
+                }],
+                session_minutes: 120,
+                break_minutes: 0,
+                max_athletes_per_platform: 15,
+                max_sessions_per_day: None,
+                platforms: vec!["Red".to_owned(), "Blue".to_owned()],
+                grouping: Grouping::WeightClass,
+                separate_age_groups: true,
+                order: SessionOrder::WomenThenMen,
+            },
+            edits: vec![
+                BuilderEdit::AddAthlete {
+                    athlete: "9|ella late".to_owned(),
+                    to_session: 1,
+                    to_platform: "Red".to_owned(),
+                },
+                BuilderEdit::RemoveAthlete {
+                    athlete: "8|victor shaver".to_owned(),
+                    from_session: 2,
+                    from_platform: "Red".to_owned(),
+                    occurrence: 0,
+                },
+            ],
+            basis: Basis {
+                base: ScheduleBase::Published,
+                base_version: Some("p2".to_owned()),
+            },
+            saved_at: 1_794_539_803_443.0,
+        };
+        let text = local_work_text(&work).unwrap();
+        assert_eq!(local_work_of(&text), Some(work));
+        assert_eq!(local_work_of("not json"), None);
+    }
 }

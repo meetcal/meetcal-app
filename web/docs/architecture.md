@@ -318,6 +318,34 @@ Convex's answer.
   "Live on MeetCal" or "Sent for Review" until the options or edits change, when the form returns
   for the next publish; `schedulePublications:publications` lists the user's publishes of the meet
   and whether they organize it.
+- A meet with a published schedule (`defaults.published`) opens on it: the page sends
+  `base: 'published'` with every preview, export, draft and publish, and the options form's button
+  reads Rebuild From Scratch, which asks first (the same confirmation as Build Again, saying that it
+  regroups the start list with Sport80's new lifters and without the ones it no longer lists) and
+  then builds with `base: 'entries'`, keeping the schedule's version (`defaults.version`), which
+  every publish sends. Drafts and the browser copy keep their base and version (`basis`).
+  Saved work reopens when it was made on the meet's current version, from scratch or not, or, for a
+  meet with no schedule, when it was built from the entries (it then takes the meet's current
+  version); otherwise the page opens on the schedule as it is now (or
+  the entries) with a line saying why the saved work was set aside. Any live publish makes the
+  answered `version` the new base and clears the edits.
+- On the published schedule a Sport80 Changes section reads `preview`'s `changes`: when Sport80
+  was last checked, Check Sport80 Now (the action `scheduleBuilderLoad:load` on `defaults.sport80Link`,
+  then the preview again; inside the load's cooldown it says when Sport80 was checked and when it
+  can be checked again, from the answer's `checkedAt` and `nextCheckAt`, and still fetches the
+  preview again so the board shows that check), and each new lifter with
+  "Add to Session N · Platform" (the server's suggestion) and Add To…, the same disclosure list as
+  Move To…, both sending `addAthlete`, plus Convex's `addedNote` on how many stay off the start list. A
+  platform whose own times differ from its session's shows the lines `preview` answers for it
+  (`ownTimes`: one line, or one per published row when its rows start at different times) in its
+  heading, on the board and in print. A platform Convex answers as `locked` (several published
+  rows in one session) offers no Move To, class chips or Remove, a session whose `lockedPlatforms` Convex answers non-empty no
+  Swap With… or Edit Time, and neither is a Move To, Add To or Swap target; a warning from Convex says to use
+  Rebuild From Scratch for withdrawn lifters there. While a publish is on its
+  way the board and the Sport80 panel are inert, and Undo and both Rebuild From Scratch buttons are
+  disabled, so no edit or rebuild is made that its answer would discard. Lifters no
+  longer on Sport80 are marked on the board, each with Remove (`removeAthlete`), and the section
+  shows Convex's `withdrawnNote`, which counts only the lifters Remove can take off.
 - A function error's `error` is shown as the sentence the server wrote, and a 401 asks the user to
   sign in again.
 

@@ -7,9 +7,11 @@ import { requireUserId } from './lib/access';
 import { DAY_MS } from './lib/dates';
 import { EMAIL_RETRY_DELAYS_MS, sendEmail } from './lib/email';
 import { checkContactEmail } from './lib/meetSubmissions';
-import { buildSchedule, type BuiltSchedule } from './lib/scheduleBuilder';
-import { builderEditValidator, builderOptionsValidator } from './lib/scheduleBuilderOptions';
+import { buildFromPublished, unlistedRemovals, type BuiltSchedule, type RosterChanges } from './lib/scheduleBuilder';
+import { baseVersionValidator, builderEditValidator, builderOptionsValidator, scheduleBaseValidator } from './lib/scheduleBuilderOptions';
+import { meetByName } from './lib/meetData';
 import {
+  lockedEditProblem,
   MAX_PUBLISHES_PER_DAY,
   PENDING_PUBLICATION_DAYS,
   publishedSchedule,
@@ -19,18 +21,28 @@ import {
   renderReviewResult,
   REVIEW_TOKEN_TTL_MS,
   reviewUrl,
+  type ChangeNames,
   type PublicationStatus,
 } from './lib/schedulePublishing';
 import { randomHex, sha256Hex } from './lib/tokens';
 import { apiError } from './lib/validation';
 import { errorMessage } from './lib/errors';
 import { isRecord } from './lib/json';
-import { checked, entrantsOf, requireMeet } from './scheduleBuilder';
+import { buildOn, checked, isPublished, publishedMeetOf, requireMeet, scheduleVersion, type BaseBuild } from './scheduleBuilder';
 
 const USER_PUBLICATIONS_READ = 50;
 const PENDING_LIST_MAX = 50;
 const MEET_PUBLICATIONS_READ = 50;
 const EXPIRE_BATCH = 100;
+
+export const STALE_BASE = "Someone else published this meet's schedule since you opened it. Open it again to see their changes.";
+export const STALE_APPROVAL = "The meet's schedule changed after this one was made, so approving it would undo that change. Its publisher can open the builder again and republish.";
+export const BASE_GONE = "This schedule was made on the meet's published schedule, which is no longer on MeetCal, so it can't be approved.";
+
+export function stillListedProblem(names: readonly string[]): string {
+  const who = names.length === 1 ? `${names.join('')} is` : `${names.slice(0, -1).join(', ')} and ${names.slice(-1).join('')} are`;
+  return `${who} still on Sport80, and only lifters Sport80 no longer lists can be taken off the start list before the publisher organizes this meet.`;
+}
 
 type Decision = 'approve' | 'reject';
 type DecisionResult = { status: PublicationStatus; message: string };
@@ -49,8 +61,8 @@ async function lastLiveAt(ctx: QueryCtx, meet: string): Promise<number | null> {
     .withIndex('by_meet_and_createdAt', (q) => q.eq('meet', meet))
     .order('desc')
     .take(MEET_PUBLICATIONS_READ);
-  const live = recent.find((p) => p.status === 'live' || p.status === 'approved');
-  return live ? (live.decidedAt ?? live.createdAt) : null;
+  const wentLive = recent.filter((p) => p.status === 'live' || p.status === 'approved').map((p) => p.decidedAt ?? p.createdAt);
+  return wentLive.length > 0 ? Math.max(...wentLive) : null;
 }
 
 async function hasSchedule(ctx: QueryCtx, meet: string): Promise<boolean> {
@@ -76,15 +88,52 @@ async function recentOfUser(ctx: QueryCtx, userId: string): Promise<Doc<'schedul
     .take(USER_PUBLICATIONS_READ);
 }
 
-async function scheduleOf(ctx: QueryCtx, publication: Pick<Doc<'schedule_publications'>, 'meet' | 'options' | 'edits'>): Promise<BuiltSchedule> {
-  return buildSchedule(await entrantsOf(ctx, publication.meet), publication.options, publication.edits);
+const NO_SCHEDULE: BuiltSchedule = { athletes: 0, sessions: [], warnings: [] };
+
+const namesOf = (changes: RosterChanges): ChangeNames => ({ added: changes.add.map((entrant) => entrant.name), removed: changes.remove.map((removal) => removal.name) });
+
+type Review = { schedule: BuiltSchedule; changes: ChangeNames; problem: string | null };
+
+async function reviewOf(ctx: QueryCtx, publication: Doc<'schedule_publications'>): Promise<Review> {
+  const stored = { added: publication.added ?? [], removed: publication.removed ?? [] };
+  const meet = await meetByName(ctx, publication.meet);
+  if (!meet) return { schedule: NO_SCHEDULE, changes: stored, problem: 'This meet is no longer on MeetCal.' };
+  if (publication.status !== 'pending') {
+    const published = await publishedMeetOf(ctx, meet);
+    return { schedule: published ? buildFromPublished(published.base, published.diff, publication.options) : NO_SCHEDULE, changes: stored, problem: null };
+  }
+  if (publication.base === 'published' && !(await isPublished(ctx, meet.name))) return { schedule: NO_SCHEDULE, changes: stored, problem: BASE_GONE };
+  const version = await scheduleVersion(ctx, meet.name);
+  if (isStale(publication, version)) return { schedule: NO_SCHEDULE, changes: stored, problem: STALE_APPROVAL };
+  const built = await buildOn(ctx, meet, publication.base ?? 'entries', publication.options, publication.edits);
+  return { schedule: built.schedule, changes: namesOf(built.changes), problem: approvalProblem(built, publication, version) };
+}
+
+const isStale = (publication: Pick<Doc<'schedule_publications'>, 'baseVersion'>, version: string | null) => (publication.baseVersion ?? null) !== version;
+
+function approvalProblem(built: BaseBuild, publication: Pick<Doc<'schedule_publications'>, 'baseVersion'>, version: string | null): string | null {
+  if (isStale(publication, version)) return STALE_APPROVAL;
+  if (built.base !== 'published') return null;
+  const stillListed = unlistedRemovals(built.schedule);
+  return lockedEditProblem(built.schedule.locked) ?? (stillListed.length > 0 ? stillListedProblem(stillListed) : null);
+}
+
+async function writeBuild(ctx: MutationCtx, meet: string, built: BaseBuild, options: Doc<'schedule_publications'>['options']): Promise<number> {
+  return (await writeBuiltSchedule(ctx, meet, publishedSchedule(built.schedule), built.changes, options)).revision;
 }
 
 export const publish = mutation({
-  args: { meet: v.string(), options: builderOptionsValidator, edits: v.array(builderEditValidator), contactEmail: v.optional(v.union(v.string(), v.null())) },
-  handler: async (ctx, { meet, options, edits, contactEmail }): Promise<{ status: 'live' | 'pending'; sessions: number; athletes: number }> => {
+  args: {
+    meet: v.string(),
+    options: builderOptionsValidator,
+    edits: v.array(builderEditValidator),
+    base: v.optional(scheduleBaseValidator),
+    baseVersion: v.optional(baseVersionValidator),
+    contactEmail: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, { meet, options, edits, base, baseVersion, contactEmail }): Promise<{ status: 'live' | 'pending'; sessions: number; athletes: number; version: string | null }> => {
     const userId = await requireUserId(ctx);
-    checked(options, edits);
+    checked(options, edits, base);
     const email = checkContactEmail(contactEmail);
     const row = await requireOpenMeet(ctx, meet);
     const now = Date.now();
@@ -92,11 +141,17 @@ export const publish = mutation({
     if (recent.filter((p) => p.createdAt > now - DAY_MS).length >= MAX_PUBLISHES_PER_DAY) {
       throw apiError(429, `at most ${MAX_PUBLISHES_PER_DAY} schedule publishes a day`, { max: MAX_PUBLISHES_PER_DAY });
     }
-    const schedule = await scheduleOf(ctx, { meet: row.name, options, edits });
-    const problem = publishProblem(schedule, row);
+    const opened = await scheduleVersion(ctx, row.name);
+    if ((baseVersion ?? null) !== opened) throw apiError(409, STALE_BASE);
+    const built = await buildOn(ctx, row, base ?? 'entries', options, edits);
+    const schedule = built.schedule;
+    const problem = (built.base === 'published' ? lockedEditProblem(built.schedule.locked) : null) ?? publishProblem(schedule, row);
     if (problem) throw apiError(400, problem);
     const live = await isOrganizer(ctx, row.name, userId);
-    if (live) await writeBuiltSchedule(ctx, row.name, publishedSchedule(schedule));
+    const stillListed = !live && built.base === 'published' ? unlistedRemovals(built.schedule) : [];
+    if (stillListed.length > 0) throw apiError(400, stillListedProblem(stillListed));
+    const version = live ? String(await writeBuild(ctx, row.name, built, options)) : opened;
+    const names = namesOf(built.changes);
     for (const earlier of recent) {
       if (earlier.meet === row.name && earlier.status === 'pending') await ctx.db.patch(earlier._id, { status: 'superseded', decidedAt: now, reviewTokenHash: undefined });
     }
@@ -107,12 +162,16 @@ export const publish = mutation({
       ...(email ? { contactEmail: email } : {}),
       options,
       edits,
+      base: built.base,
+      baseVersion: opened,
+      ...(names.added.length > 0 ? { added: [...names.added] } : {}),
+      ...(names.removed.length > 0 ? { removed: [...names.removed] } : {}),
       status,
       createdAt: now,
       ...(live ? { decidedAt: now } : {}),
     });
     await ctx.scheduler.runAfter(0, internal.schedulePublications.email, { publicationId, attempt: 0 });
-    return { status, sessions: schedule.sessions.length, athletes: schedule.athletes };
+    return { status, sessions: schedule.sessions.length, athletes: schedule.athletes, version };
   },
 });
 
@@ -134,7 +193,8 @@ export const emailContent = internalQuery({
     const publication = await ctx.db.get(publicationId);
     if (!publication) return null;
     const { meet, status, contactEmail, userId, emailedAt } = publication;
-    return { meet, status, contactEmail, userId, emailedAt, schedule: await scheduleOf(ctx, publication), lastLiveAt: await lastLiveAt(ctx, meet), hasSchedule: await hasSchedule(ctx, meet) };
+    const { schedule, changes } = await reviewOf(ctx, publication);
+    return { meet, status, contactEmail, userId, emailedAt, schedule, changes, lastLiveAt: await lastLiveAt(ctx, meet), hasSchedule: await hasSchedule(ctx, meet) };
   },
 });
 
@@ -200,10 +260,15 @@ async function decide(ctx: MutationCtx, publication: Doc<'schedule_publications'
     return { status: 'rejected', message: 'The schedule was rejected. Nothing on MeetCal changed.' };
   }
   const meet = await requireOpenMeet(ctx, publication.meet);
-  const schedule = await scheduleOf(ctx, publication);
-  const problem = publishProblem(schedule, meet);
+  if (publication.base === 'published' && !(await isPublished(ctx, meet.name))) throw apiError(409, BASE_GONE);
+  const version = await scheduleVersion(ctx, meet.name);
+  if (isStale(publication, version)) throw apiError(409, STALE_APPROVAL);
+  const built = await buildOn(ctx, meet, publication.base ?? 'entries', publication.options, publication.edits);
+  const refused = approvalProblem(built, publication, version);
+  if (refused) throw apiError(409, refused);
+  const problem = publishProblem(built.schedule, meet);
   if (problem) throw apiError(409, `it can't go live now: ${problem}`);
-  await writeBuiltSchedule(ctx, publication.meet, publishedSchedule(schedule));
+  await writeBuild(ctx, publication.meet, built, publication.options);
   if (!(await isOrganizer(ctx, publication.meet, publication.userId))) {
     await ctx.db.insert('meet_organizers', { meet: publication.meet, userId: publication.userId, approvedAt: now });
   }
@@ -224,12 +289,15 @@ export const reviewByToken = internalQuery({
   handler: async (ctx, { id, tokenHash }) => {
     const publication = await publicationByToken(ctx, id, tokenHash);
     if (!publication) return null;
+    const { schedule, changes, problem } = await reviewOf(ctx, publication);
     return {
       meet: publication.meet,
       status: publication.status,
       contactEmail: publication.contactEmail,
       userId: publication.userId,
-      schedule: await scheduleOf(ctx, publication),
+      schedule,
+      changes,
+      problem,
       lastLiveAt: await lastLiveAt(ctx, publication.meet),
       hasSchedule: await hasSchedule(ctx, publication.meet),
     };
@@ -306,9 +374,15 @@ export const reviewPageHttp = httpAction(async (ctx, request) => {
   const params = new URL(request.url).searchParams;
   const id = params.get('id') ?? '';
   const token = params.get('token') ?? '';
-  const content = await ctx.runQuery(internal.schedulePublications.reviewByToken, { id, tokenHash: await sha256Hex(token) });
-  if (!content) return html(renderReviewResult('This review link is not valid any more.'), 404);
-  return html(renderReviewPage({ ...content, publicationId: id, token }));
+  try {
+    const content = await ctx.runQuery(internal.schedulePublications.reviewByToken, { id, tokenHash: await sha256Hex(token) });
+    if (!content) return html(renderReviewResult('This review link is not valid any more.'), 404);
+    return html(renderReviewPage({ ...content, publicationId: id, token }));
+  } catch (error) {
+    const message = apiErrorText(error);
+    console.error(`schedule review page: ${message}`);
+    return html(renderReviewResult(`This schedule can't be reviewed: ${message}`), 409);
+  }
 });
 
 export const reviewDecisionHttp = httpAction(async (ctx, request) => {

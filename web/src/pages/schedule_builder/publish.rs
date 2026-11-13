@@ -1,8 +1,11 @@
+use super::board::alert_line;
 use super::browser::local_date;
 use super::models::{Publications, publication_status_label};
 use crate::auth::{AuthContext, AuthState};
 use crate::pages::comp_data::loading::{Load, LoadState, load_error};
-use crate::utils::api::{self, BuilderEdit, BuilderOptions, PublishOutcome, PublishStatus};
+use crate::utils::api::{
+    self, Basis, BuilderEdit, BuilderOptions, PublishOutcome, PublishStatus, ScheduleBase,
+};
 use futures::future::{AbortHandle, abortable};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -15,6 +18,7 @@ enum Phase {
         outcome: PublishOutcome,
         options: BuilderOptions,
         edits: Vec<BuilderEdit>,
+        basis: Basis,
     },
 }
 
@@ -23,15 +27,40 @@ impl Phase {
         &self,
         options: Option<&BuilderOptions>,
         edits: &[BuilderEdit],
+        basis: &Basis,
     ) -> Option<&PublishOutcome> {
         match self {
             Phase::Published {
                 outcome,
                 options: published,
                 edits: published_edits,
-            } if options == Some(published) && edits == published_edits.as_slice() => Some(outcome),
+                basis: published_basis,
+            } if options == Some(published)
+                && edits == published_edits.as_slice()
+                && basis == published_basis =>
+            {
+                Some(outcome)
+            }
             Phase::Ready | Phase::Publishing | Phase::Published { .. } => None,
         }
+    }
+}
+
+fn after_publish(
+    basis: Basis,
+    edits: Vec<BuilderEdit>,
+    outcome: &PublishOutcome,
+) -> (Basis, Vec<BuilderEdit>) {
+    if outcome.status == PublishStatus::Live {
+        (
+            Basis {
+                base: ScheduleBase::Published,
+                base_version: outcome.version.clone(),
+            },
+            Vec::new(),
+        )
+    } else {
+        (basis, edits)
     }
 }
 
@@ -40,6 +69,8 @@ pub(crate) fn PublishPanel(
     meet: String,
     applied: RwSignal<Option<BuilderOptions>>,
     edits: RwSignal<Vec<BuilderEdit>>,
+    basis: RwSignal<Basis>,
+    publishing: RwSignal<bool>,
 ) -> impl IntoView {
     let auth = expect_context::<AuthContext>();
     let meet = StoredValue::new(meet);
@@ -51,7 +82,7 @@ pub(crate) fn PublishPanel(
             <h2 id="builder-publish-heading">"Publish to MeetCal"</h2>
             {move || match auth.state.get() {
                 AuthState::SignedIn(user) => {
-                    view! { <SignedInPublish meet=meet.get_value() user applied edits /> }
+                    view! { <SignedInPublish meet=meet.get_value() user applied edits basis in_flight_edits=publishing /> }
                         .into_any()
                 }
                 AuthState::Loading => {
@@ -107,6 +138,8 @@ fn SignedInPublish(
     user: String,
     applied: RwSignal<Option<BuilderOptions>>,
     edits: RwSignal<Vec<BuilderEdit>>,
+    basis: RwSignal<Basis>,
+    in_flight_edits: RwSignal<bool>,
 ) -> impl IntoView {
     let refreshes = RwSignal::new(0_u64);
     let meet = StoredValue::new(meet);
@@ -125,13 +158,16 @@ fn SignedInPublish(
     on_cleanup(move || {
         if let Some(publish) = in_flight.try_update_value(Option::take).flatten() {
             publish.abort();
+            in_flight_edits.try_set(false);
         }
     });
     let publishing = Memo::new(move |_| phase.get() == Phase::Publishing);
     let shown_outcome = Memo::new(move |_| {
         phase.with(|phase| {
             applied.with(|options| {
-                edits.with(|edits| phase.outcome_for(options.as_ref(), edits).cloned())
+                edits.with(|edits| {
+                    basis.with(|basis| phase.outcome_for(options.as_ref(), edits, basis).cloned())
+                })
             })
         })
     });
@@ -144,20 +180,27 @@ fn SignedInPublish(
         }
         let contact = email.get_untracked().trim().to_owned();
         let changes = edits.get_untracked();
+        let sent_basis = basis.get_untracked();
         error.set(None);
         phase.set(Phase::Publishing);
+        in_flight_edits.set(true);
         let (task, handle) = abortable(async move {
             let outcome = api::publish_schedule(
                 &meet.get_value(),
                 &options,
                 &changes,
+                &sent_basis,
                 (!contact.is_empty()).then_some(contact.as_str()),
             )
             .await;
-            outcome.map(|outcome| Phase::Published {
-                outcome,
-                options,
-                edits: changes,
+            outcome.map(|outcome| {
+                let (basis, edits) = after_publish(sent_basis, changes, &outcome);
+                Phase::Published {
+                    outcome,
+                    options,
+                    edits,
+                    basis,
+                }
             })
         });
         in_flight.set_value(Some(handle));
@@ -165,8 +208,19 @@ fn SignedInPublish(
             let Ok(result) = task.await else {
                 return;
             };
+            in_flight_edits.try_set(false);
             match result {
                 Ok(published) => {
+                    if let Phase::Published {
+                        edits: kept,
+                        basis: kept_basis,
+                        ..
+                    } = &published
+                        && basis.with_untracked(|basis| basis != kept_basis)
+                    {
+                        basis.try_set(kept_basis.clone());
+                        edits.try_set(kept.clone());
+                    }
                     phase.try_set(published);
                     refreshes.try_update(|count| *count += 1);
                 }
@@ -209,17 +263,7 @@ fn SignedInPublish(
                                 on:input=move |event| email.set(event_target_value(&event))
                             />
                         </label>
-                        {move || {
-                            error
-                                .get()
-                                .map(|message| {
-                                    view! {
-                                        <p class="access-inline-error" role="alert">
-                                            {message}
-                                        </p>
-                                    }
-                                })
-                        }}
+                        {move || alert_line(error.get(), "access-inline-error")}
                         <button
                             class="builder-button"
                             type="submit"
@@ -293,6 +337,7 @@ mod tests {
             status: PublishStatus::Live,
             sessions: 4,
             athletes: 1,
+            version: None,
         };
         assert_eq!(
             published_message(&live),
@@ -305,6 +350,7 @@ mod tests {
             status: PublishStatus::Pending,
             sessions: 1,
             athletes: 17,
+            version: None,
         };
         assert_eq!(published_message(&pending).0, "Sent for Review");
     }
@@ -315,6 +361,7 @@ mod tests {
             status: PublishStatus::Live,
             sessions: 2,
             athletes: 3,
+            version: Some("p2".to_owned()),
         };
         let options = BuilderOptions {
             days: Vec::new(),
@@ -327,20 +374,93 @@ mod tests {
             separate_age_groups: true,
             order: crate::utils::api::SessionOrder::WomenThenMen,
         };
+        let entries = Basis::default();
         let published = Phase::Published {
             outcome: outcome.clone(),
             options: options.clone(),
             edits: Vec::new(),
+            basis: entries.clone(),
         };
-        assert_eq!(published.outcome_for(Some(&options), &[]), Some(&outcome));
+        assert_eq!(
+            published.outcome_for(Some(&options), &[], &entries),
+            Some(&outcome)
+        );
+        let on_published = Basis {
+            base: ScheduleBase::Published,
+            base_version: None,
+        };
+        assert_eq!(
+            published.outcome_for(Some(&options), &[], &on_published),
+            None
+        );
         let edit = BuilderEdit::SwapSessions {
             session: 1,
             with_session: 2,
         };
-        assert_eq!(published.outcome_for(Some(&options), &[edit]), None);
+        assert_eq!(
+            published.outcome_for(Some(&options), &[edit], &entries),
+            None
+        );
         let mut longer = options.clone();
         longer.session_minutes = 90;
-        assert_eq!(published.outcome_for(Some(&longer), &[]), None);
-        assert_eq!(Phase::Ready.outcome_for(Some(&options), &[]), None);
+        assert_eq!(published.outcome_for(Some(&longer), &[], &entries), None);
+        assert_eq!(
+            Phase::Ready.outcome_for(Some(&options), &[], &entries),
+            None
+        );
+    }
+
+    #[test]
+    fn a_live_publish_makes_the_schedule_it_wrote_the_new_base() {
+        let live = PublishOutcome {
+            status: PublishStatus::Live,
+            sessions: 2,
+            athletes: 3,
+            version: Some("p2".to_owned()),
+        };
+        let opened = Basis {
+            base: ScheduleBase::Published,
+            base_version: Some("p1".to_owned()),
+        };
+        let edit = BuilderEdit::SwapSessions {
+            session: 1,
+            with_session: 2,
+        };
+        assert_eq!(
+            after_publish(opened.clone(), vec![edit.clone()], &live),
+            (
+                Basis {
+                    base: ScheduleBase::Published,
+                    base_version: Some("p2".to_owned())
+                },
+                Vec::new()
+            )
+        );
+        let pending = PublishOutcome {
+            status: PublishStatus::Pending,
+            ..live.clone()
+        };
+        assert_eq!(
+            after_publish(opened.clone(), vec![edit.clone()], &pending),
+            (opened, vec![edit.clone()])
+        );
+        let from_scratch = Basis {
+            base: ScheduleBase::Entries,
+            base_version: Some("p1".to_owned()),
+        };
+        assert_eq!(
+            after_publish(from_scratch, vec![edit.clone()], &live),
+            (
+                Basis {
+                    base: ScheduleBase::Published,
+                    base_version: Some("p2".to_owned())
+                },
+                Vec::new()
+            )
+        );
+        assert_eq!(
+            after_publish(Basis::default(), vec![edit.clone()], &pending),
+            (Basis::default(), vec![edit])
+        );
     }
 }
