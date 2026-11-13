@@ -128,25 +128,19 @@ pub(crate) struct GroupTimes {
     pub weigh_in_time: String,
 }
 
-pub(crate) fn group_times(session: &BuiltSession, group: &BuiltGroup) -> Option<String> {
-    use crate::pages::comp_data::format::{format_us_date, format_us_time};
-    let times = group.times.as_ref()?;
-    if times.date == session.date
-        && times.start_time == session.start_time
-        && times.weigh_in_time == session.weigh_in_time
-    {
-        return None;
-    }
-    let clock = format!(
+pub(crate) fn clock_line(weigh_in_time: &str, start_time: &str) -> String {
+    use crate::pages::comp_data::format::format_us_time;
+    format!(
         "Weigh-In {} · Start {}",
-        format_us_time(&times.weigh_in_time),
-        format_us_time(&times.start_time)
-    );
-    Some(if times.date == session.date {
-        clock
-    } else {
-        format!("{} · {clock}", format_us_date(&times.date))
-    })
+        format_us_time(weigh_in_time),
+        format_us_time(start_time)
+    )
+}
+
+pub(crate) fn group_times(session: &BuiltSession, group: &BuiltGroup) -> Option<String> {
+    let times = group.times.as_ref()?;
+    (times.start_time != session.start_time || times.weigh_in_time != session.weigh_in_time)
+        .then(|| clock_line(&times.weigh_in_time, &times.start_time))
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -1182,14 +1176,6 @@ mod tests {
             )
             .as_deref(),
             Some("Weigh-In 8:00 AM · Start 9:30 AM")
-        );
-        assert_eq!(
-            group_times(
-                &first,
-                &group(Some(at("2026-11-15", "09:00:00", "07:00:00")))
-            )
-            .as_deref(),
-            Some("November 15, 2026 · Weigh-In 7:00 AM · Start 9:00 AM")
         );
         let answer: BuiltGroup = serde_json::from_value(serde_json::json!({
             "platform": "Blue", "label": "M 89", "weightClasses": ["89"], "athletes": [],

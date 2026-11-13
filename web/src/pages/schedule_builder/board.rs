@@ -1,11 +1,9 @@
 use super::browser::focus_element;
 use super::models::{
-    BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, MoveTarget, group_times, is_clock,
-    move_targets, session_when,
+    BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, MoveTarget, clock_line, group_times,
+    is_clock, move_targets, session_when,
 };
-use crate::pages::comp_data::format::{
-    display_weight_class, format_us_date, format_us_time, reference_value,
-};
+use crate::pages::comp_data::format::{display_weight_class, format_us_date, reference_value};
 use crate::utils::api::{BuilderEdit, BuilderOptions};
 use leptos::prelude::*;
 
@@ -265,10 +263,9 @@ fn session_times(session: &BuiltSession) -> String {
         return "No Time".to_owned();
     }
     format!(
-        "{} · Weigh-In {} · Start {}",
+        "{} · {}",
         format_us_date(&session.date),
-        format_us_time(&session.weigh_in_time),
-        format_us_time(&session.start_time)
+        clock_line(&session.weigh_in_time, &session.start_time)
     )
 }
 
@@ -486,7 +483,9 @@ fn GroupView(
                 <span class="builder-platform">{group.platform.clone()}</span>
                 <span class="builder-group-label">{group.label.clone()}</span>
                 <span class="builder-group-count">{count}</span>
-                {own_times.map(|times| view! { <span class="builder-group-time">{times}</span> })}
+                <span class="builder-group-time" hidden=own_times.is_none()>
+                    {own_times}
+                </span>
             </h4>
             <div class="builder-classes">
                 {group
