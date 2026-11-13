@@ -335,7 +335,7 @@ Convex's answer.
   can be checked again, from the answer's `checkedAt` and `nextCheckAt`, and still fetches the
   preview again so the board shows that check), and each new lifter with
   "Add to Session N · Platform" (the server's suggestion) and Add To…, the same disclosure list as
-  Move To…, both sending `addAthlete`, plus how many new lifters stay off the start list. A
+  Move To…, both sending `addAthlete`, plus Convex's `addedNote` on how many stay off the start list. A
   platform whose own times differ from its session's shows the lines `preview` answers for it
   (`ownTimes`: one line, or one per published row when its rows start at different times) in its
   heading, on the board and in print. A platform Convex answers as `locked` (several published
@@ -345,7 +345,7 @@ Convex's answer.
   way the board and the Sport80 panel are inert, and Undo and both Rebuild From Scratch buttons are
   disabled, so no edit or rebuild is made that its answer would discard. Lifters no
   longer on Sport80 are marked on the board, each with Remove (`removeAthlete`), and the section
-  says how many there are.
+  shows Convex's `withdrawnNote`, which counts only the lifters Remove can take off.
 - A function error's `error` is shown as the sentence the server wrote, and a 401 asks the user to
   sign in again.
 

@@ -110,7 +110,10 @@ pub(crate) struct AddedEntrant {
 pub(crate) struct Sport80Changes {
     pub checked_at: Option<f64>,
     pub added: Vec<AddedEntrant>,
-    pub withdrawn: Vec<serde::de::IgnoredAny>,
+    #[serde(default)]
+    pub added_note: String,
+    #[serde(default)]
+    pub withdrawn_note: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -542,27 +545,6 @@ pub(crate) fn move_targets(
         .into_iter()
         .filter(|target| target.session != from_session || target.platform != from_platform)
         .collect()
-}
-
-pub(crate) fn added_note(count: usize) -> String {
-    match count {
-        0 => "No new lifters.".to_owned(),
-        1 => "1 new lifter isn’t placed, so they stay off the start list when you publish."
-            .to_owned(),
-        count => format!(
-            "{count} new lifters aren’t placed, so they stay off the start list when you publish."
-        ),
-    }
-}
-
-pub(crate) fn withdrawn_note(count: usize) -> String {
-    match count {
-        0 => "Every published lifter is still on Sport80.".to_owned(),
-        1 => "1 lifter is marked on the board. Remove takes them off the start list when you publish.".to_owned(),
-        count => format!(
-            "{count} lifters are marked on the board. Remove takes them off the start list when you publish."
-        ),
-    }
 }
 
 pub(crate) fn rebuild_warning(published: bool, edits: usize) -> String {
@@ -1030,24 +1012,7 @@ mod tests {
     }
 
     #[test]
-    fn the_sport80_lists_say_what_publishing_leaves_out() {
-        assert_eq!(added_note(0), "No new lifters.");
-        assert_eq!(
-            added_note(1),
-            "1 new lifter isn’t placed, so they stay off the start list when you publish."
-        );
-        assert_eq!(
-            added_note(3),
-            "3 new lifters aren’t placed, so they stay off the start list when you publish."
-        );
-        assert_eq!(
-            withdrawn_note(0),
-            "Every published lifter is still on Sport80."
-        );
-        assert_eq!(
-            withdrawn_note(2),
-            "2 lifters are marked on the board. Remove takes them off the start list when you publish."
-        );
+    fn rebuilding_says_what_it_discards() {
         assert_eq!(
             rebuild_warning(false, 1),
             "Building again discards your edit."
@@ -1093,7 +1058,9 @@ mod tests {
                     "athlete": { "key": "1|ann", "memberId": "1", "name": "Ann", "age": 25, "club": "Club", "gender": "Female", "weightClass": "48", "entryTotal": 100, "withdrawn": true },
                     "place": { "session": 3, "number": 1, "platform": "Red" },
                     "occurrence": 0
-                }]
+                }],
+                "addedNote": "1 new lifter isn’t placed, so they stay off the start list when you publish.",
+                "withdrawnNote": "1 lifter is marked on the board. Remove takes them off the start list when you publish."
             }
         }))
         .unwrap();
@@ -1108,7 +1075,10 @@ mod tests {
                 .as_deref(),
             Some("Session 1 · Red")
         );
-        assert_eq!(changes.withdrawn.len(), 1);
+        assert_eq!(
+            changes.withdrawn_note,
+            "1 lifter is marked on the board. Remove takes them off the start list when you publish."
+        );
     }
 
     fn session(id: u32, number: u32) -> BuiltSession {

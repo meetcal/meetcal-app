@@ -63,7 +63,8 @@ export function publishedSchedule(schedule: BuiltSchedule): PublishedSchedule {
   for (const session of schedule.sessions) {
     for (const group of session.groups) {
       const platform = writtenPlatform(group);
-      for (const row of rowsOf(session, group)) rows.push({ ...row, sessionId: session.number, platform: row.platform ?? platform });
+      const written = group.publishedRows?.length === 0 ? [] : rowsOf(session, group);
+      for (const row of written) rows.push({ ...row, sessionId: session.number, platform: row.platform ?? platform });
       for (const athlete of group.athletes) {
         const seated = athlete.seat && athlete.seat.session === session.number && athlete.seat.platform.trim() === group.platform ? athlete.seat.platform : platform;
         const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: seated };

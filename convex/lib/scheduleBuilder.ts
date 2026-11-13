@@ -70,7 +70,7 @@ export type BuilderWarning = { code: BuilderWarningCode; message: string };
 
 export type BuiltSchedule = { athletes: number; sessions: BuiltSession[]; warnings: BuilderWarning[] };
 
-type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean; moved?: boolean; published?: { slot: number; rows: PublishedPart[] } };
+type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean; moved?: boolean; origin?: number; published?: { slot: number; rows: PublishedPart[] } };
 
 type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group>; published?: Map<string, PublishedPart[]>; storedPlatforms?: Map<string, string>; retimed?: boolean };
 
@@ -432,7 +432,7 @@ type Numbering = 'inTimeOrder' | 'asPublished';
 const placeKey = (session: number, platform: string) => `${session}|${platform}`;
 
 function publishedOverlapRules(slots: readonly Slot[], kept: readonly { slot: Slot; groups: readonly { platform: string; group: Group }[] }[]): OverlapRules {
-  const outOfPlace = (slot: Slot, group: Group) => slot.retimed === true || group.edited || (group.published !== undefined && group.published.slot !== slot.id);
+  const outOfPlace = (slot: Slot, group: Group) => slot.retimed === true || group.edited || (group.origin !== undefined && group.origin !== slot.id);
   const touched = new Set(kept.flatMap(({ slot, groups }) => groups.filter(({ group }) => outOfPlace(slot, group)).map(({ platform }) => placeKey(slot.id, platform))));
   const firsts = new Map<string, Map<number, number>>();
   for (const slot of slots) {
@@ -507,7 +507,8 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       const own = slot.retimed ? undefined : (earliest(slot.published?.get(platform) ?? []) ?? sessionRow);
       const times = own ? timesOfPart(own) : undefined;
       const origin = group.edited ? undefined : group.published;
-      if (!origin) return times ? { ...built, times } : built;
+      const loadedWithoutRows = !group.edited && !slot.retimed && group.origin === slot.id && group.published === undefined;
+      if (!origin) return { ...built, ...(times ? { times } : {}), ...(loadedWithoutRows ? { publishedRows: [] } : {}) };
       const inPlace = origin.slot === slot.id && !slot.retimed;
       const relabelled = !locked && group.splitOf !== '' && editedSplits.has(group.splitOf);
       const publishedRows = origin.rows.map((row) => ({ ...(inPlace ? timesOfPart(row) : (times ?? computed)), weightClass: relabelled ? platformLabel(built) : row.weightClass, ...(inPlace && row.platform !== undefined ? { platform: row.platform } : {}) }));
@@ -550,13 +551,16 @@ export type LockedPlace = { session: number; platform: string };
 
 export type PublishedBuild = BuiltSchedule & { unplaced: BuiltAthlete[]; removed: BuiltAthlete[]; locked: LockedPlace[] };
 
-const isLocked = (slot: Slot | undefined, platform: string) => (slot?.published?.get(platform)?.length ?? 0) > 1;
+const lockedName = (slot: Slot | undefined, platform: string) => [...(slot?.published ?? [])].find(([name, rows]) => rows.length > 1 && name.toLowerCase() === platform.toLowerCase())?.[0];
+
+const isLocked = (slot: Slot | undefined, platform: string) => lockedName(slot, platform) !== undefined;
 
 function lockedPlace(slots: readonly Slot[], edit: BuilderEdit): LockedPlace | null {
   const slotOf = (session: number | undefined) => slots.find((s) => s.id === session);
   const at = (session: number | undefined, platform: string | undefined): LockedPlace | null => {
     const slot = slotOf(session);
-    return slot && platform !== undefined && isLocked(slot, platform) ? { session: slot.id, platform } : null;
+    const name = platform === undefined ? undefined : lockedName(slot, platform);
+    return slot && name !== undefined ? { session: slot.id, platform: name } : null;
   };
   const whole = (session: number): LockedPlace | null => {
     const slot = slotOf(session);
@@ -699,13 +703,13 @@ function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnI
     slots.set(id, slot);
     keepStoredPlatform(slot, athlete.sessionPlatform ?? '');
     const built: BuiltAthlete = { ...builtAthleteOf(rosterEntrant(athlete)), seat: { session: id, platform: athlete.sessionPlatform ?? '' } };
-    const group = slot.groups.get(platform) ?? { gender: built.gender, ageGroup: '', split: '', splitOf: '', athletes: [], edited: false };
+    const group = slot.groups.get(platform) ?? { gender: built.gender, ageGroup: '', split: '', splitOf: '', athletes: [], edited: false, origin: id };
     slot.groups.set(platform, group);
     group.athletes.push(withdrawnIds.has(athlete._id) ? { ...built, withdrawn: true } : built);
   }
   for (const slot of slots.values()) {
     for (const platform of slot.published?.keys() ?? []) {
-      if (!slot.groups.has(platform)) slot.groups.set(platform, { gender: '', ageGroup: '', split: '', splitOf: '', athletes: [], edited: false });
+      if (!slot.groups.has(platform)) slot.groups.set(platform, { gender: '', ageGroup: '', split: '', splitOf: '', athletes: [], edited: false, origin: slot.id });
     }
     for (const [platform, group] of slot.groups) {
       const rows = slot.published?.get(platform);

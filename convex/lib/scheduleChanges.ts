@@ -7,7 +7,7 @@ export type AddedEntrant = { athlete: BuiltAthlete; suggestion: BoardPlace | nul
 
 export type WithdrawnAthlete = { athlete: BuiltAthlete; place: BoardPlace; occurrence: number };
 
-export type Sport80Changes = { checkedAt: number | null; added: AddedEntrant[]; withdrawn: WithdrawnAthlete[] };
+export type Sport80Changes = { checkedAt: number | null; added: AddedEntrant[]; withdrawn: WithdrawnAthlete[]; addedNote: string; withdrawnNote: string };
 
 type Candidate = { session: BuiltSession; group: BuiltGroup };
 
@@ -56,10 +56,24 @@ function withdrawnOf(session: BuiltSession, group: BuiltGroup): WithdrawnAthlete
   );
 }
 
+export function addedNote(count: number): string {
+  if (count === 0) return 'No new lifters.';
+  return `${count} new ${count === 1 ? 'lifter isn’t' : 'lifters aren’t'} placed, so they stay off the start list when you publish.`;
+}
+
+export function withdrawnNote(removable: number, locked: number): string {
+  if (removable === 0) return locked === 0 ? 'Every published lifter is still on Sport80.' : 'No lifter marked on the board can be removed here.';
+  return `${removable} ${removable === 1 ? 'lifter is' : 'lifters are'} marked on the board. Remove takes them off the start list when you publish.`;
+}
+
 export function sport80Changes(build: PublishedBuild, checkedAt: number | null, separateAgeGroups: boolean): Sport80Changes {
+  const withdrawn = build.sessions.flatMap((session) => session.groups.flatMap((group) => withdrawnOf(session, group).map((entry) => ({ entry, locked: group.locked === true }))));
+  const locked = withdrawn.filter((w) => w.locked).length;
   return {
     checkedAt,
     added: build.unplaced.map((athlete) => ({ athlete, suggestion: suggestedPlace(athlete, build.sessions, separateAgeGroups) })),
-    withdrawn: build.sessions.flatMap((session) => session.groups.flatMap((group) => withdrawnOf(session, group))),
+    withdrawn: withdrawn.map((w) => w.entry),
+    addedNote: addedNote(build.unplaced.length),
+    withdrawnNote: withdrawnNote(withdrawn.length - locked, locked),
   };
 }

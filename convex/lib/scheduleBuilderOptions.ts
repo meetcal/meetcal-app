@@ -124,7 +124,7 @@ export function checkBuilderOptions(options: BuilderOptions, publishedPlatforms:
   if (options.platforms.length === 0 || options.platforms.length > MAX_BUILDER_PLATFORMS) {
     throw apiError(400, `platforms must name 1 to ${MAX_BUILDER_PLATFORMS} platforms`, { max: MAX_BUILDER_PLATFORMS });
   }
-  const names = new Set<string>();
+  const names = new Set([...publishedPlatforms].map((platform) => platform.toLowerCase()));
   for (const platform of options.platforms) {
     if (publishedPlatforms.has(platform)) continue;
     const name = platform.trim();

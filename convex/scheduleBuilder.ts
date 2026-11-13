@@ -23,7 +23,7 @@ import {
   type PublishedBase,
   type PublishedBuild,
 } from './lib/scheduleBuilder';
-import { sport80Changes } from './lib/scheduleChanges';
+import { addedNote, sport80Changes, withdrawnNote } from './lib/scheduleChanges';
 import { labelOf, ownTimesLabel } from './lib/schedulePublishing';
 import { meetPageUrl } from './scrapers/parse/entries';
 import { bytesToBase64 } from './lib/base64';
@@ -196,7 +196,7 @@ export const changes = query({
   handler: async (ctx, { meet }) => {
     const row = await requireMeet(ctx, meet);
     const published = await publishedMeetOf(ctx, row);
-    if (!published) return { checkedAt: null, added: [], withdrawn: [] };
+    if (!published) return { checkedAt: null, added: [], withdrawn: [], addedNote: addedNote(0), withdrawnNote: withdrawnNote(0, 0) };
     return sport80Changes(buildFromPublished(published.base, published.diff, published.options), published.checkedAt, published.options.separateAgeGroups);
   },
 });

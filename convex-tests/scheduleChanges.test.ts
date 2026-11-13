@@ -156,7 +156,7 @@ describe("recording Sport80's list", () => {
 describe('the changes on Sport80', () => {
   it('lists nothing before Sport80 was checked, rather than everyone as withdrawn', async () => {
     const store = server();
-    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: null, added: [], withdrawn: [] });
+    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: null, added: [], withdrawn: [], addedNote: 'No new lifters.', withdrawnNote: 'Every published lifter is still on Sport80.' });
   });
 
   it('answers the new entrants with a session each and the withdrawn with where they lift, never an adaptive athlete', async () => {
@@ -206,7 +206,7 @@ describe('building on the published schedule', () => {
       [4, [['W 63 A', ['Ida Ito', 'Jo Kim']]]],
     ]);
     expect(answer.sessions.map((s) => s.id)).toEqual([1, 2, 3, 4]);
-    expect(answer.changes).toEqual({ checkedAt: null, added: [], withdrawn: [] });
+    expect(answer.changes).toEqual({ checkedAt: null, added: [], withdrawn: [], addedNote: 'No new lifters.', withdrawnNote: 'Every published lifter is still on Sport80.' });
   });
 
   it('marks the withdrawn on the board, places a new entrant and removes a withdrawn one', async () => {
@@ -457,7 +457,7 @@ describe('lifters without a member id', () => {
       session_schedule: [scheduleRow(1, '09:00:00', 'W 58'), scheduleRow(2, '11:00:00', 'M 89')],
     });
     await store.record([listed(ann), listed({ ...bea, memberId: 'noid:bea-cho' }), listed(cal)]);
-    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: NOW, added: [], withdrawn: [] });
+    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: NOW, added: [], withdrawn: [], addedNote: 'No new lifters.', withdrawnNote: 'Every published lifter is still on Sport80.' });
   });
 });
 
@@ -847,6 +847,9 @@ describe('a platform with several published rows', () => {
     { kind: 'swapSessions', session: 1, withSession: 2 },
     { kind: 'swapSessions', session: 2, withSession: 1 },
     { kind: 'setSessionTime', session: 1, date: '2027-03-06', startTime: '08:00' },
+    { kind: 'addAthlete', athlete: keyOf(nia), toSession: 1, toPlatform: 'red' },
+    { kind: 'moveAthlete', athlete: keyOf(gia), fromSession: 2, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'red' },
+    { kind: 'moveClass', fromSession: 2, fromPlatform: 'Red', weightClass: '63', toSession: 1, toPlatform: 'red' },
   ];
   const rowsOfSession1Red = (store: ReturnType<typeof server>) => sortedRows(store).filter((row) => row.sessionId === 1 && row.platform === 'Red');
   const lockedWarnings = (answer: Board) => answer.warnings.filter((w) => w.code === 'lockedEdit');
@@ -883,6 +886,25 @@ describe('a platform with several published rows', () => {
     const built = buildFromPublished(published, sport80Diff(published), { ...defaultBuilderOptions(meetRow), platforms: ['Red', 'Blue'] }, [halfSource]);
     expect(built.locked).toEqual([{ session: 1, platform: 'Red' }]);
     expect(built.sessions[0]?.groups.find((g) => g.platform === 'Red')?.athletes.map((a) => a.name)).toEqual(['Kim Ng', 'Lea Orr']);
+  });
+
+  it('refuses a new platform named like a published one but for case', async () => {
+    const store = locked();
+    const options = await publishedOptions(store);
+    expect(await failure(store.as(null)(preview, { meet: MEET, options: { ...options, platforms: [...options.platforms, 'red'] }, edits: [], base: 'published' }))).toEqual({
+      status: 400,
+      error: 'the platform "red" is listed twice',
+    });
+  });
+
+  it('words the withdrawn note for the lifters Remove can take off, and leaves the locked ones to their warning', async () => {
+    const store = locked();
+    await store.record([listed(kim), listed(cal), listed(gia)]);
+    const answer = await board(store);
+    expect((answer.changes as { withdrawnNote?: string }).withdrawnNote).toBe('1 lifter is marked on the board. Remove takes them off the start list when you publish.');
+    expect(answer.changes.withdrawn.map((w) => w.athlete.name)).toEqual(['Lea Orr', 'Dan Fox']);
+    await store.record([listed(kim), listed(cal), listed(gia), listed(dan)]);
+    expect(((await board(store)).changes as { withdrawnNote?: string }).withdrawnNote).toBe('No lifter marked on the board can be removed here.');
   });
 
   it('refuses a publish that tries one, and an approval of one', async () => {
@@ -985,6 +1007,31 @@ describe('overlaps a schedule was loaded with', () => {
   it('still warn when an edit books a platform twice', async () => {
     const store = staggered();
     expect(overlapsOf(await board(store, [{ kind: 'setSessionTime', session: 2, date: '2027-03-06', startTime: '10:30' }]))).toEqual(['Sessions 1 and 2 use the Red platform at the same time.']);
+  });
+});
+
+describe('a platform the roster uses but the schedule has no row for', () => {
+  it('is written back as it was, with no new row, by a republish with no edits', async () => {
+    const rows = [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Red', '11:00:00', '09:00:00', 'W 63')];
+    const athletes = [rostered(ann, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(gia, 2)];
+    const store = server({ ...organizer, athletes, session_schedule: rows });
+    await publishAs(store, 'user_a', 'published', null);
+    expect(sortedRows(store)).toEqual(inRowOrder(rows));
+    expect(store.rows('athletes').map((a) => [a.name, a.sessionNumber, a.sessionPlatform])).toEqual([
+      ['Ann Lee', 1, 'Red'],
+      ['Cal Diaz', 1, 'Blue'],
+      ['Gia Hu', 2, 'Red'],
+    ]);
+  });
+
+  it('warns once a swap carries it onto a platform another session uses at that time', async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(gia, 2), rostered(dan, 3, { sessionPlatform: 'Blue' })],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Red', '11:00:00', '09:00:00', 'W 63'), handRow(3, 'Blue', '11:00:00', '09:00:00', 'M 96')],
+    });
+    expect((await board(store)).warnings.filter((w) => w.code === 'overlap')).toEqual([]);
+    const swapped = await board(store, [{ kind: 'swapSessions', session: 1, withSession: 2 }]);
+    expect(swapped.warnings.filter((w) => w.code === 'overlap').map((w) => (w as { message?: string }).message)).toEqual(['Sessions 2 and 3 use the Blue platform at the same time.']);
   });
 });
 

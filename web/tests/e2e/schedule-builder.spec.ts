@@ -95,6 +95,8 @@ function publishedBoard(edits: Edit[], checkedAt: number, locked = false) {
       checkedAt,
       added: add ? [] : [{ athlete: newcomer, suggestion: { session: 1, number: 1, platform: "Red" } }],
       withdrawn,
+      addedNote: add ? "No new lifters." : "1 new lifter isn’t placed, so they stay off the start list when you publish.",
+      withdrawnNote: removed ? "Every published lifter is still on Sport80." : "1 lifter is marked on the board. Remove takes them off the start list when you publish.",
     },
   };
 }

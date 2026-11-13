@@ -2,10 +2,7 @@ use super::board::{
     BoardActions, Menu, MenuId, alert_line, athlete_details, edit_button, move_items,
 };
 use super::browser::local_date_time;
-use super::models::{
-    AddedEntrant, BuiltSchedule, MoveTarget, added_note, cooldown_note, place_targets,
-    withdrawn_note,
-};
+use super::models::{AddedEntrant, BuiltSchedule, MoveTarget, cooldown_note, place_targets};
 use crate::utils::api::{self, BuilderEdit};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -124,12 +121,12 @@ fn change_lists(
         .collect_view();
     view! {
         <h3 class="builder-subheading">"New on Sport80"</h3>
-        <p class="builder-help">{added_note(changes.added.len())}</p>
+        <p class="builder-help">{changes.added_note.clone()}</p>
         <ul class="builder-list" aria-label="New on Sport80">
             {added}
         </ul>
         <h3 class="builder-subheading">"No Longer on Sport80"</h3>
-        <p class="builder-help">{withdrawn_note(changes.withdrawn.len())}</p>
+        <p class="builder-help">{changes.withdrawn_note.clone()}</p>
     }
     .into_any()
 }
