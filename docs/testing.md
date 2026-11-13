@@ -67,7 +67,7 @@ Risk cases that belong in unit tests:
 
 ## Wire fixtures
 
-`fixtures/wire/<module>.<function>.json` holds what a Convex function answers, for every function two or more of the app, the website and the CLI read: the function, how its answer travels (`value`, or `jsonText` for `{ json }` and `{ etag, json }`), and a list of `{ args, body }`. Each surface's own suite reads the same files:
+`fixtures/wire/<module>.<function>.json` holds what a Convex function answers, for every function two or more of the app, the website and the CLI read, and for the answers only the CLI reads that the server computes for it (`meets:namesMatching`, `results:groupMedals`, `results:meetSummaries`): the function, how its answer travels (`value`, or `jsonText` for `{ json }` and `{ etag, json }`), and a list of `{ args, body }`. Each surface's own suite reads the same files:
 
 - `convex-tests/wireFixtures.test.ts` seeds one in-memory database (`convex-tests/fakeDb.ts`), runs each function's real handler with each fixture's `args`, and fails when the answer differs from the fixture. It also fails when a function in its list has no fixture, or a fixture has no function.
 - `src/lib/api/meetcal-api.wire.test.ts` answers the app's real fetchers from the fixtures and checks the mapped values and the arguments the app sends.

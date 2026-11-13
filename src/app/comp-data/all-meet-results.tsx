@@ -1,3 +1,4 @@
+import { athleteResultsHref } from "@/lib/athlete-results-route";
 import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { getChevronIcon } from "@/lib/start-list-utils";
@@ -129,10 +130,7 @@ function AllMeetResultsScreenContent() {
         athlete_name: athleteName,
       });
 
-      router.push({
-        pathname: "/shared-screens/athlete-results",
-        params: { name: athleteName },
-      });
+      router.push(athleteResultsHref({ name: athleteName }));
     },
     [router],
   );

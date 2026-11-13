@@ -1,3 +1,4 @@
+import type { AthleteRequest } from "@/lib/api/results-api";
 import { sessionAthletesStyles as styles } from "@/components/schedule-details/sessionAthletesStyles";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -64,7 +65,7 @@ export function SessionAthleteRow({
   isLast: boolean;
   colors: AppColors;
   onUnlockBests: () => void;
-  onSeeAllResults: (athleteName: string) => void;
+  onSeeAllResults: (request: AthleteRequest) => void;
 }) {
   return (
     <View
@@ -107,7 +108,7 @@ export function SessionAthleteRow({
       {isSubscribed ? (
         <Pressable
           style={({ pressed }) => [styles.meetResultsButton, pressed && { opacity: 0.8 }]}
-          onPress={() => onSeeAllResults(athlete.name)}
+          onPress={() => onSeeAllResults({ name: athlete.name, membership: athlete.memberId })}
         >
           <ThemedText style={styles.meetResultsText}>See All Meet Results</ThemedText>
           <IconSymbol name="chevron.right" size={13} color={colors.link} />

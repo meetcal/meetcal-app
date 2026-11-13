@@ -67,6 +67,9 @@
     api_host: apiHost,
     autocapture: true,
     capture_pageview: "history_change",
+    capture_performance: { web_vitals: true, network_timing: false },
+    capture_dead_clicks: false,
+    disable_surveys: true,
     person_profiles: "identified_only",
   });
 })();

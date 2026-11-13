@@ -1,9 +1,9 @@
 import { normalizeAthleteName } from '@/lib/athletes';
-import { AthleteMeetResult } from '@/data/types/athletes';
+import type { AthleteLookup, AthleteMeetResult } from '@/data/types/athletes';
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate, YEAR_BESTS_YEARS } from '@/utils/dateTime';
 import { assertArray, assertHasFields, assertStringArray } from '@/lib/api/api-validators';
 import { decodeJsonText, readQuery } from '@/lib/api/meetcal-api';
-import { mapApiLiftingResult, mapApiYearBests, parseNamedBests } from '@/lib/api/api-athlete-mappers';
+import { mapApiLiftingResult, mapAthleteLookup, mapApiYearBests, parseNamedBests } from '@/lib/api/api-athlete-mappers';
 
 export const NAMES_QUERY_CHUNK_SIZE = 40;
 
@@ -108,4 +108,13 @@ export async function searchApi(query: string, startDate?: string, endDate?: str
     results: results.map(mapApiLiftingResult),
     truncated: response.truncated === true,
   };
+}
+
+export type AthleteRequest = { name: string; lifter?: string; membership?: string; other?: boolean };
+
+const ATHLETE_PATH = '/lifting-results/athlete';
+
+export async function fetchAthlete({ name, lifter, membership, other }: AthleteRequest): Promise<AthleteLookup> {
+  const answer = await readQuery(ATHLETE_PATH, 'results:athlete', { name, lifter, membership, other: other ? true : undefined });
+  return mapAthleteLookup(answer, ATHLETE_PATH, (json) => decodeJsonText({ json }, ATHLETE_PATH));
 }

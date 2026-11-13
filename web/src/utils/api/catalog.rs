@@ -28,6 +28,7 @@ pub(crate) const SUBSCRIPTION_FUNCTIONS: &[&str] = &[
     "results:yearBests",
     "results:bests",
     "results:groupMedals",
+    "results:athlete",
     "results:search",
     "meets:packageForMeet",
 ];
@@ -47,6 +48,7 @@ pub(crate) enum Body {
 pub(crate) struct Query {
     pub function: &'static str,
     pub body: Body,
+    pub revalidates: bool,
 }
 
 impl Query {
@@ -58,13 +60,15 @@ impl Query {
         Self {
             function,
             body: Body::Value,
+            revalidates: false,
         }
     }
 
-    pub(super) const fn text(function: &'static str) -> Self {
+    pub(super) const fn tagged(function: &'static str) -> Self {
         Self {
             function,
             body: Body::JsonText,
+            revalidates: true,
         }
     }
 }
@@ -72,24 +76,28 @@ impl Query {
 pub(crate) mod queries {
     use super::Query;
 
-    pub(crate) const UPCOMING_MEETS: Query = Query::text("meets:list");
-    pub(crate) const COMPLETED_MEETS: Query = Query::text("meets:completed");
-    pub(crate) const MEET_SCHEDULE: Query = Query::text("meets:schedule");
-    pub(crate) const MEET_ATHLETES: Query = Query::text("meets:athletes");
-    pub(crate) const MEET_RESULTS: Query = Query::text("results:byMeet");
+    pub(crate) const UPCOMING_MEETS: Query = Query::tagged("meets:list");
+    pub(crate) const COMPLETED_MEETS: Query = Query::tagged("meets:completed");
+    pub(crate) const MEET_SCHEDULE: Query = Query::tagged("meets:schedule");
+    pub(crate) const MEET_ATHLETES: Query = Query::tagged("meets:athletes");
+    pub(crate) const MEET_RESULTS: Query = Query::tagged("results:byMeet");
     pub(crate) const SEARCH: Query = Query::value("results:search");
-    pub(crate) const RECORDS: Query = Query::text("reference:records");
-    pub(crate) const STANDARDS: Query = Query::text("reference:standards");
-    pub(crate) const QUALIFYING_TOTALS: Query = Query::text("reference:qualifyingTotals");
-    pub(crate) const INTL_RANKINGS: Query = Query::text("reference:intlRankings");
-    pub(crate) const NATIONAL_RANKINGS: Query = Query::text("reference:nationalRankings");
+    pub(crate) const ATHLETE: Query = Query::value("results:athlete");
+    pub(crate) const RECORDS: Query = Query::tagged("reference:records");
+    pub(crate) const RECORD_CATEGORIES: Query = Query::tagged("reference:recordCategories");
+    pub(crate) const QUALIFYING_TOTAL_CATEGORIES: Query =
+        Query::tagged("reference:qualifyingTotalCategories");
+    pub(crate) const STANDARDS: Query = Query::tagged("reference:standards");
+    pub(crate) const QUALIFYING_TOTALS: Query = Query::tagged("reference:qualifyingTotals");
+    pub(crate) const INTL_RANKINGS: Query = Query::tagged("reference:intlRankings");
+    pub(crate) const NATIONAL_RANKINGS: Query = Query::tagged("reference:nationalRankings");
     pub(crate) const NATIONAL_RANKINGS_BY_YEAR: Query =
-        Query::text("reference:nationalRankingsByYear");
-    pub(crate) const WSO_LIST: Query = Query::text("reference:wsoList");
+        Query::tagged("reference:nationalRankingsByYear");
+    pub(crate) const WSO_LIST: Query = Query::tagged("reference:wsoList");
     pub(crate) const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
-    pub(crate) const WSO_RECORDS: Query = Query::text("reference:wsoRecords");
-    pub(crate) const ADAPTIVE_RECORDS: Query = Query::text("reference:adaptiveRecords");
-    pub(crate) const CLUBS: Query = Query::text("reference:clubs");
+    pub(crate) const WSO_RECORDS: Query = Query::tagged("reference:wsoRecords");
+    pub(crate) const ADAPTIVE_RECORDS: Query = Query::tagged("reference:adaptiveRecords");
+    pub(crate) const CLUBS: Query = Query::tagged("reference:clubs");
     pub(crate) const CLUB_MEETS: Query = Query::value("reference:clubMeets");
     pub(crate) const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
     pub(crate) const WRAPPED: Query = Query::value("results:wrapped");

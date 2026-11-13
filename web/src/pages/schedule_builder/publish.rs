@@ -1,6 +1,6 @@
 use super::browser::local_date;
 use super::models::{Publications, publication_status_label};
-use crate::auth::{AuthContext, AuthState, open_clerk_sign_in};
+use crate::auth::{AuthContext, AuthState};
 use crate::pages::comp_data::loading::{Load, LoadState, load_error};
 use crate::utils::api::{self, BuilderEdit, BuilderOptions, PublishOutcome, PublishStatus};
 use futures::future::{AbortHandle, abortable};
@@ -66,7 +66,7 @@ pub(crate) fn PublishPanel(
                                 auth.state.get_untracked(),
                                 AuthState::ConfigurationError(_)
                             )
-                            on:click=move |_| open_clerk_sign_in()
+                            on:click=move |_| auth.open_sign_in()
                         >
                             "Sign In to Publish"
                         </button>

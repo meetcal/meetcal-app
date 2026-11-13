@@ -1,5 +1,6 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
+    catalog,
     format::{NO_VALUE, display_body_weight, display_weight_class, yes_no},
     loading::{Load, LoadState, load_error, load_query, select_response},
     ui::{
@@ -102,8 +103,7 @@ pub fn ClubDashboard() -> impl IntoView {
     );
     view! {
         <DataPage
-            heading="Club Meet Dashboard"
-            intro="Review a club’s athletes, medals, PRs, make rates, and meet totals."
+            page=catalog::CLUB_DASHBOARD
         >
             {move || select_response(clubs, "Loading clubs…", "clubs", |clubs| view! {
                 <div class="data-filters">

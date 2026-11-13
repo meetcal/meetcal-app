@@ -1,3 +1,5 @@
+import type { AthleteRequest } from "@/lib/api/results-api";
+import { athleteResultsHref } from "@/lib/athlete-results-route";
 import { SessionAthleteRow } from "@/components/schedule-details/SessionAthleteRow";
 import { SessionAthletesFrame } from "@/components/schedule-details/SessionAthletesFrame";
 import { sessionAthletesStyles as styles } from "@/components/schedule-details/sessionAthletesStyles";
@@ -96,7 +98,7 @@ export default function SessionAthletes({
     requirePremium({ feature: "athlete-bests", message: PREMIUM_SIGN_IN_MESSAGE, returnPath });
   };
 
-  const handleSeeAllResults = (athleteName: string) => {
+  const handleSeeAllResults = (request: AthleteRequest) => {
     const authResult = requireAuth({
       feature: "athlete-results",
       message: PREMIUM_SIGN_IN_MESSAGE,
@@ -105,10 +107,7 @@ export default function SessionAthletes({
     if (authResult === null || authResult === false) {
       return;
     }
-    router.push({
-      pathname: "/shared-screens/athlete-results",
-      params: { name: athleteName },
-    });
+    router.push(athleteResultsHref(request));
   };
 
   const sortControl = (

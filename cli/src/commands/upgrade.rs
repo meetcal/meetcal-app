@@ -9,8 +9,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 
-use crate::utils::backend;
 use crate::utils::releases::{self, CHECKSUMS_ASSET, Release, Version};
+use crate::utils::transport;
 use crate::utils::upgrade::{self, Install, MAX_DOWNLOAD_BYTES, NotWritable};
 
 /// Time allowed for each release download, longer than a data read's: an archive is megabytes.
@@ -44,7 +44,7 @@ pub struct UpgradeArgs {
 }
 
 pub async fn run(args: UpgradeArgs) -> Result<()> {
-    let client = backend::client()?;
+    let client = transport::client()?;
     let current = Version::current();
     let found = releases::fetch_newest(client)
         .await
@@ -208,6 +208,10 @@ async fn install_release(
 }
 
 /// The body at `url`, at most [`MAX_DOWNLOAD_BYTES`].
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a release archive comes from GitHub, not Convex, and is megabytes long, so it keeps a ceiling of its own"
+)]
 async fn download(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
     let mut response = client
         .get(url)

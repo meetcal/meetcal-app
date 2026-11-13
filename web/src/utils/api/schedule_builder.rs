@@ -175,7 +175,7 @@ pub(super) fn builder_value(response: QueryResponse) -> Result<Value> {
     {
         return Err(anyhow!(capitalize_first(error)));
     }
-    answer_value(response)
+    answer_json(response)
 }
 
 pub(super) fn read_builder_answer<T: DeserializeOwned>(

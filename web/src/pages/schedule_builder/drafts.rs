@@ -17,10 +17,8 @@ pub(crate) fn builder_path(meet: &str) -> String {
 pub(crate) fn SavedSchedules() -> impl IntoView {
     let auth = expect_context::<AuthContext>();
     move || match auth.state.get() {
-        AuthState::SignedIn(user) => view! { <DraftList user /> }.into_any(),
-        AuthState::Loading | AuthState::SignedOut | AuthState::ConfigurationError(_) => {
-            ().into_any()
-        }
+        AuthState::SignedIn(user) => Some(view! { <DraftList user /> }),
+        AuthState::Loading | AuthState::SignedOut | AuthState::ConfigurationError(_) => None,
     }
 }
 

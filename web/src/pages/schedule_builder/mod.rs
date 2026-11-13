@@ -5,7 +5,7 @@ mod form;
 mod models;
 mod publish;
 
-use crate::auth::{AuthContext, AuthState, open_clerk_sign_in};
+use crate::auth::{AuthContext, AuthState};
 use crate::pages::comp_data::loading::{Load, LoadState, load_error};
 use crate::utils::api::{self, BuilderEdit, BuilderOptions, ExportFormat, MeetMatches};
 use board::{Board, BoardActions, Menu, MenuId, UNDO_BUTTON_ID};
@@ -32,12 +32,22 @@ pub fn ScheduleBuilderPage() -> impl IntoView {
         query.with(|params| params.get("meet").unwrap_or_default().trim().to_owned())
     });
     let open_menu = RwSignal::new(None::<MenuId>);
-    let escape = window_event_listener(leptos::ev::keydown, move |event| {
-        if event.key() == "Escape" {
-            open_menu.set(None);
+    let escape = StoredValue::new_local(None::<WindowListenerHandle>);
+    Effect::new(move |_| {
+        escape.set_value(Some(window_event_listener(
+            leptos::ev::keydown,
+            move |event| {
+                if event.key() == "Escape" {
+                    open_menu.set(None);
+                }
+            },
+        )));
+    });
+    on_cleanup(move || {
+        if let Some(listener) = escape.try_update_value(Option::take).flatten() {
+            listener.remove();
         }
     });
-    on_cleanup(move || escape.remove());
     view! {
         <section class="data-page builder-page">
             <div class="builder-intro no-print">
@@ -677,7 +687,7 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                             <button
                                 class="builder-link-button"
                                 type="button"
-                                on:click=move |_| open_clerk_sign_in()
+                                on:click=move |_| auth.open_sign_in()
                             >
                                 "Sign in"
                             </button> " to save a draft you can open anywhere."

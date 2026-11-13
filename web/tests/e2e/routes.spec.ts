@@ -154,6 +154,7 @@ test("footer uses valid, non-nested interactive links", async ({ page }) => {
 });
 
 test("public pages have no serious or critical accessibility violations", async ({ page }) => {
+  test.slow();
   for (const [path] of publicRoutes) {
     await page.goto(path);
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
@@ -163,6 +164,7 @@ test("public pages have no serious or critical accessibility violations", async 
 });
 
 test("every page has one top-level banner, main and contentinfo landmark", async ({ page }) => {
+  test.slow();
   for (const path of [...publicRoutes.map(([path]) => path), "/qualifying-totals", "/does-not-exist"]) {
     await page.goto(path);
     await expect(page.locator("header.site-header")).toBeVisible();

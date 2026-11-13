@@ -3,23 +3,40 @@
 set -euo pipefail
 
 dist_dir="${TRUNK_STAGING_DIR:?Trunk must provide TRUNK_STAGING_DIR}"
+shells_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../shells" && pwd)"
+analytics_idle_timeout_ms=4000
 shopt -s nullglob
 javascript_candidates=("${dist_dir}"/meetcal-web-*.js)
 wasm_candidates=("${dist_dir}"/meetcal-web-*_bg.wasm)
+snippet_candidates=("${dist_dir}"/snippets/meetcal-web-*/src/*.js)
 
-if [[ ${#javascript_candidates[@]} -ne 1 || ${#wasm_candidates[@]} -ne 1 ]]; then
-  echo "Expected one MeetCal JavaScript loader and one Wasm binary in ${dist_dir}" >&2
+if [[ ${#javascript_candidates[@]} -ne 1 || ${#wasm_candidates[@]} -ne 1 || ${#snippet_candidates[@]} -eq 0 ]]; then
+  echo "Expected one MeetCal JavaScript loader, one Wasm binary and its snippets in ${dist_dir}" >&2
   exit 1
 fi
 
-javascript_file="$(basename "${javascript_candidates[0]}")"
-wasm_file="$(basename "${wasm_candidates[0]}")"
+content_hash() {
+  sha256sum | cut -c1-16
+}
 
-# The bootstrap loads the app and then removes index.html's loading shell
-# (#app-loading). If the JavaScript loader or the Wasm binary can't load, it
-# turns the shell into an error with a retry instead of leaving a blank page.
+snippet_dir="$(dirname "$(dirname "${snippet_candidates[0]}")")"
+snippet_crate="$(basename "${snippet_dir}")"
+snippet_hash="$(cd "${snippet_dir}" && find . -type f -print | LC_ALL=C sort | xargs cat | content_hash)"
+hashed_snippet_crate="${snippet_crate}-${snippet_hash}"
+mv "${snippet_dir}" "${dist_dir}/snippets/${hashed_snippet_crate}"
+sed -i -E "s#(from [\"']\./snippets/)${snippet_crate}/#\1${hashed_snippet_crate}/#g" "${javascript_candidates[0]}"
+javascript_file="meetcal-web-$(content_hash < "${javascript_candidates[0]}").js"
+mv "${javascript_candidates[0]}" "${dist_dir}/${javascript_file}"
+
+wasm_file="$(basename "${wasm_candidates[0]}")"
+snippet_paths=""
+for snippet in "${dist_dir}/snippets/${hashed_snippet_crate}"/src/*.js; do
+  snippet_paths+="${snippet#"${dist_dir}"} "
+done
+
 cat > "${dist_dir}/app-bootstrap.js" <<EOF
 const shell = document.getElementById("app-loading");
+const prerendered = document.getElementById("app-prerendered");
 
 function showLoadError() {
   if (!shell) return;
@@ -37,39 +54,86 @@ function showLoadError() {
   shell.appendChild(retry);
 }
 
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.addEventListener("load", resolve, { once: true });
+    script.addEventListener("error", reject, { once: true });
+    document.head.appendChild(script);
+  });
+}
+
+function startAnalytics() {
+  const whenIdle = window.requestIdleCallback ?? ((run) => setTimeout(run, 1));
+  whenIdle(() => {
+    loadScript("/posthog-env.js")
+      .then(() => loadScript("/posthog-init.js"))
+      .catch((error) => console.warn("Analytics did not load", error));
+  }, { timeout: ${analytics_idle_timeout_ms} });
+}
+
 try {
   const bindings = await import("/${javascript_file}");
   const wasm = await bindings.default({ module_or_path: "/${wasm_file}" });
   window.wasmBindings = bindings;
+  prerendered?.remove();
   shell?.remove();
   dispatchEvent(new CustomEvent("TrunkApplicationStarted", { detail: { wasm } }));
+  startAnalytics();
 } catch (error) {
   console.error("MeetCal failed to load", error);
   showLoadError();
 }
 EOF
 
+bootstrap_hash="$(sha256sum "${dist_dir}/app-bootstrap.js" | cut -c1-16)"
+bootstrap_file="app-bootstrap-${bootstrap_hash}.js"
+mv "${dist_dir}/app-bootstrap.js" "${dist_dir}/${bootstrap_file}"
+
+template="$(mktemp)"
+trap 'rm -f "${template}"' EXIT
+BOOTSTRAP_FILE="${bootstrap_file}" \
+JAVASCRIPT_FILE="${javascript_file}" \
+WASM_FILE="${wasm_file}" \
+SNIPPET_PATHS="${snippet_paths}" \
+  perl -0pe '
+    my $preloads = join("\n    ",
+      qq{<link rel="modulepreload" href="/$ENV{JAVASCRIPT_FILE}" />},
+      (map { qq{<link rel="modulepreload" href="$_" />} } split(" ", $ENV{SNIPPET_PATHS})),
+      qq{<link rel="preload" href="/$ENV{WASM_FILE}" as="fetch" type="application/wasm" crossorigin />},
+    );
+    s{<script type="module" src="/app-bootstrap\.js"></script>}{$preloads\n    <script type="module" src="/$ENV{BOOTSTRAP_FILE}"></script>}
+      or die "index.html has no app-bootstrap.js script\n";
+  ' "${dist_dir}/index.html" > "${template}"
+
 seo_dir="${dist_dir}/seo"
 mkdir -p "${seo_dir}"
 
 render_page() {
-  local output_name="$1"
+  local stem="$1"
   local path="$2"
   local title="$3"
   local description="$4"
   local robots="$5"
-  local canonical="https://www.meetcal.app${path}"
+  local output="$6"
+  local canonical=""
+  if [[ -n "${path}" ]]; then
+    canonical="https://www.meetcal.app${path}"
+  fi
 
   PAGE_TITLE="${title}" \
   PAGE_DESCRIPTION="${description}" \
   PAGE_ROBOTS="${robots}" \
   PAGE_CANONICAL="${canonical}" \
+  PAGE_SHELL="${shells_dir}/${stem}.html" \
     perl -0pe '
+      my $og_url = $ENV{PAGE_CANONICAL} ne "" ? $ENV{PAGE_CANONICAL} : "https://www.meetcal.app/";
       s{<title>.*?</title>}{<title>$ENV{PAGE_TITLE}</title>}s;
       my %content = (
         "meta-description" => $ENV{PAGE_DESCRIPTION},
         "meta-robots" => $ENV{PAGE_ROBOTS},
-        "meta-og-url" => $ENV{PAGE_CANONICAL},
+        "meta-og-url" => $og_url,
         "meta-og-title" => $ENV{PAGE_TITLE},
         "meta-og-description" => $ENV{PAGE_DESCRIPTION},
         "meta-twitter-title" => $ENV{PAGE_TITLE},
@@ -78,71 +142,24 @@ render_page() {
       for my $id (keys %content) {
         s{(<meta(?=[^>]*\bid="\Q$id\E")[^>]*\bcontent=")[^"]*(")}{$1$content{$id}$2}gs;
       }
-      s{(<link(?=[^>]*\bid="canonical-url")[^>]*\bhref=")[^"]*(")}{$1$ENV{PAGE_CANONICAL}$2}gs;
-    ' "${dist_dir}/index.html" > "${seo_dir}/${output_name}.html"
+      if ($ENV{PAGE_CANONICAL} eq "") {
+        s{\n[ \t]*<link(?=[^>]*\bid="canonical-url")[^>]*>}{}s;
+      } else {
+        s{(<link(?=[^>]*\bid="canonical-url")[^>]*\bhref=")[^"]*(")}{$1$ENV{PAGE_CANONICAL}$2}gs;
+      }
+      open(my $shell, "<:raw", $ENV{PAGE_SHELL}) or die "no shell for this route: $ENV{PAGE_SHELL}\n";
+      my $page = do { local $/; <$shell> };
+      $page =~ s{\s+\z}{};
+      s{<div id="app-prerendered"></div>}{<div id="app-prerendered" class="app-prerendered">$page</div>}
+        or die "index.html has no #app-prerendered placeholder\n";
+    ' "${template}" > "${output}"
 }
 
-render_page "features" "/features" \
-  "MeetCal Features — Schedules, Start Lists &amp; Rankings" \
-  "See how MeetCal helps athletes, coaches, and fans navigate weightlifting schedules, start lists, rankings, reminders, and meet-day details." \
-  "index, follow"
-render_page "privacy" "/privacy" \
-  "Privacy Policy — MeetCal" \
-  "Learn how MeetCal collects, uses, shares, and protects information across its apps, website, and related services." \
-  "index, follow"
-render_page "terms" "/terms" \
-  "Terms of Use — MeetCal" \
-  "Read the terms that apply when using the MeetCal apps, website, competition data, and related services." \
-  "index, follow"
-# Athlete Wrapped is the one free data page: open to everyone, and indexed.
-render_page "wrapped" "/wrapped" \
-  "Weightlifting Athlete Wrapped" \
-  "Free Weightlifting Wrapped: an athlete's competition year in numbers, with meets, best lifts, make rate, and progress." \
-  "index, follow"
-render_page "schedule-builder" "/schedule-builder" \
-  "Weightlifting Meet Schedule Builder — MeetCal" \
-  "Free for meet organizers: paste a meet's Sport80 link, build the meet's sessions in one click, adjust them, and export or publish the schedule." \
-  "index, follow"
-render_page "subscription" "/subscription" \
-  "Manage Your MeetCal Subscription in the App" \
-  "Open MeetCal on iOS or Android to start, change, restore, or cancel your subscription." \
-  "noindex, nofollow"
-render_page "link" "/link" \
-  "Approve a MeetCal CLI Sign-In" \
-  "Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login." \
-  "noindex, nofollow"
-render_page "submit-meet" "/submit-meet" \
-  "Submit a Meet — MeetCal" \
-  "Send MeetCal the schedule and start lists of a weightlifting meet it doesn't cover yet, and we'll add the meet." \
-  "noindex, nofollow"
-
-while IFS='|' read -r output_name path title; do
-  render_page "${output_name}" "${path}" "${title}" \
-    "Sign in with your MeetCal account to explore subscription competition data on the web." \
-    "noindex, nofollow"
-done <<'EOF'
-comp-data|/comp-data|Competition Data
-qualifying-totals|/qualifying-totals|Weightlifting Qualifying Totals
-standards|/standards|Weightlifting Standards
-results|/results|Athlete Competition Results
-rankings|/rankings|International Weightlifting Rankings
-national-rankings|/national-rankings|National Weightlifting Rankings
-records|/records|Weightlifting Records
-wso-records|/wso-records|USAW WSO Records
-adaptive-records|/adaptive-records|Adaptive Weightlifting Records
-meet-center|/meet-center|Weightlifting Meets, Schedules &amp; Results
-club-dashboard|/club-dashboard|Weightlifting Club Meet Dashboard
-wso-dashboard|/wso-dashboard|USAW WSO Meet Dashboard
-wso-elite|/wso-elite|USAW WSO Elite Athletes
-EOF
-
-# Vercel serves dist/404.html, with status 404, for any path that has no file
-# or rewrite. It boots the app, whose router shows the Not Found page with
-# links back into the site (#207). A missing page has no canonical URL.
-render_page "404" "/" \
-  "Page Not Found — MeetCal" \
-  "The requested MeetCal page could not be found." \
-  "noindex, nofollow"
-perl -0pe 's{\n[ \t]*<link(?=[^>]*\bid="canonical-url")[^>]*>}{}s' \
-  "${seo_dir}/404.html" > "${dist_dir}/404.html"
-rm "${seo_dir}/404.html"
+while IFS='|' read -r stem path title description robots; do
+  case "${stem}" in
+    index) output="${dist_dir}/index.html" ;;
+    404) output="${dist_dir}/404.html" ;;
+    *) output="${seo_dir}/${stem}.html" ;;
+  esac
+  render_page "${stem}" "${path}" "${title}" "${description}" "${robots}" "${output}"
+done < "${shells_dir}/routes.txt"

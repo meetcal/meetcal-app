@@ -1,0 +1,52 @@
+{
+  "function": "meets:namesMatching",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "words": [
+          "wire",
+          "fixture"
+        ]
+      },
+      "body": {
+        "meets": [
+          "2025 Wire Fixture Fall Open",
+          "2026 Wire Fixture Classic",
+          "2026 Wire Fixture Games",
+          "2026 Wire Fixture Open"
+        ],
+        "count": 4
+      }
+    },
+    {
+      "args": {
+        "words": [
+          "wire",
+          "fixture"
+        ],
+        "exclude": [
+          "open"
+        ]
+      },
+      "body": {
+        "meets": [
+          "2026 Wire Fixture Classic",
+          "2026 Wire Fixture Games"
+        ],
+        "count": 2
+      }
+    },
+    {
+      "args": {
+        "words": [
+          "nothing"
+        ]
+      },
+      "body": {
+        "meets": [],
+        "count": 0
+      }
+    }
+  ]
+}

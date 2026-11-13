@@ -77,6 +77,13 @@ and midnight checks, a load Sport80 refuses, and, signed in, saving a draft,
 publishing for review and publishing again after an edit, the drafts list with
 Delete, and accessibility.
 
+`tests/shells.rs` renders every route's first frame natively and fails when `shells/` differs
+from it; `UPDATE_SHELLS=1 cargo test --test shells` rewrites `shells/`. The config tests
+(`npm run test:config`, after a build) check that every page in `dist/` carries its route's shell
+and the preloads, that every content-hashed file is `immutable` and nothing else is, and that the
+bootstrap starts analytics only after the app mounts. `src/utils/api/tests.rs` also reads
+`../convex/` to check that exactly the queries whose function takes `ifNoneMatch` send one.
+
 ## Browser checks
 
 Build the WebAssembly application, install the browser-test dependencies, and run
@@ -85,7 +92,6 @@ the Playwright suite:
 ```bash
 env -u NO_COLOR \
   CLERK_PUBLISHABLE_KEY=pk_test_e2e \
-  REVENUECAT_PUBLIC_API_KEY=rcb_e2e \
   mise exec -- trunk build --release --locked
 npm ci --ignore-scripts
 npx playwright install chromium webkit
@@ -94,9 +100,8 @@ npm run typecheck
 npm run test:e2e
 ```
 
-The non-secret placeholder keys compile the authenticated test path into the
-Wasm build; Playwright intercepts the provider scripts and never sends them to
-Clerk or RevenueCat.
+The non-secret placeholder key compiles the authenticated test path into the
+Wasm build; Playwright stands in for Clerk and never reaches it.
 
 The suite exercises every route in Chromium and WebKit, including Pixel, iPhone,
 and small-phone viewports. It also checks deep links, subscription handoffs,
@@ -134,21 +139,28 @@ await routeQuery(page, "results:search", (route, args) =>
 - `routeMutation(page, fn, handler)` does the same for a mutation (`POST /api/mutation`):
   `deviceLogin:approve`, `deviceLogin:deny`, `apiTokens:revokeAllCli` and `meetSubmissions:*`.
 - `retryableResponse(429 | 503, retryAfter?)` exercises the retries.
-- `mockSubscribedUser(page)` puts stand-ins for Clerk's and RevenueCat's SDKs
-  on the page (through `page.addInitScript`) as a signed-in, subscribed user,
-  so gated pages render. The auth bridge uses an SDK already on the page
-  instead of loading it. Don't mock the CDN files with `page.route`: they load
-  with Subresource Integrity, so the browser refuses any other body. The
-  signed-in stand-in's session token is `token_<user id>`. `mockAuth` also
-  answers Convex's `accessPass:pass` (the pass `pass_test` for
-  `Bearer token_user_ci`, 403 for another user or while its `serverEntitled`
-  option is false) and the `entitlements:refresh` action (`refreshGrants`), so
-  a premium read's `args` include `pass: "pass_test"`. It returns `server` (the
-  pass it hands out, which a test may change to simulate a rotation) and the
-  Authorization header of each call, `passRequests` and `entitlementRefreshes`.
-  Any other Convex call a test does not route fails with an `errorAnswer`
-  naming the function, instead of reaching production (gated pages read only
-  after `mockAuth`, so this covers every read).
+- `mockSubscribedUser(page)` puts a stand-in for Clerk's SDK on the page
+  (through `page.addInitScript`) as a signed-in user Convex counts as a
+  subscriber, so gated pages render. The auth bridge uses an SDK already on
+  the page instead of loading it. Don't mock the CDN files with `page.route`:
+  they load with Subresource Integrity, so the browser refuses any other body.
+  The stand-in records `mountSignIn` options on `window.__authMock`;
+  `notify()` calls Clerk's listeners again and `setUser(id | null)` switches or
+  signs out the user. A signed-in stand-in's session token is `token_<user id>`.
+  `mockAuth(page, { signedIn, serverEntitled, refreshGrants })` also answers
+  Convex's `accessPass:pass`, which decides who sees the data pages: the pass
+  `pass_test` for `Bearer token_user_ci` while `server.entitled`, 503 while
+  `server.unavailable`, 403 for another user or while not entitled, 401
+  without a token; and the `entitlements:refresh` action
+  (`{ active: server.refreshGrants }`, which also makes `server.entitled`
+  true), so a premium read's `args` include `pass: "pass_test"`. It returns
+  `server` (a test may change any of its fields, for a rotation, a purchase
+  or an outage), the Authorization header of each call (`passRequests`,
+  `entitlementRefreshes`) and `revenueCatRequests`, every RevenueCat request
+  the page made, which the site never makes. Any other Convex call a test does
+  not route fails with an `errorAnswer` naming the function, instead of
+  reaching production (gated pages read only after `mockAuth`, so this covers
+  every read).
 
 Assert on what a user sees, and on the arguments a page sends when they
 matter (`expect(args).toEqual({ federation: "USAMW", ... })`).

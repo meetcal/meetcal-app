@@ -1,0 +1,23 @@
+index|/|MeetCal — Weightlifting Meet Schedules &amp; Competition Data|Explore Olympic weightlifting meet schedules, start lists, rankings, records, and competition tools with MeetCal.|index, follow
+features|/features|MeetCal Features — Schedules, Start Lists &amp; Rankings|See how MeetCal helps athletes, coaches, and fans navigate weightlifting schedules, start lists, rankings, reminders, and meet-day details.|index, follow
+privacy|/privacy|Privacy Policy — MeetCal|Learn how MeetCal collects, uses, shares, and protects information across its apps, website, and related services.|index, follow
+terms|/terms|Terms of Use — MeetCal|Read the terms that apply when using the MeetCal apps, website, competition data, and related services.|index, follow
+subscription|/subscription|Manage Your MeetCal Subscription in the App|Open MeetCal on iOS or Android to start, change, restore, or cancel your subscription.|noindex, nofollow
+link|/link|Approve a MeetCal CLI Sign-In|Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login.|noindex, nofollow
+submit-meet|/submit-meet|Submit a Meet — MeetCal|Send MeetCal the schedule and start lists of a weightlifting meet it doesn't cover yet, and we'll add the meet.|noindex, nofollow
+schedule-builder|/schedule-builder|Weightlifting Meet Schedule Builder — MeetCal|Free for meet organizers: paste a meet's Sport80 link, build the meet's sessions in one click, adjust them, and export or publish the schedule.|index, follow
+comp-data|/comp-data|Competition Data|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+qualifying-totals|/qualifying-totals|Weightlifting Qualifying Totals|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+standards|/standards|Weightlifting Standards|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+results|/results|Athlete Competition Results|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+meet-center|/meet-center|Weightlifting Meets, Schedules &amp; Results|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+club-dashboard|/club-dashboard|Weightlifting Club Meet Dashboard|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+wso-dashboard|/wso-dashboard|USAW WSO Meet Dashboard|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+wso-elite|/wso-elite|USAW WSO Elite Athletes|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+wrapped|/wrapped|Weightlifting Athlete Wrapped|Free Weightlifting Wrapped: an athlete's competition year in numbers, with meets, best lifts, make rate, and progress.|index, follow
+rankings|/rankings|International Weightlifting Rankings|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+national-rankings|/national-rankings|National Weightlifting Rankings|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+records|/records|Weightlifting Records|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+wso-records|/wso-records|USAW WSO Records|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+adaptive-records|/adaptive-records|Adaptive Weightlifting Records|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
+404||Page Not Found — MeetCal|The requested MeetCal page could not be found.|noindex, nofollow

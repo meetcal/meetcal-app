@@ -7,6 +7,7 @@ mod support {
     pub(crate) mod failures;
     pub(crate) mod retries;
     pub(crate) mod server;
+    pub(crate) mod shaped;
 }
 
 use meetcal::utils::access::Access;
@@ -103,7 +104,8 @@ async fn gives_up_on_a_connection_that_keeps_dropping() {
 
     assert_eq!(
         error.to_string(),
-        "Failed to call MeetCal query reference:clubAthletes"
+        "The connection to MeetCal dropped while reading reference:clubAthletes. Check your \
+         internet connection and try again."
     );
     assert_eq!(requests.lock().unwrap().len(), 3);
 }
@@ -266,4 +268,83 @@ async fn port_probes_take_no_scripted_reply() {
     assert_eq!(body, json!([{ "meet": "Test Meet" }]));
     assert_eq!(requests.lock().unwrap().len(), 1);
     drop(idle);
+}
+
+#[tokio::test]
+async fn asks_for_a_compressed_answer_and_reads_it() {
+    let (base_url, requests) = serve(vec![
+        reply(
+            OK,
+            None,
+            r#"{"status":"success","value":[{"meet":"Test Meet"}]}"#,
+        )
+        .gzipped(),
+    ]);
+
+    let body = fetch(&base_url).await.expect("a compressed answer is read");
+
+    assert_eq!(body, json!([{ "meet": "Test Meet" }]));
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert!(
+        requests[0]
+            .to_ascii_lowercase()
+            .contains("accept-encoding: gzip"),
+        "{}",
+        requests[0]
+    );
+}
+
+#[tokio::test]
+async fn resends_a_read_whose_answer_was_cut_short() {
+    let rows = r#"{"status":"success","value":[{"meet":"Test Meet"}]}"#;
+    let (base_url, requests) = serve(vec![
+        reply(OK, None, rows).cut_after(20),
+        reply(OK, None, rows).gzipped().cut_after(10),
+        reply(OK, None, rows).gzipped(),
+    ]);
+
+    let body = fetch(&base_url)
+        .await
+        .expect("the third answer arrives whole");
+
+    assert_eq!(body, json!([{ "meet": "Test Meet" }]));
+    assert_eq!(requests.lock().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn an_answer_cut_short_every_time_says_to_check_the_connection() {
+    let rows = r#"{"status":"success","value":[]}"#;
+    let (base_url, requests) = serve(vec![
+        reply(OK, None, rows).cut_after(5),
+        reply(OK, None, rows).cut_after(5),
+        reply(OK, None, rows).cut_after(5),
+    ]);
+
+    let error = fetch(&base_url).await.expect_err("every answer is cut");
+
+    assert_eq!(
+        error.to_string(),
+        "The connection to MeetCal dropped while reading reference:clubAthletes. Check your \
+         internet connection and try again."
+    );
+    assert_eq!(requests.lock().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn an_unreachable_deployment_says_to_check_the_connection() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    drop(listener);
+
+    let error = fetch(&base_url).await.expect_err("nothing listens there");
+
+    assert_eq!(
+        error.to_string(),
+        "Could not reach MeetCal. Check your internet connection and try again."
+    );
+    assert!(
+        format!("{error:#}").contains("error sending request"),
+        "{error:#}"
+    );
 }

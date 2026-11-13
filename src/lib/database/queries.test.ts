@@ -1,5 +1,5 @@
 import {
-  fetchAllResultsForName,
+  fetchAthleteResults,
   fetchAthletesWithSession,
   fetchRecentAthleteHistoryForNames,
   fetchSchedule,
@@ -10,7 +10,7 @@ const mockFetchApiSchedule = jest.fn();
 const mockFetchApiAthletesWithSession = jest.fn();
 const mockFetchApiAthletes = jest.fn();
 const mockFetchApiRecentResultsByNames = jest.fn();
-const mockFetchApiResultsByNames = jest.fn();
+const mockFetchAthlete = jest.fn();
 const mockSearchApi = jest.fn();
 
 jest.mock("@/lib/api/meets-api", () => ({
@@ -22,7 +22,7 @@ jest.mock("@/lib/api/meets-api", () => ({
 jest.mock("@/lib/api/results-api", () => ({
   fetchApiRecentResultsByNames: (...args: unknown[]) =>
     mockFetchApiRecentResultsByNames(...args),
-  fetchApiResultsByNames: (...args: unknown[]) => mockFetchApiResultsByNames(...args),
+  fetchAthlete: (...args: unknown[]) => mockFetchAthlete(...args),
   searchApi: (...args: unknown[]) => mockSearchApi(...args),
 }));
 
@@ -147,9 +147,9 @@ describe("history and bests facades", () => {
     await fetchRecentAthleteHistoryForNames(["Athlete A"], "2024-09-23");
     expect(mockFetchApiRecentResultsByNames).toHaveBeenCalledWith(["Athlete A"], "2024-09-23");
 
-    mockFetchApiResultsByNames.mockResolvedValue([]);
-    await fetchAllResultsForName("Athlete A");
-    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A"]);
+    mockFetchAthlete.mockResolvedValue({ kind: "choose", name: "Athlete A", lifters: [], otherResults: 0 });
+    await fetchAthleteResults({ name: "Athlete A", membership: "100" });
+    expect(mockFetchAthlete).toHaveBeenCalledWith({ name: "Athlete A", membership: "100" });
   });
 
   it("returns suggestions from search and rethrows failures", async () => {
