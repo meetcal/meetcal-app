@@ -339,8 +339,8 @@ Convex's answer.
   platform whose own times differ from its session's shows the lines `preview` answers for it
   (`ownTimes`: one line, or one per published row when its rows start at different times) in its
   heading, on the board and in print. A platform Convex answers as `locked` (several published
-  rows in one session) offers no Move To, class chips or Remove, a `locked` session no Swap With…
-  or Edit Time, and neither is a Move To, Add To or Swap target; a warning from Convex says to use
+  rows in one session) offers no Move To, class chips or Remove, a session whose `lockedPlatforms` Convex answers non-empty no
+  Swap With… or Edit Time, and neither is a Move To, Add To or Swap target; a warning from Convex says to use
   Rebuild From Scratch for withdrawn lifters there. While a publish is on its
   way the board and the Sport80 panel are inert, and Undo and both Rebuild From Scratch buttons are
   disabled, so no edit or rebuild is made that its answer would discard. Lifters no

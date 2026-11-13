@@ -1199,6 +1199,84 @@ describe('the export and the email of a platform the schedule has no row for', (
   });
 });
 
+describe('edits that cancel out', () => {
+  it('keep a hand-written label when a lifter moves away and back', async () => {
+    const rows = [handRow(1, 'Red', '09:00:00', '07:00:00', 'Women 58kg'), handRow(2, 'Red', '11:00:00', '09:00:00', 'W 63')];
+    const store = server({ ...organizer, athletes: [rostered(ann, 1), rostered(gia, 2)], session_schedule: rows });
+    await publishAs(store, 'user_a', 'published', null, [
+      { kind: 'moveAthlete', athlete: keyOf(ann), fromSession: 1, fromPlatform: 'Red', occurrence: 0, toSession: 2, toPlatform: 'Red' },
+      { kind: 'moveAthlete', athlete: keyOf(ann), fromSession: 2, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'Red' },
+    ]);
+    expect(sortedRows(store)).toEqual(inRowOrder(rows));
+  });
+
+  it('keep an empty published platform when a lifter moves in and out again', async () => {
+    const rows = [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Blue', '09:00:00', '07:00:00', 'M 89'), handRow(2, 'Red', '11:00:00', '09:00:00', 'M 96')];
+    const store = server({ ...organizer, athletes: [rostered(ann, 1), rostered(dan, 2)], session_schedule: rows });
+    await publishAs(store, 'user_a', 'published', null, [
+      { kind: 'moveAthlete', athlete: keyOf(dan), fromSession: 2, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'Blue' },
+      { kind: 'moveAthlete', athlete: keyOf(dan), fromSession: 1, fromPlatform: 'Blue', occurrence: 0, toSession: 2, toPlatform: 'Red' },
+    ]);
+    expect(sortedRows(store)).toEqual(inRowOrder(rows));
+  });
+});
+
+describe('a session only the roster has', () => {
+  it('writes no row, does not block a republish, and is named in its own warning', async () => {
+    const store = server({ ...organizer, athletes: [...roster(), rostered(fay, 5)] });
+    const warnings = (await board(store)).warnings as { code: string; message: string }[];
+    expect(warnings.filter((w) => w.code === 'noPublishedTimes' || w.code === 'unscheduled')).toEqual([{ code: 'noPublishedTimes', message: 'Session 5 has no published times.' }]);
+    expect(await publishAs(store, 'user_a', 'published', null)).toMatchObject({ status: 'live' });
+    expect(sortedRows(store)).toEqual(inRowOrder(publishedRows()));
+    expect(store.rows('athletes').find((a) => a.name === 'Fay Lund')).toMatchObject({ sessionNumber: 5, sessionPlatform: 'Red' });
+  });
+});
+
+describe('a platform with no published row on the board', () => {
+  it('says it has no published time instead of showing its session’s', async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(gia, 2)],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Red', '11:00:00', '09:00:00', 'W 63')],
+    });
+    expect((await board(store)).sessions[0]?.groups.map((g) => [g.platform, g.ownTimes])).toEqual([
+      ['Red', null],
+      ['Blue', 'No Published Time'],
+    ]);
+  });
+});
+
+describe('a platform named in another case', () => {
+  it('is the existing group a move lands in, so no second row is written', async () => {
+    const store = server({
+      ...organizer,
+      athletes: [rostered(ann, 1), rostered(bea, 1, { sessionPlatform: 'red' }), rostered(gia, 2)],
+      session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Red', '11:00:00', '09:00:00', 'W 63')],
+    });
+    await publishAs(store, 'user_a', 'published', null, [{ kind: 'moveAthlete', athlete: keyOf(gia), fromSession: 2, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'red' }]);
+    expect(sortedRows(store).filter((row) => row.sessionId === 1).map((row) => row.platform)).toEqual(['Red']);
+    expect(store.rows('athletes').map((a) => [a.name, a.sessionNumber, a.sessionPlatform])).toEqual([
+      ['Ann Lee', 1, 'Red'],
+      ['Bea Cho', 1, 'red'],
+      ['Gia Hu', 1, 'Red'],
+    ]);
+  });
+
+  it('is compared against every case variant of a platform for overlaps', async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(gia, 2), rostered(dan, 2, { sessionPlatform: 'red' }), rostered(bea, 3)],
+      session_schedule: [
+        handRow(1, 'Red', '15:00:00', '13:00:00', 'W 58'),
+        handRow(2, 'Red', '12:00:00', '10:00:00', 'W 63'),
+        handRow(2, 'red', '09:30:00', '07:30:00', 'M 96'),
+        handRow(3, 'Red', '11:30:00', '09:30:00', 'W 58'),
+      ],
+    });
+    expect((await publishedOptions(store)).sessionMinutes).toBe(120);
+    const retimed = await board(store, [{ kind: 'setSessionTime', session: 1, date: '2027-03-06', startTime: '09:00' }]);
+    expect(retimed.warnings.filter((w) => w.code === 'overlap').map((w) => (w as { message?: string }).message)).toEqual(['Sessions 1 and 2 use the Red platform at the same time.']);
+  });
+});
+
 describe('a platform spelled two ways in one session', () => {
   it('writes each row and each athlete back with their own spelling', async () => {
     const rows = [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(1, 'Red ', '10:00:00', '08:00:00', 'W 63'), handRow(2, 'Red', '12:00:00', '10:00:00', 'M 89')];

@@ -47,12 +47,18 @@ export function writtenPlatform(group: Pick<BuiltGroup, 'platform' | 'storedPlat
   return group.storedPlatform ?? group.platform;
 }
 
+export const NO_PUBLISHED_TIME = 'No Published Time';
+
+export function writesRows(session: BuiltSchedule['sessions'][number]): boolean {
+  return session.groups.some((group) => rowsOf(session, group).length > 0);
+}
+
 export function publishProblem(schedule: BuiltSchedule, meet: { startDate: string; endDate: string }): string | null {
   if (schedule.athletes === 0 || schedule.sessions.length === 0) return 'the meet has no entrants to publish yet';
   const days = meetDays(meet.startDate, meet.endDate);
   const outside = schedule.sessions.find((s) => s.date !== '' && days.length > 0 && !days.includes(s.date));
   if (outside) return `session ${outside.number} is on ${outside.date}, which is not one of the meet's days`;
-  const unscheduled = schedule.sessions.filter((s) => s.startTime === '').length;
+  const unscheduled = schedule.sessions.filter((s) => s.startTime === '' && writesRows(s)).length;
   if (unscheduled > 0) return `${unscheduled} session${unscheduled === 1 ? ' has' : 's have'} no time; fit every session into the meet's days before publishing`;
   return null;
 }
@@ -65,7 +71,7 @@ export function publishedSchedule(schedule: BuiltSchedule): PublishedSchedule {
       const platform = writtenPlatform(group);
       for (const row of rowsOf(session, group)) rows.push({ ...row, sessionId: session.number, platform: row.platform ?? platform });
       for (const athlete of group.athletes) {
-        const seated = athlete.seat && athlete.seat.session === session.number && athlete.seat.platform.trim() === group.platform ? athlete.seat.platform : platform;
+        const seated = athlete.seat && athlete.seat.session === session.number && athlete.seat.platform.trim().toLowerCase() === group.platform.toLowerCase() ? athlete.seat.platform : platform;
         const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: seated };
         placements.push(athlete.rosterId === undefined ? placement : { ...placement, rosterId: athlete.rosterId });
       }
@@ -95,7 +101,8 @@ const sameTimes = (a: RowTimes, b: RowTimes) => a.startTime === b.startTime && a
 export function ownTimesLabel(session: RowTimes, group: ShownGroup): string | null {
   const rows = rowsOf(session, group);
   const [first] = rows;
-  if (first && rows.some((row) => !sameTimes(row, first))) return rows.map((row) => `${row.weightClass} · ${timesLine(row)}`).join('\n');
+  if (!first) return NO_PUBLISHED_TIME;
+  if (rows.some((row) => !sameTimes(row, first))) return rows.map((row) => `${row.weightClass} · ${timesLine(row)}`).join('\n');
   const times = timesOf(session, group);
   return sameTimes(times, session) ? null : timesLine(times);
 }
