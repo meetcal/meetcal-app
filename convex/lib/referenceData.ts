@@ -4,7 +4,7 @@ import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
 import { genderWordPattern } from './gender';
-import { normalizeName } from './names';
+import { apiRowOf, countedRowKey, type CountedRow } from './lifterKeys';
 import { normalizeGender } from './normalize';
 import { isPlausibleResult } from './plausible';
 import { narrowedByAgeAndGender } from './referenceFilters';
@@ -111,6 +111,12 @@ export async function computeIntlRankings(ctx: QueryCtx) {
 
 export type RankedTotal = { name: string; total: number };
 
+export type LinkedTotal = RankedTotal & CountedRow;
+
+export const rankedTotalOf = ({ name, total }: RankedTotal): RankedTotal => ({ name, total });
+
+const linkedRow = (row: { name: string; total: number; lifterId?: string; soleLifterId?: string }): LinkedTotal => ({ ...apiRowOf(row), total: row.total });
+
 /** Source rows per transaction for large historical ranking classes. */
 const NATIONAL_RANKING_PAGE_SIZE = 1000;
 
@@ -118,7 +124,7 @@ export async function nationalRankingPage(ctx: QueryCtx, federation: string, age
   const page = await ctx.db.query('lifting_results')
     .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation).eq('age', ageCategory))
     .paginate({ cursor, numItems: NATIONAL_RANKING_PAGE_SIZE });
-  const rows = page.page.flatMap((row) => (rankable(row) ? [{ name: row.name, total: row.total }] : []));
+  const rows = page.page.flatMap((row) => (rankable(row) ? [linkedRow(row)] : []));
   return { rows: bestTotalPerAthlete(rows), cursor: page.continueCursor, isDone: page.isDone };
 }
 
@@ -131,15 +137,10 @@ function rankable<T extends Parameters<typeof isPlausibleResult>[0]>(row: T): ro
   return typeof row.total === 'number' && row.total > 0 && isPlausibleResult(row);
 }
 
-/**
- * One row per athlete (folded name, `normalizeName`, as their history is),
- * their heaviest total under the spelling it was lifted under; heaviest
- * first, equal totals in name order (`best_total_per_athlete`).
- */
-export function bestTotalPerAthlete<T extends RankedTotal>(rows: Iterable<T>): T[] {
+export function bestTotalPerAthlete<T extends LinkedTotal>(rows: Iterable<T>): T[] {
   const best = new Map<string, T>();
   for (const row of rows) {
-    const key = normalizeName(row.name);
+    const key = countedRowKey(row);
     const existing = best.get(key);
     if (existing && existing.total >= row.total) continue;
     best.set(key, row);
@@ -148,6 +149,8 @@ export function bestTotalPerAthlete<T extends RankedTotal>(rows: Iterable<T>): T
 }
 
 export type DatedTotal = RankedTotal & { date: string };
+
+type LinkedDatedTotal = LinkedTotal & { date: string };
 
 /**
  * `GET /data/nat-rankings-year`: `/data/nat-rankings` within one calendar
@@ -168,11 +171,11 @@ export async function computeNationalRankingsForYear(
     DIVISION_YEAR_RESULTS_MAX,
     'results of one division in one year',
   );
-  const ranked: DatedTotal[] = [];
+  const ranked: LinkedDatedTotal[] = [];
   for (const row of rows) {
-    if (rankable(row)) ranked.push({ name: row.name, total: row.total, date: row.date });
+    if (rankable(row)) ranked.push({ ...linkedRow(row), date: row.date });
   }
-  return bestTotalPerAthlete(ranked);
+  return bestTotalPerAthlete(ranked).map(({ name, total, date }) => ({ name, total, date }));
 }
 
 type RankingGender = 'Men' | 'Women';

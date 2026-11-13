@@ -9,9 +9,9 @@ use serde_json::json;
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::backend::{CONCURRENT_READS, FunctionError, in_order, queries, query};
 use crate::utils::format::{NO_VALUE, date_range, us_date};
+use crate::utils::lifters::counted_key;
 use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::output::{self, Report};
-use crate::utils::stats::fold;
 
 /// Meets `meets:attendance` counts per call (its limit).
 pub(crate) const ATTENDANCE_BATCH: usize = 8;
@@ -218,8 +218,7 @@ pub(crate) fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec
     years
         .iter()
         .map(|(year, rows)| {
-            let lifters: std::collections::HashSet<String> =
-                rows.iter().map(|row| fold(&row.name)).collect();
+            let lifters: std::collections::HashSet<String> = rows.iter().map(counted_key).collect();
             let first_date = rows.iter().map(|row| row.date.clone()).min();
             let last_date = rows.iter().map(|row| row.date.clone()).max();
             let registered = registered_year.as_deref() == Some(year.as_str());

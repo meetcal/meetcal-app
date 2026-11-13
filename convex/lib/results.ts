@@ -35,6 +35,7 @@ export type ApiLiftingResult = {
   total: number;
   adaptive: boolean;
   lifter_id?: string;
+  sole_lifter_id?: string;
 };
 
 /**
@@ -63,6 +64,7 @@ export function toApiLiftingResult(row: Doc<'lifting_results'>): ApiLiftingResul
     total: row.total ?? 0,
     adaptive: row.adaptive,
     ...(row.lifterId === undefined ? {} : { lifter_id: row.lifterId }),
+    ...(row.soleLifterId === undefined ? {} : { sole_lifter_id: row.soleLifterId }),
   };
 }
 

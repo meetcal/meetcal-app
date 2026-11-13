@@ -9,6 +9,7 @@ pub mod device_login;
 pub mod dirs;
 pub mod filters;
 pub mod format;
+pub mod lifters;
 pub mod make_rate;
 pub mod meet_names;
 pub mod names;

@@ -18,6 +18,10 @@ pub struct LiftingResults {
     pub(crate) cj_best: f64,
     pub(crate) total: f64,
     pub(crate) adaptive: bool,
+    #[serde(default)]
+    pub(crate) lifter_id: Option<String>,
+    #[serde(default)]
+    pub(crate) sole_lifter_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

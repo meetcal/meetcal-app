@@ -26,7 +26,7 @@ function indexedCtx(tables: Record<string, Row[]>) {
           };
           build(q);
           const matching = () => (tables[table] ?? []).filter((row) => filters.every((f) => f(row)));
-          return { collect: async () => matching(), take: async (count: number) => matching().slice(0, count) };
+          return { collect: async () => matching(), take: async (count: number) => matching().slice(0, count), first: async () => matching()[0] ?? null, unique: async () => matching()[0] ?? null };
         },
       }),
     },
