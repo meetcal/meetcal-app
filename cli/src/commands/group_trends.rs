@@ -131,14 +131,14 @@ fn rows_by_lifter(rows: &[LiftingResults]) -> HashMap<String, Vec<&LiftingResult
     by_lifter
 }
 
-type PrKey = (String, String, String, Option<String>);
+type PrKey = (String, String, String, String);
 
 fn pr_key(row: &LiftingResults) -> PrKey {
     (
         fold(&row.name),
         fold(&row.meet),
         row.date.clone(),
-        row.lifter_id.clone(),
+        counted_key(row),
     )
 }
 
@@ -442,6 +442,12 @@ mod tests {
         let groups = rows_by_lifter(&rows);
         assert_eq!(groups.len(), 2);
         assert_ne!(pr_key(&rows[0]), pr_key(&rows[1]));
+        let mut marked = lifted("L1", 300.0);
+        marked.lifter_id = None;
+        marked.sole_lifter_id = Some("L1".to_owned());
+        let mut unmarked = marked.clone();
+        unmarked.sole_lifter_id = None;
+        assert_ne!(pr_key(&marked), pr_key(&unmarked));
     }
 
     #[test]
