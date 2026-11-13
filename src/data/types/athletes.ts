@@ -59,7 +59,18 @@ export interface AthleteMeetResult {
   cj3: number | null;
   cj_best: number | null;
   total: number | null;
+  lifter_id?: string;
 }
+
+export type LifterCard = { id: string; name: string; label: string };
+
+export type LifterChoice = LifterCard & { results: number; latestDate: string };
+
+export type PRIndexes = { snatch: number; cj: number; total: number };
+
+export type AthleteLookup =
+  | { kind: 'results'; lifter: LifterCard | null; rows: AthleteMeetResult[]; prs: PRIndexes }
+  | { kind: 'choose'; name: string; lifters: LifterChoice[]; otherResults: number };
 
 export interface AthleteBests {
   snatch_best: number | null;

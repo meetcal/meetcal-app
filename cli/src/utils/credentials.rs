@@ -4,11 +4,13 @@
 
 use std::ffi::OsString;
 use std::fs;
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+
+use crate::utils::dirs::{self, Flush};
 
 /// The file's name inside `<config dir>/meetcal/`.
 pub(crate) const CREDENTIALS_FILE: &str = "credentials.json";
@@ -64,24 +66,12 @@ pub(crate) fn meetcal_dir() -> Option<PathBuf> {
     .map(|dir| dir.join("meetcal"))
 }
 
-/// The config directory from the environment's values. Relative or empty values are ignored, as
-/// the XDG spec asks.
 fn config_dir(
     xdg_config_home: Option<OsString>,
     home: Option<OsString>,
     appdata: Option<OsString>,
 ) -> Option<PathBuf> {
-    let absolute =
-        |value: Option<OsString>| value.map(PathBuf::from).filter(|path| path.is_absolute());
-    if let Some(dir) = absolute(xdg_config_home) {
-        return Some(dir);
-    }
-    if cfg!(windows)
-        && let Some(dir) = absolute(appdata)
-    {
-        return Some(dir);
-    }
-    absolute(home).map(|home| home.join(".config"))
+    dirs::user_dir(xdg_config_home, home, appdata, ".config")
 }
 
 /// The login saved at `path`, or `None` when there is none.
@@ -100,25 +90,16 @@ pub fn load(path: &Path) -> Result<Option<Credentials>> {
         .with_context(|| format!("Your MeetCal login ({}) is unreadable", path.display()))
 }
 
-/// Saves `credentials` at `path`, readable by the user alone (0600 on Unix, in a 0700 directory
-/// when it creates one). Writes a temporary file and renames it over the old one, so a failed
-/// write never leaves half a file.
 pub fn save(path: &Path, credentials: &Credentials) -> Result<()> {
     let dir = path
         .parent()
         .with_context(|| format!("{} has no parent directory", path.display()))?;
-    create_private_dir(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    dirs::create_private_dir(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
 
     let mut text = serde_json::to_string_pretty(credentials)?;
     text.push('\n');
-    let temporary = dir.join(format!(".{CREDENTIALS_FILE}.{}.tmp", std::process::id()));
-    let _ = fs::remove_file(&temporary);
-    let written =
-        write_private_file(&temporary, text.as_bytes()).and_then(|()| fs::rename(&temporary, path));
-    if written.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    written.with_context(|| format!("Failed to save your MeetCal login to {}", path.display()))
+    dirs::replace_private_file(path, text.as_bytes(), Flush::ToDisk)
+        .with_context(|| format!("Failed to save your MeetCal login to {}", path.display()))
 }
 
 /// Deletes the login at `path`; `false` when there was none.
@@ -129,35 +110,6 @@ pub(crate) fn delete(path: &Path) -> Result<bool> {
         Err(error) => Err(error)
             .with_context(|| format!("Failed to delete your MeetCal login ({})", path.display())),
     }
-}
-
-/// Creates `dir` and its missing parents, readable by the user alone (0700 on Unix). The update
-/// check's cache (`utils::update_notice`) shares the directory, so it creates it the same way.
-#[cfg(unix)]
-pub(crate) fn create_private_dir(dir: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::DirBuilderExt;
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)
-}
-
-#[cfg(not(unix))]
-pub(crate) fn create_private_dir(dir: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dir)
-}
-
-fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path)?;
-    file.write_all(contents)?;
-    file.sync_all()
 }
 
 #[cfg(test)]

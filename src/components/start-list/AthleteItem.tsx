@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import type { AthleteRequest } from "@/lib/api/results-api";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useExpandedRow } from "@/contexts/ExpandedIdContext";
 import type { MeetName } from "@/data/types/meet";
@@ -45,7 +46,7 @@ export interface AthleteRowProps extends AthleteItemProps {
   meetZone: MeetZone | null;
   isSubscribed: boolean | null;
   /** Runs the auth + subscription gate and navigates; owned by the screen. */
-  onSeeAllResults: (athleteName: string) => void;
+  onSeeAllResults: (request: AthleteRequest) => void;
 }
 
 export const AthleteItem = React.memo(function AthleteItem({
@@ -149,8 +150,8 @@ export const AthleteItem = React.memo(function AthleteItem({
   };
 
   const handleSeeAllResults = useCallback(() => {
-    onSeeAllResults(athlete.name);
-  }, [onSeeAllResults, athlete.name]);
+    onSeeAllResults({ name: athlete.name, membership: athlete.memberId });
+  }, [onSeeAllResults, athlete.name, athlete.memberId]);
 
   return (
     <View style={[styles.athleteCard, { backgroundColor: colors.card }]}>

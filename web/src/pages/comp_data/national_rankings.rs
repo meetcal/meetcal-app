@@ -1,9 +1,10 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
+    catalog,
     filters::{SortDirection, sort_numeric},
     format::{GENDERS, NO_VALUE, format_us_date},
     loading::{Load, LoadState, load_error},
-    ui::{DataPage, DataStatus, DataTable, EmptyTableRow, SelectOptions, TableSkeleton},
+    ui::{DataPage, DataStatus, SelectOptions, StaticRowsTable, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
@@ -227,8 +228,7 @@ pub fn NationalRankings() -> impl IntoView {
 
     view! {
         <DataPage
-            heading="National Rankings"
-            intro="Find each athlete’s best total for a USAW or USAMW division. Add a year to limit the rankings to that season."
+            page=catalog::NATIONAL_RANKINGS
         >
             <NationalRankingsForm
                 shown=request
@@ -418,9 +418,17 @@ fn NationalRankingsTable(rankings: Vec<NationalRanking>) -> impl IntoView {
     let mut ranked = rankings.iter().collect::<Vec<_>>();
     sort_numeric(&mut ranked, |row| row.total, SortDirection::Descending);
     let ranks = competition_ranks(&ranked.iter().map(|row| row.total).collect::<Vec<_>>());
-    let rows = ranked.into_iter().zip(ranks).map(|(row, rank)| view! { <tr><td>{rank}</td><td>{row.name.clone()}</td><td>{row.total}</td><td>{row.date.as_deref().map_or_else(|| NO_VALUE.to_owned(), format_us_date)}</td></tr> }).collect_view();
-    let empty = rankings.is_empty().then(|| view! { <EmptyTableRow columns=4 message="No rankings matched this federation and division." /> });
-    view! { <DataTable><thead><tr><th>"Rank"</th><th>"Athlete"</th><th>"Total"</th><th>"Date"</th></tr></thead><tbody>{empty}{rows}</tbody></DataTable> }
+    let rows = ranks
+        .into_iter()
+        .zip(ranked.into_iter().cloned())
+        .collect::<Vec<_>>();
+    view! { <StaticRowsTable headers=RANKING_HEADERS rows row=ranking_row empty_message="No rankings matched this federation and division." /> }
+}
+
+const RANKING_HEADERS: &[&str] = &["Rank", "Athlete", "Total", "Date"];
+
+fn ranking_row((rank, row): &(usize, NationalRanking)) -> AnyView {
+    view! { <tr><td>{*rank}</td><td>{row.name.clone()}</td><td>{row.total}</td><td>{row.date.as_deref().map_or_else(|| NO_VALUE.to_owned(), format_us_date)}</td></tr> }.into_any()
 }
 
 #[cfg(test)]

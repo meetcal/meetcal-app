@@ -1,6 +1,4 @@
-use crate::auth::{
-    AuthContext, AuthState, mount_user_button, open_clerk_sign_in, unmount_user_button,
-};
+use crate::auth::{AuthContext, AuthState, mount_user_button, unmount_user_button};
 use crate::pages::comp_data::catalog::DATA_PAGES;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::JsCast;
@@ -138,7 +136,7 @@ pub fn Header() -> impl IntoView {
                         <span class="auth-button-placeholder" aria-hidden="true"></span>
                     }.into_any(),
                     AuthState::SignedOut => view! {
-                        <button class="profile-button" type="button" on:click=move |_| open_clerk_sign_in()>
+                        <button class="profile-button" type="button" on:click=move |_| auth.open_sign_in()>
                             "Sign in"
                         </button>
                     }.into_any(),

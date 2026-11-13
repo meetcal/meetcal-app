@@ -1,8 +1,10 @@
+use crate::utils::http::{self, Failure, OK, Post, SERVICE_UNAVAILABLE, TOO_MANY_REQUESTS};
 use anyhow::{Result, anyhow};
-use reqwest::{StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_json::value::RawValue;
 use std::time::Duration;
+use wasm_bindgen::JsValue;
 
 pub(super) const PRODUCTION_CONVEX_URL: &str = "https://disciplined-hare-790.convex.cloud";
 
@@ -42,30 +44,59 @@ pub(super) struct QueryRequest<'a, A: Serialize + ?Sized> {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "status", rename_all = "lowercase")]
+#[serde(try_from = "Envelope")]
 pub(super) enum QueryResponse {
     Success {
-        value: Value,
+        value: Box<RawValue>,
     },
     Error {
-        #[serde(rename = "errorMessage")]
         error_message: String,
-        #[serde(rename = "errorData", default)]
         error_data: Option<Value>,
     },
+}
+
+#[derive(Deserialize)]
+pub(super) struct Envelope {
+    status: String,
+    #[serde(default)]
+    value: Option<Box<RawValue>>,
+    #[serde(rename = "errorMessage", default)]
+    error_message: Option<String>,
+    #[serde(rename = "errorData", default)]
+    error_data: Option<Value>,
+}
+
+impl TryFrom<Envelope> for QueryResponse {
+    type Error = String;
+
+    fn try_from(envelope: Envelope) -> Result<Self, String> {
+        match envelope.status.as_str() {
+            "success" => Ok(Self::Success {
+                value: match envelope.value {
+                    Some(value) => value,
+                    None => RawValue::from_string("null".to_owned())
+                        .map_err(|error| error.to_string())?,
+                },
+            }),
+            "error" => Ok(Self::Error {
+                error_message: envelope
+                    .error_message
+                    .ok_or_else(|| "an error answer without errorMessage".to_owned())?,
+                error_data: envelope.error_data,
+            }),
+            other => Err(format!("unknown answer status {other}")),
+        }
+    }
 }
 
 #[derive(Serialize)]
 pub(super) struct NoArgs {}
 
-pub(crate) fn is_retryable_status(status: StatusCode) -> bool {
-    matches!(
-        status,
-        StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
-    )
+pub(crate) fn is_retryable_status(status: u16) -> bool {
+    matches!(status, TOO_MANY_REQUESTS | SERVICE_UNAVAILABLE)
 }
 
-pub(crate) fn should_retry(status: StatusCode, retries_so_far: u32) -> bool {
+pub(crate) fn should_retry(status: u16, retries_so_far: u32) -> bool {
     is_retryable_status(status) && retries_so_far < MAX_RETRIES
 }
 
@@ -96,36 +127,20 @@ pub(super) fn user_error(
     anyhow!(message.to_owned())
 }
 
-pub(super) const TIMER_ROUNDING_MS: f64 = 50.0;
-
-pub(super) fn request_used_its_whole_timeout(elapsed_ms: f64, timeout: Duration) -> bool {
-    elapsed_ms + TIMER_ROUNDING_MS >= timeout.as_secs_f64() * 1000.0
-}
-
-pub(super) fn body_read_failed_at_the_timeout(
-    error: &reqwest::Error,
-    started_at_ms: f64,
-    timeout: Duration,
-) -> bool {
-    error.is_timeout()
-        || request_used_its_whole_timeout(js_sys::Date::now() - started_at_ms, timeout)
-}
-
-pub(super) fn transport_error(
-    function: &str,
-    error: &reqwest::Error,
-    timed_out: bool,
-) -> anyhow::Error {
+pub(super) fn transport_error(function: &str, failure: &Failure) -> anyhow::Error {
     let offline = web_sys::window().is_some_and(|window| !window.navigator().on_line());
     user_error(
         function,
-        transport_message(timed_out, offline),
-        format!("{error:?}"),
+        transport_message(matches!(failure, Failure::TimedOut), offline),
+        match failure {
+            Failure::TimedOut => "no answer before the timeout",
+            Failure::Unreachable(reason) => reason,
+        },
     )
 }
 
-pub(super) fn exhausted_retries_message(status: StatusCode) -> &'static str {
-    if status == StatusCode::TOO_MANY_REQUESTS {
+pub(super) fn exhausted_retries_message(status: u16) -> &'static str {
+    if status == TOO_MANY_REQUESTS {
         RATE_LIMITED_MESSAGE
     } else {
         OVERLOADED_MESSAGE
@@ -168,7 +183,7 @@ pub(super) fn whole_numbers_as_integers(value: Value) -> Value {
     }
 }
 
-pub(super) fn answer_value(response: QueryResponse) -> Result<Value> {
+pub(super) fn answer_value(response: QueryResponse) -> Result<Box<RawValue>> {
     match response {
         QueryResponse::Success { value } => Ok(value),
         QueryResponse::Error {
@@ -183,6 +198,11 @@ pub(super) fn answer_value(response: QueryResponse) -> Result<Value> {
             Err(anyhow!("MeetCal could not answer: {reason}"))
         }
     }
+}
+
+pub(super) fn answer_json(response: QueryResponse) -> Result<Value> {
+    let value = answer_value(response)?;
+    serde_json::from_str(value.get()).map_err(|error| anyhow!("unreadable answer: {error}"))
 }
 
 pub(super) fn function_error_status(response: &QueryResponse) -> Option<u16> {
@@ -228,61 +248,49 @@ pub(super) async fn post_within(
     token: Option<&str>,
     timeout: Duration,
 ) -> Result<QueryResponse> {
-    let client = reqwest::Client::new();
     let url = match endpoint {
         Endpoint::Query => format!("{}/api/query", convex_url()),
         Endpoint::Mutation => format!("{}/api/mutation", convex_url()),
         Endpoint::Action => format!("{}/api/action", convex_url()),
     };
-    let request = QueryRequest {
+    let request = serde_json::to_string(&QueryRequest {
         path: function,
         args,
         format: "json",
-    };
+    })
+    .map_err(|error| user_error(function, UNREACHABLE_MESSAGE, error))?;
 
     let mut retries = 0;
-    let (response, started_at_ms) = loop {
-        let started_at_ms = js_sys::Date::now();
-        let mut builder = client.post(&url).timeout(timeout).json(&request);
-        if let Some(token) = token {
-            builder = builder.bearer_auth(token);
-        }
-        let response = builder
-            .send()
-            .await
-            .map_err(|error| transport_error(function, &error, error.is_timeout()))?;
-        let status = response.status();
+    let reply = loop {
+        let reply = http::post(Post {
+            url: &url,
+            body: JsValue::from_str(&request),
+            content_type: "application/json",
+            bearer: token,
+            timeout,
+        })
+        .await
+        .map_err(|failure| transport_error(function, &failure))?;
 
-        if endpoint.retries() && should_retry(status, retries) {
-            let retry_after = response
-                .headers()
-                .get(RETRY_AFTER)
-                .and_then(|value| value.to_str().ok());
-            sleep(retry_delay(retry_after)).await;
+        if endpoint.retries() && should_retry(reply.status, retries) {
+            sleep(retry_delay(reply.retry_after.as_deref())).await;
             retries += 1;
             continue;
         }
-        if is_retryable_status(status) {
-            return Err(anyhow!(exhausted_retries_message(status)));
+        if is_retryable_status(reply.status) {
+            return Err(anyhow!(exhausted_retries_message(reply.status)));
         }
-        if status != StatusCode::OK && status.as_u16() != FUNCTION_FAILED {
+        if reply.status != OK && reply.status != FUNCTION_FAILED {
             return Err(user_error(
                 function,
-                &format!("MeetCal could not answer (HTTP {})", status.as_u16()),
-                status,
+                &format!("MeetCal could not answer (HTTP {})", reply.status),
+                reply.status,
             ));
         }
-        break (response, started_at_ms);
+        break reply;
     };
 
-    let body = response.bytes().await.map_err(|error| {
-        transport_error(
-            function,
-            &error,
-            body_read_failed_at_the_timeout(&error, started_at_ms, timeout),
-        )
-    })?;
-    serde_json::from_slice::<QueryResponse>(&body)
+    serde_json::from_str::<QueryResponse>(&reply.body)
         .map_err(|error| user_error(function, UNREADABLE_MESSAGE, error))
 }
 

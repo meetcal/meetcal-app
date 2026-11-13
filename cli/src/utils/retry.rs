@@ -66,7 +66,48 @@ pub(crate) fn next_retry_delay(
     Some(retry_after.and_then(retry_after_delay).unwrap_or(backoff))
 }
 
-pub(crate) fn next_transport_retry_delay(retries_done: usize) -> Option<Duration> {
+pub(crate) const CONNECT_RETRIES: usize = 1;
+
+pub(crate) const CHECK_CONNECTION: &str = "Check your internet connection and try again.";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Failure {
+    Unreachable,
+    NoAnswer,
+    Dropped,
+    Stalled,
+    Cut,
+}
+
+impl Failure {
+    fn retries_allowed(self) -> usize {
+        match self {
+            Failure::Unreachable => CONNECT_RETRIES,
+            Failure::NoAnswer => 0,
+            Failure::Dropped | Failure::Stalled | Failure::Cut => MAX_RETRIES,
+        }
+    }
+
+    pub(crate) fn message(self, function: &str) -> String {
+        match self {
+            Failure::Unreachable => format!("Could not reach MeetCal. {CHECK_CONNECTION}"),
+            Failure::NoAnswer => {
+                format!("MeetCal did not answer {function} in time. {CHECK_CONNECTION}")
+            }
+            Failure::Dropped | Failure::Cut => format!(
+                "The connection to MeetCal dropped while reading {function}. {CHECK_CONNECTION}"
+            ),
+            Failure::Stalled => {
+                format!("MeetCal's answer to {function} stopped arriving. {CHECK_CONNECTION}")
+            }
+        }
+    }
+}
+
+pub(crate) fn next_failure_retry_delay(failure: Failure, retries_done: usize) -> Option<Duration> {
+    if retries_done >= failure.retries_allowed() {
+        return None;
+    }
     RETRY_BACKOFF.get(retries_done).copied()
 }
 
@@ -75,10 +116,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_dropped_request_backs_off_then_stops() {
-        assert_eq!(next_transport_retry_delay(0), Some(Duration::from_secs(1)));
-        assert_eq!(next_transport_retry_delay(1), Some(Duration::from_secs(2)));
-        assert_eq!(next_transport_retry_delay(MAX_RETRIES), None);
+    fn a_dropped_stalled_or_cut_read_backs_off_then_stops() {
+        for failure in [Failure::Dropped, Failure::Stalled, Failure::Cut] {
+            assert_eq!(
+                next_failure_retry_delay(failure, 0),
+                Some(Duration::from_secs(1))
+            );
+            assert_eq!(
+                next_failure_retry_delay(failure, 1),
+                Some(Duration::from_secs(2))
+            );
+            assert_eq!(next_failure_retry_delay(failure, MAX_RETRIES), None);
+        }
+    }
+
+    #[test]
+    fn an_unreachable_deployment_is_tried_once_more_and_an_unanswered_read_never() {
+        assert_eq!(
+            next_failure_retry_delay(Failure::Unreachable, 0),
+            Some(Duration::from_secs(1))
+        );
+        assert_eq!(
+            next_failure_retry_delay(Failure::Unreachable, CONNECT_RETRIES),
+            None
+        );
+        assert_eq!(next_failure_retry_delay(Failure::NoAnswer, 0), None);
+    }
+
+    #[test]
+    fn every_network_failure_says_to_check_the_connection() {
+        for failure in [
+            Failure::Unreachable,
+            Failure::NoAnswer,
+            Failure::Dropped,
+            Failure::Stalled,
+            Failure::Cut,
+        ] {
+            let message = failure.message("reference:records");
+            assert!(message.ends_with(CHECK_CONNECTION), "{message}");
+            assert!(
+                failure == Failure::Unreachable || message.contains("reference:records"),
+                "{message}"
+            );
+        }
+        assert_eq!(
+            Failure::Unreachable.message("reference:records"),
+            "Could not reach MeetCal. Check your internet connection and try again."
+        );
     }
 
     const TOO_MANY: StatusCode = StatusCode::TOO_MANY_REQUESTS;

@@ -3,11 +3,12 @@ use std::collections::{HashMap, HashSet};
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
     analytics::percentage,
+    catalog,
     format::{NO_VALUE, display_gender, display_weight_class},
     loading::{Load, LoadState, load_error, load_meet_data, select_response},
     meets::load_meet_catalog,
     models::{Athlete, LiftingResult, normalize},
-    ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
+    ui::{DataMetric, DataPage, DataStatus, FilterSelect, StaticRowsTable, TableSkeleton},
 };
 use crate::utils::api::queries;
 use leptos::prelude::*;
@@ -26,7 +27,7 @@ pub fn WsoDashboard() -> impl IntoView {
         move || meet.get(),
         |meet| load_meet_data::<LiftingResult>(meet, queries::MEET_RESULTS),
     );
-    view! { <DataPage heading="WSO Meet Dashboard" intro="See participation, make rates, lifted volume, and athlete totals for one WSO at a meet.">
+    view! { <DataPage page=catalog::WSO_DASHBOARD>
         {move || select_response(meets, "Loading meets…", "meets", |meets| {
                 let meets = meets.iter().map(|row| row.name.clone()).collect::<Vec<_>>();
                 view! { <div class="data-filters">
@@ -133,14 +134,28 @@ fn dashboard(athletes: &[Athlete], results: &[LiftingResult], selected_wso: &str
         weight_lifted,
         rows,
     } = build_dashboard_data(athletes, results, selected_wso);
-    let rows = rows.into_iter().map(|row| view! { <tr><td>{row.name}</td><td>{display_gender(&row.gender)}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.club}</td><td>{row.entry_total}</td><td>{lift(row.snatch_best)}</td><td>{lift(row.cj_best)}</td><td>{lift(row.total)}</td></tr> }).collect_view();
     let weight_lifted = if attempts.attempts() == 0 {
         NO_VALUE.to_owned()
     } else {
         format!("{weight_lifted}kg")
     };
     view! { <div class="data-metric-grid"><DataMetric label="Meet athletes" value=meet_athletes.to_string() /><DataMetric label="WSO athletes" value=wso_count(wso_athletes, wso_coverage) /><DataMetric label="Snatch makes" value=make_rate(attempts.snatch_makes, attempts.snatch_attempts) /><DataMetric label="C&J makes" value=make_rate(attempts.cj_makes, attempts.cj_attempts) /><DataMetric label="Combined makes" value=make_rate(attempts.makes(), attempts.attempts()) /><DataMetric label="Weight lifted" value=weight_lifted /></div>
-    <DataTable><thead><tr><th>"Athlete"</th><th>"Gender"</th><th>"Class"</th><th>"Club"</th><th>"Entry total"</th><th>"Snatch"</th><th>"C&J"</th><th>"Total"</th></tr></thead><tbody>{(wso_athletes == 0).then(|| view! { <EmptyTableRow columns=8 message=empty_message(wso_coverage) /> })}{rows}</tbody></DataTable> }.into_any()
+    <StaticRowsTable headers=ATHLETE_HEADERS rows row=athlete_row empty_message=empty_message(wso_coverage) /> }.into_any()
+}
+
+const ATHLETE_HEADERS: &[&str] = &[
+    "Athlete",
+    "Gender",
+    "Class",
+    "Club",
+    "Entry total",
+    "Snatch",
+    "C&J",
+    "Total",
+];
+
+fn athlete_row(row: &WsoAthleteRow) -> AnyView {
+    view! { <tr><td>{row.name.clone()}</td><td>{display_gender(&row.gender)}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.club.clone()}</td><td>{row.entry_total}</td><td>{lift(row.snatch_best)}</td><td>{lift(row.cj_best)}</td><td>{lift(row.total)}</td></tr> }.into_any()
 }
 
 struct WsoAthleteRow {
@@ -304,6 +319,7 @@ mod tests {
 
     fn result(name: &str, total: f64) -> LiftingResult {
         LiftingResult {
+            lifter_id: None,
             name: name.to_owned(),
             result: LiftResult {
                 meet: "Meet".to_owned(),
@@ -344,6 +360,7 @@ mod tests {
     fn dashboard_data_filters_wso_and_uses_each_athletes_best_result() {
         let athletes = [
             Athlete {
+                member_id: None,
                 name: "Alex".to_owned(),
                 age: 25.0,
                 club: "A".to_owned(),
@@ -356,6 +373,7 @@ mod tests {
                 session_platform: None,
             },
             Athlete {
+                member_id: None,
                 name: "Blair".to_owned(),
                 age: 25.0,
                 club: "B".to_owned(),
@@ -386,6 +404,7 @@ mod tests {
     #[test]
     fn a_roster_without_wsos_and_a_meet_without_results_show_no_numbers() {
         let athlete = |wso: Option<&str>| Athlete {
+            member_id: None,
             name: "Casey".to_owned(),
             age: 30.0,
             club: "C".to_owned(),
@@ -415,6 +434,7 @@ mod tests {
     #[test]
     fn a_roster_with_some_wsos_never_claims_none_attended() {
         let athlete = |name: &str, wso: Option<&str>| Athlete {
+            member_id: None,
             name: name.to_owned(),
             age: 30.0,
             club: "C".to_owned(),
@@ -445,6 +465,7 @@ mod tests {
 
     fn entrant(name: &str, wso: Option<&str>) -> Athlete {
         Athlete {
+            member_id: None,
             name: name.to_owned(),
             age: 25.0,
             club: "Club".to_owned(),

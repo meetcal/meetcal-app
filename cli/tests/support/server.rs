@@ -11,7 +11,9 @@ pub(crate) const DROPPED: &str = "dropped";
 pub(crate) struct Reply {
     pub(crate) status: &'static str,
     pub(crate) retry_after: Option<&'static str>,
-    pub(crate) body: String,
+    pub(crate) encoding: Option<&'static str>,
+    pub(crate) body: Vec<u8>,
+    pub(crate) cut_after: Option<usize>,
 }
 
 pub(crate) fn reply(
@@ -22,7 +24,9 @@ pub(crate) fn reply(
     Reply {
         status,
         retry_after,
-        body: body.into(),
+        encoding: None,
+        body: body.into().into_bytes(),
+        cut_after: None,
     }
 }
 
@@ -73,13 +77,22 @@ pub(crate) fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
                 .retry_after
                 .map(|secs| format!("Retry-After: {secs}\r\n"))
                 .unwrap_or_default();
-            let response = format!(
-                "HTTP/1.1 {}\r\nContent-Type: application/json\r\n{retry_after}Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+            let encoding = reply
+                .encoding
+                .map(|encoding| format!("Content-Encoding: {encoding}\r\n"))
+                .unwrap_or_default();
+            let mut response = format!(
+                "HTTP/1.1 {}\r\nContent-Type: application/json\r\n{retry_after}{encoding}Content-Length: {}\r\nConnection: close\r\n\r\n",
                 reply.status,
                 reply.body.len(),
-                reply.body,
-            );
-            let _ = stream.write_all(response.as_bytes());
+            )
+            .into_bytes();
+            let body = match reply.cut_after {
+                Some(bytes) => &reply.body[..bytes.min(reply.body.len())],
+                None => &reply.body[..],
+            };
+            response.extend_from_slice(body);
+            let _ = stream.write_all(&response);
         }
     });
 

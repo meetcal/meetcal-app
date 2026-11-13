@@ -7,7 +7,6 @@ import { errorAnswer, mockAuth, routeMutation, routeQuery, valueAnswer } from ".
 
 type AuthMockState = {
   signInMounts: Array<Record<string, unknown>>;
-  customerInfoCalls: number;
   setUser: (id: string | null) => void;
 };
 
@@ -59,13 +58,13 @@ async function mockDeviceLogin(
 const authMock = (page: Page) =>
   page.evaluate(() => {
     const mock = (window as unknown as { __authMock: AuthMockState }).__authMock;
-    return { signInMounts: mock.signInMounts, customerInfoCalls: mock.customerInfoCalls };
+    return { signInMounts: mock.signInMounts };
   });
 
 const prompt = (page: Page) => page.getByRole("heading", { level: 1, name: "Sign in the MeetCal CLI?" });
 
 test("signed out, the code waits behind the sign-in, which returns to it", async ({ page }) => {
-  await mockAuth(page, { signedIn: false });
+  const { passRequests } = await mockAuth(page, { signedIn: false });
   const calls = await mockDeviceLogin(page);
 
   await page.goto("/link?code=WXYZ-BCDF");
@@ -81,12 +80,11 @@ test("signed out, the code waits behind the sign-in, which returns to it", async
   await expect(prompt(page)).toBeVisible();
   await expect(page.locator(".link-device")).toHaveText("Maddisen’s MacBook Pro");
   expect(calls.describe).toEqual([{ args: { userCode: "WXYZ-BCDF" }, authorization: "Bearer token_user_ci" }]);
-  // No subscription is needed: RevenueCat is never asked.
-  expect((await authMock(page)).customerInfoCalls).toBe(0);
+  expect(passRequests).toEqual([]);
 });
 
 test("a code in the link is looked up, approved, and done", async ({ page }) => {
-  await mockAuth(page, { entitlements: [] });
+  const { passRequests } = await mockAuth(page, { serverEntitled: false, refreshGrants: false });
   const calls = await mockDeviceLogin(page);
 
   // The CLI's link may come typed by hand: any case, no dash.
@@ -106,7 +104,7 @@ test("a code in the link is looked up, approved, and done", async ({ page }) => 
   await expect(page.getByText("Done — you can return to your terminal.")).toBeVisible();
   expect(calls.approve).toEqual([{ args: { userCode: "WXYZ-BCDF" }, authorization: "Bearer token_user_ci" }]);
   expect(calls.deny).toEqual([]);
-  expect((await authMock(page)).customerInfoCalls).toBe(0);
+  expect(passRequests).toEqual([]);
 });
 
 test("deny tells the CLI no", async ({ page }) => {

@@ -1,5 +1,12 @@
 import { devLog } from '@/lib/logger';
+import type { AthleteLookup, LifterCard, PRIndexes } from '@/data/types/athletes';
 import type { AthleteMeetResult } from '@/types/athlete-results';
+
+export type AthleteChoice = Extract<AthleteLookup, { kind: 'choose' }>;
+
+export type ApiDetails = { lifter: LifterCard | null; prs: PRIndexes };
+
+export type SavedResults = { rows: AthleteMeetResult[]; details: ApiDetails | null };
 
 /**
  * One load of an athlete's results screen: the on-device copy as a fast first
@@ -23,16 +30,16 @@ export type AthleteResultsLoad = {
   shown: readonly AthleteMeetResult[] | undefined;
   shownSource?: ShownResultsSource;
   readOffline: () => Promise<AthleteMeetResult[]>;
-  readBrowsed?: () => Promise<AthleteMeetResult[] | null>;
-  rememberFull?: (rows: AthleteMeetResult[]) => Promise<void>;
-  fetchFull: () => Promise<AthleteMeetResult[]>;
-  /** False once the screen moved on (another athlete, or unmounted). */
+  readBrowsed?: () => Promise<SavedResults | null>;
+  rememberFull?: (rows: AthleteMeetResult[], details: ApiDetails) => Promise<void>;
+  fetchFull: () => Promise<AthleteLookup>;
   isCurrent: () => boolean;
-  show: (rows: AthleteMeetResult[], source: ShownResultsSource) => void;
+  show: (rows: AthleteMeetResult[], source: ShownResultsSource, details: ApiDetails | null) => void;
+  choose: (choice: AthleteChoice) => void;
 };
 
 type FullOutcome =
-  | { ok: true; rows: AthleteMeetResult[] }
+  | { ok: true; answer: AthleteLookup }
   | { ok: false; error: unknown };
 
 export type AthleteResultsOutcome = 'shown' | 'offline-partial' | 'kept-stale' | 'failed' | 'superseded';
@@ -73,7 +80,7 @@ export async function loadAthleteResults(
   // Started first and settled into a value, so a rejection while the
   // on-device read is still running is never unhandled.
   const full: Promise<FullOutcome> = load.fetchFull().then(
-    (rows) => ({ ok: true, rows }),
+    (answer) => ({ ok: true, answer }),
     (error: unknown) => ({ ok: false, error }),
   );
 
@@ -82,10 +89,10 @@ export async function loadAthleteResults(
   if (displayedCount === 0 && load.readBrowsed) {
     const browsed = await load.readBrowsed().catch(() => null);
     if (!load.isCurrent()) return 'superseded';
-    if (browsed && browsed.length > 0) {
-      displayedCount = browsed.length;
+    if (browsed && browsed.rows.length > 0) {
+      displayedCount = browsed.rows.length;
       displayedSource = 'saved';
-      load.show(browsed, 'saved');
+      load.show(browsed.rows, 'saved', browsed.details);
     }
   }
   if (displayedCount === 0) {
@@ -95,7 +102,7 @@ export async function loadAthleteResults(
       if (offline.length > 0) {
         displayedCount = offline.length;
         displayedSource = 'offline';
-        load.show(offline, 'offline');
+        load.show(offline, 'offline', null);
       }
     } catch (cacheError) {
       devLog(`Cache miss for athlete results, fetching from API ${cacheError}`);
@@ -105,10 +112,16 @@ export async function loadAthleteResults(
   const outcome = await full;
   if (!load.isCurrent()) return 'superseded';
   if (outcome.ok) {
-    if (outcome.rows.length > 0 || displayedCount === 0) {
-      load.show(outcome.rows, 'api');
-      if (outcome.rows.length > 0) {
-        load.rememberFull?.(outcome.rows).catch((error: unknown) => {
+    const { answer } = outcome;
+    if (answer.kind === 'choose') {
+      load.choose(answer);
+      return 'shown';
+    }
+    if (answer.rows.length > 0 || displayedCount === 0) {
+      const details = { lifter: answer.lifter, prs: answer.prs };
+      load.show(answer.rows, 'api', details);
+      if (answer.rows.length > 0) {
+        load.rememberFull?.(answer.rows, details).catch((error: unknown) => {
           console.warn('Could not keep the athlete results for offline', error);
         });
       }

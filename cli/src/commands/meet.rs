@@ -1,4 +1,5 @@
 use crate::utils::output::{self, Report};
+use crate::utils::progress;
 use crate::{
     types::athletes::Athletes,
     types::meets::NamedBests,
@@ -87,12 +88,11 @@ pub async fn run(args: MeetArgs) -> Result<()> {
             .collect();
         match year_bests(&names).await {
             Ok(bests) => Some(bests),
-            // The start list is free; the bests are subscriber data.
             Err(error) if PassRefused::is(&error) => {
-                eprintln!(
+                progress::note(format!(
                     "Note: past-year bests are MeetCal subscriber data ({error}). Showing the \
                      start list without them."
-                );
+                ));
                 None
             }
             Err(error) => return Err(error),

@@ -40,6 +40,8 @@ pub(crate) struct Athlete {
     pub adaptive: bool,
     pub session_number: Option<f64>,
     pub session_platform: Option<String>,
+    #[serde(default)]
+    pub member_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -63,6 +65,8 @@ pub(crate) struct LiftResult {
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct LiftingResult {
     pub name: String,
+    #[serde(default)]
+    pub lifter_id: Option<String>,
     #[serde(flatten)]
     pub result: LiftResult,
 }
@@ -111,6 +115,52 @@ pub(crate) struct AthleteSearchResponse {
     /// so each carries its athlete's name.
     pub results: Vec<LiftingResult>,
     pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub(crate) struct AthleteQuery {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lifter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub membership: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub other: bool,
+}
+
+impl AthleteQuery {
+    pub(crate) fn names_one_lifter(&self) -> bool {
+        self.lifter.is_some() || self.membership.is_some() || self.other
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(crate) struct LifterCard {
+    pub id: String,
+    pub name: String,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(crate) struct LifterChoice {
+    #[serde(flatten)]
+    pub lifter: LifterCard,
+    pub results: f64,
+    pub latest_date: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub(crate) enum AthleteAnswer {
+    Results {
+        lifter: Option<LifterCard>,
+        json: String,
+    },
+    Choose {
+        name: String,
+        lifters: Vec<LifterChoice>,
+        other_results: f64,
+    },
 }
 
 #[derive(Clone, Serialize)]
@@ -340,6 +390,39 @@ mod tests {
             wire::read(queries::MEET_RESULTS, wire_fixture!("results.byMeet"));
         let totals: Vec<_> = results.concat().iter().map(|row| row.total).collect();
         assert_eq!(totals, [184.0, 200.0, 0.0]);
+    }
+
+    #[test]
+    fn an_athlete_lookup_reads_the_servers_answers() {
+        let answers: Vec<AthleteAnswer> =
+            wire::read(queries::ATHLETE, wire_fixture!("results.athlete"));
+        let shapes: Vec<_> = answers
+            .iter()
+            .map(|answer| match answer {
+                AthleteAnswer::Choose {
+                    lifters,
+                    other_results,
+                    ..
+                } => (lifters.len(), *other_results, 0),
+                AthleteAnswer::Results { lifter, json } => (
+                    usize::from(lifter.is_some()),
+                    0.0,
+                    serde_json::from_str::<Vec<LiftingResult>>(json)
+                        .expect("rows")
+                        .len(),
+                ),
+            })
+            .collect();
+        assert_eq!(
+            shapes,
+            [
+                (2, 1.0, 0),
+                (1, 0.0, 1),
+                (0, 0.0, 1),
+                (1, 0.0, 2),
+                (1, 0.0, 2)
+            ]
+        );
     }
 
     #[test]

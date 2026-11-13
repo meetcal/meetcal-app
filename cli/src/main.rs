@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use meetcal::commands;
 use meetcal::parser::{Cli, Commands};
-use meetcal::utils::update_notice;
+use meetcal::utils::{progress, update_notice};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -15,7 +15,14 @@ async fn main() -> Result<()> {
     } else {
         update_notice::start()
     };
+    if !matches!(
+        cli.command,
+        Commands::Login(_) | Commands::Logout(_) | Commands::Upgrade(_)
+    ) {
+        progress::start_waiting_line();
+    }
     let result = run(cli.command).await;
+    progress::stop_waiting_line();
     if let Some(notice) = notice {
         notice.finish().await;
     }
