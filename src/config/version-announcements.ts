@@ -17,6 +17,10 @@ export interface VersionAnnouncement {
 }
 
 export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 'version'>> = {
+  '6.3.0': {
+    title: 'What\'s New',
+    message: 'Better results for athletes with the same name\n\nBug fixes and performance improvements',
+  },
   '6.2.2': {
     title: 'What\'s New',
     message: 'Bug fixes and improvements.',
