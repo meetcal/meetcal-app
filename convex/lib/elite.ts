@@ -3,6 +3,7 @@ import { MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFi
 import type { Gender } from './gender';
 import { plusYears } from './dates';
 import { genderOfWord } from './gender';
+import { entriesOfLifter } from './lifterKeys';
 import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import { compareBytes } from './sort';
@@ -244,12 +245,8 @@ export type LinkedMember = { memberKey: string; member: EliteMember; lifter: str
 export const isLinkedMemberOrNull = (value: unknown): value is { member: EliteMember; lifter: string | null } | null =>
   value === null || (isRecord(value) && isEliteMember(value.member) && (value.lifter === null || typeof value.lifter === 'string'));
 
-export function ownerOfResult(members: readonly LinkedMember[], row: Pick<RankedFields, 'lifter_id'>, soleLifter: string | null): LinkedMember | null {
-  const lifter = row.lifter_id ?? soleLifter;
-  const unmatched = members.find((candidate) => candidate.lifter === null) ?? null;
-  if (lifter === null) return unmatched;
-  return members.find((candidate) => candidate.lifter === lifter) ?? (lifter === soleLifter ? unmatched : null);
-}
+export const ownerOfResult = (members: readonly LinkedMember[], row: Pick<RankedFields, 'lifter_id'>, soleLifter: string | null): LinkedMember | null =>
+  entriesOfLifter(members, row.lifter_id ?? soleLifter, soleLifter, (member) => member.lifter, false)[0] ?? null;
 
 /** What a result scores by `method` in `list`, or null when it scores nothing there. */
 export function scoreResult(

@@ -5,7 +5,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
 import { lifterOfMembership } from './lifterHistory';
-import { apiRowOf, soleLiftersAmong } from './lifterKeys';
+import { apiRowOf, entriesOfLifter, rosterPersonKey, soleLiftersAmong } from './lifterKeys';
 import { normalizeName } from './names';
 import { bareWeightClass, classNamedIn } from './weightClass';
 import { normalizeGender } from './normalize';
@@ -158,8 +158,9 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
   const members = new Map<string, Map<string, Doc<'lifting_results'>>>();
   for (const row of results) {
     const key = normalizeName(row.name);
-    const rowLifter = row.lifterId ?? sole.get(key) ?? null;
-    const entries = entriesOfLifter(roster.get(key) ?? [], rowLifter, lifterOfEntry);
+    const soleLifter = sole.get(key) ?? null;
+    const rowLifter = row.lifterId ?? soleLifter;
+    const entries = entriesOfLifter(roster.get(key) ?? [], rowLifter, soleLifter, lifterOfEntry, true);
     const athlete = rosterEntryFor(entries, row.age);
     const lifter = rowLifter === null ? `${key}\u0000${athlete ? entries.indexOf(athlete) : -1}` : `lifter:${rowLifter}`;
     if (isBetterResult(row, best.get(lifter)?.row)) best.set(lifter, { key, lifter: rowLifter, row, athlete });
@@ -190,13 +191,6 @@ async function liftersOfMembers(ctx: QueryCtx, athletes: readonly Doc<'athletes'
   const members = [...new Set(athletes.flatMap((athlete) => (athlete.memberId ? [athlete.memberId] : [])))];
   const lifters = await Promise.all(members.map(async (memberId) => [memberId, await lifterOfMembership(ctx, memberId)] as const));
   return new Map(lifters.flatMap(([memberId, lifter]) => (lifter === null ? [] : [[memberId, lifter] as const])));
-}
-
-export function entriesOfLifter<Entry>(entries: readonly Entry[], rowLifter: string | null, lifterOfEntry: (entry: Entry) => string | null): Entry[] {
-  const unmatched = entries.filter((entry) => lifterOfEntry(entry) === null);
-  if (rowLifter === null) return unmatched.length > 0 ? unmatched : [...entries];
-  const own = entries.filter((entry) => lifterOfEntry(entry) === rowLifter);
-  return own.length > 0 ? own : unmatched;
 }
 
 function rosterEntryFor(entries: readonly Doc<'athletes'>[], age: string | undefined): Doc<'athletes'> | undefined {
@@ -442,9 +436,6 @@ export async function computeStatsRowsOfWso(ctx: QueryCtx, meet: string, wso: st
   const found = new Map(bests.map((best) => [previousBestId(best), best.best]));
   return wanted.map((entry) => statsRow(entry, groups, found.get(previousBestId(wantedOf(entry))) ?? null));
 }
-
-export const rosterPersonKey = (entry: { name: string; memberId?: string }): string =>
-  entry.memberId ? `member:${entry.memberId}` : `name:${normalizeName(entry.name)}`;
 
 export function clubAthleteCount(roster: readonly { name: string; club: string; memberId?: string }[], club: string): number {
   return new Set(roster.filter((a) => sameClub(a.club, club)).map(rosterPersonKey)).size;

@@ -59,6 +59,23 @@ export async function soleLiftersOf(ctx: QueryCtx, nameKeys: Iterable<string>): 
   return sole;
 }
 
+export const rosterPersonKey = (entry: { name: string; memberId?: string }): string =>
+  entry.memberId ? `member:${entry.memberId}` : `name:${normalizeName(entry.name)}`;
+
+export function entriesOfLifter<Entry>(
+  entries: readonly Entry[],
+  rowLifter: string | null,
+  soleLifter: string | null,
+  lifterOfEntry: (entry: Entry) => string | null,
+  unlinkedByName: boolean,
+): Entry[] {
+  const unmatched = entries.filter((entry) => lifterOfEntry(entry) === null);
+  if (rowLifter === null) return unmatched.length > 0 || !unlinkedByName ? unmatched : [...entries];
+  const own = entries.filter((entry) => lifterOfEntry(entry) === rowLifter);
+  if (own.length > 0) return own;
+  return rowLifter === soleLifter ? unmatched : [];
+}
+
 export const unlinkedNameKeys = (rows: Iterable<{ name: string; lifter_id?: string }>): string[] => {
   const keys = new Set<string>();
   for (const row of rows) if (!row.lifter_id) keys.add(normalizeName(row.name));

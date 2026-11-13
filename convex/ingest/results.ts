@@ -2,7 +2,7 @@ import { candidateLifters, namesOfLifter, recordLifterName, rowsOfName } from '.
 import { isSport80Result, linkFor, mergeSighting, needsSourceHistories, sameLifterFields, sameLink, type LifterFields, type SourceHistories } from '../lib/lifters';
 import { v, type Infer } from 'convex/values';
 import { itemAt } from '../lib/json';
-import { EVENT_RESULTS_MAX, readAll } from '../lib/boundedRead';
+import { EVENT_RESULTS_MAX, MEMBER_REGISTRATIONS_MAX, readAll } from '../lib/boundedRead';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { writeHistories } from '../lib/history';
@@ -333,13 +333,28 @@ function lifterFieldsOf(doc: Doc<'lifters'>): LifterFields {
   return fields;
 }
 
-async function recordMembership(ctx: MutationCtx, membership: string, athleteId: string): Promise<void> {
+async function recordMembership(ctx: MutationCtx, membership: string, athleteId: string): Promise<boolean> {
   const existing = await ctx.db
     .query('lifter_memberships')
     .withIndex('by_membership', (q) => q.eq('membership', membership))
     .unique();
   if (!existing) await ctx.db.insert('lifter_memberships', { membership, athleteId });
   else if (existing.athleteId !== athleteId) await ctx.db.patch(existing._id, { athleteId });
+  else return false;
+  return true;
+}
+
+async function memberMeetHints(ctx: MutationCtx, memberships: Iterable<string>): Promise<WriteHint[]> {
+  const meets = new Set<string>();
+  for (const memberId of memberships) {
+    const registrations = await readAll(
+      ctx.db.query('athletes').withIndex('by_memberId', (q) => q.eq('memberId', memberId)),
+      MEMBER_REGISTRATIONS_MAX,
+      'registrations of one member',
+    );
+    for (const registration of registrations) meets.add(registration.meet);
+  }
+  return [...meets].map((meet) => ({ kind: 'meet', key: meet }));
 }
 
 async function queueRelink(ctx: MutationCtx, nameKey: string): Promise<void> {
@@ -378,6 +393,7 @@ export const upsertLifters = internalMutation({
     let updated = 0;
     let unchanged = 0;
     const changedKeys = new Set<string>();
+    const changedMemberships = new Set<string>();
     for (const [athleteId, list] of byAthlete) {
       const existing = await ctx.db
         .query('lifters')
@@ -402,8 +418,10 @@ export const upsertLifters = internalMutation({
         for (const nameKey of await namesOfLifter(ctx, athleteId)) changedKeys.add(nameKey);
       }
       const memberships = new Set(list.map((sighting) => sighting.membership).filter((m): m is string => m !== null));
-      for (const membership of memberships) await recordMembership(ctx, membership, athleteId);
+      for (const membership of memberships) if (await recordMembership(ctx, membership, athleteId)) changedMemberships.add(membership);
     }
+    const meetHints = await memberMeetHints(ctx, changedMemberships);
+    if (meetHints.length > 0) await recordWrite(ctx, 'athletes', meetHints);
     if (queueRelinks !== false) for (const nameKey of changedKeys) await queueRelink(ctx, nameKey);
     return { inserted, updated, unchanged, changedKeys: [...changedKeys] };
   },

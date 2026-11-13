@@ -412,6 +412,15 @@ describe('club meet stats for two lifters of one name (#247)', () => {
     ]);
   });
 
+  it('leaves out linked results whose lifters no roster membership names, rather than crediting one entry twice', async () => {
+    const x = { name: 'John Smith', meet: 'Open', club: 'Club X', gender: 'M', weightClass: '89', memberId: 'M1' };
+    const y = { ...x, club: 'Club Y', memberId: 'M2' };
+    const xResult = { ...result('John Smith', 130, 170), age: "Open Men's 89kg", lifterId: 'L1' };
+    const yResult = { ...result('John Smith', 120, 150), age: "Open Men's 89kg", lifterId: 'L2' };
+    const rows = await computeStatsRows(fakeCtx({ athletes: [x, y], lifting_results: [xResult, yResult] }), 'Open');
+    expect(rows).toEqual([]);
+  });
+
   it("reads a linked lifter's previous best from their own results, not another lifter's of the name", async () => {
     const x = { name: 'John Smith', meet: 'Open', club: 'Club X', gender: 'M', weightClass: '89', memberId: 'M1' };
     const today = { ...result('John Smith', 130, 170), age: "Open Men's 89kg", lifterId: 'L1' };

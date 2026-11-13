@@ -57,6 +57,15 @@ describe('storing lifters from rankings sightings', () => {
     expect(rows('lifter_memberships').map((m) => m.membership).sort()).toEqual(['100', '200']);
   });
 
+  it('marks the meets a member registered for stale when their membership is first recorded, and not again', async () => {
+    const { ctx, rows } = fakeMutationCtx({ athletes: [{ name: 'Taylor Johnson', memberId: '100', meet: 'Kentucky Open', club: 'X', gender: 'M', weightClass: '85' }] });
+    await upsert(ctx, { sightings: [sighting()] });
+    const meetHints = () => rows('view_hints').filter((hint) => hint.kind === 'meet').map((hint) => [hint.key, hint.seq]);
+    expect(meetHints()).toEqual([['Kentucky Open', 0]]);
+    await upsert(ctx, { sightings: [sighting()] });
+    expect(meetHints()).toEqual([['Kentucky Open', 0]]);
+  });
+
   it('queues every name it reports, once, until a relink of that name succeeds', async () => {
     const { ctx, rows } = fakeMutationCtx();
     await upsert(ctx, { sightings: [sighting(), sighting({ athleteId: '22081' })] });

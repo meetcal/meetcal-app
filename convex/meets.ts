@@ -32,7 +32,7 @@ import {
   readTimelinesView,
   type ZoneFormatters,
 } from './lib/meetData';
-import { apiRowOf, countedKey, soleLiftersAmong } from './lib/lifterKeys';
+import { apiRowOf, countedKey, rosterPersonKey, soleLiftersAmong } from './lib/lifterKeys';
 import { normalizeName } from './lib/names';
 import { DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE, takeWithinBudget, tooLargeToRead, type DocumentBudget } from './lib/readBudget';
 import { compareBytes } from './lib/sort';
@@ -196,7 +196,7 @@ async function meetAttendance(ctx: QueryCtx, meet: string, budget: DocumentBudge
   return {
     meet,
     lifters: new Set(results.map((r) => countedKey(r.lifterId, normalizeName(r.name), sole))).size,
-    registrations: new Set(registrations.map((r) => r.memberId || normalizeName(r.name))).size,
+    registrations: new Set(registrations.map(rosterPersonKey)).size,
     first_date: dates[0] ?? null,
     last_date: dates[dates.length - 1] ?? null,
     start_date: meetRow?.startDate ?? null,

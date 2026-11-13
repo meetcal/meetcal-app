@@ -1,8 +1,8 @@
 import { clubKey } from '../convex/lib/clubs';
-import { clubAthleteCount, clubAthleteCounts, entriesOfLifter, sameLifterRows } from '../convex/lib/clubStats';
+import { clubAthleteCount, clubAthleteCounts, sameLifterRows } from '../convex/lib/clubStats';
 import { ownerOfResult, type LinkedMember } from '../convex/lib/elite';
 import { addBests, joinSoleLifters, pruneBests, rank, rankBests, type Candidate, type RankedFields } from '../convex/lib/leaderboard';
-import { countedKey, countedRowKey, soleLifter, soleLiftersAmong, unlinkedNameKeys } from '../convex/lib/lifterKeys';
+import { countedKey, countedRowKey, entriesOfLifter, soleLifter, soleLiftersAmong, unlinkedNameKeys } from '../convex/lib/lifterKeys';
 import { bestTotalPerAthlete } from '../convex/lib/referenceData';
 
 function ranked(name: string, total: number, lifter?: string, date = '2026-03-01'): RankedFields {
@@ -127,16 +127,23 @@ describe('meet stats by lifter', () => {
     const own = { lifter: 'L1' };
     const other = { lifter: 'L2' };
     const unknown = { lifter: null };
-    expect(entriesOfLifter([own, other, unknown], 'L1', lifterOf)).toEqual([own]);
-    expect(entriesOfLifter([other, unknown], 'L1', lifterOf)).toEqual([unknown]);
-    expect(entriesOfLifter([other], 'L1', lifterOf)).toEqual([]);
+    expect(entriesOfLifter([own, other, unknown], 'L1', 'L1', lifterOf, true)).toEqual([own]);
+    expect(entriesOfLifter([other, unknown], 'L1', 'L1', lifterOf, true)).toEqual([unknown]);
+    expect(entriesOfLifter([other], 'L1', 'L1', lifterOf, true)).toEqual([]);
   });
 
   it('joins an unlinked result by name, preferring entries with no known lifter', () => {
     const own = { lifter: 'L1' };
     const unknown = { lifter: null };
-    expect(entriesOfLifter([own, unknown], null, lifterOf)).toEqual([unknown]);
-    expect(entriesOfLifter([own], null, lifterOf)).toEqual([own]);
+    expect(entriesOfLifter([own, unknown], null, null, lifterOf, true)).toEqual([unknown]);
+    expect(entriesOfLifter([own], null, null, lifterOf, true)).toEqual([own]);
+    expect(entriesOfLifter([own], null, null, lifterOf, false)).toEqual([]);
+  });
+
+  it('joins a linked result to an entry with no known lifter only when it is the name’s one lifter there', () => {
+    const unknown = { lifter: null };
+    expect(entriesOfLifter([unknown, { lifter: null }], 'L1', null, lifterOf, true)).toEqual([]);
+    expect(entriesOfLifter([unknown], 'L1', 'L1', lifterOf, true)).toEqual([unknown]);
   });
 
   it('reads previous results of the whole name only while one lifter holds them', () => {
