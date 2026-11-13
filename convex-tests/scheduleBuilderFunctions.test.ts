@@ -473,13 +473,14 @@ describe('search', () => {
     return { ...store, search: (query: string) => handlerOf<Args>(search)(ctx, { query }) };
   }
 
-  it("lists Sport80's upcoming events by name, with their dates, place and entries list when they have one", async () => {
+  it("lists Sport80's upcoming events by name, with their dates, place and entries list when they have one, skipping rows without an event id", async () => {
     pages(4, [
       [
         event(15084),
         event(15090, { actions: [{ url: 'https://usaweightlifting.sport80.com/public/wizard/e/15090', text: 'Enter Now' }], subtitle: 'TBD', address: null }),
         event(15091, { is_event: false }),
         event(15092, { subtitle: '12/05/2026', address: 'Arena, 2 Rue, Paris, France, 75001' }),
+        event(15094, { id: null }),
       ],
     ]);
     expect(await searchServer().search('  Turkey Cup ')).toEqual({
