@@ -534,7 +534,11 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
             "Build Again"
         }
     });
+    let publishing = RwSignal::new(false);
     let add_edit = Callback::new(move |edit: BuilderEdit| {
+        if publishing.get_untracked() {
+            return false;
+        }
         if edits.with_untracked(Vec::len) >= MAX_BUILDER_EDITS {
             edit_error.set(Some(format!(
                 "A schedule holds at most {MAX_BUILDER_EDITS} edits. Build again to start over."
@@ -659,7 +663,7 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                         }}
                     </p>
                 </div>
-                <Toolbar meet applied edits basis open_menu />
+                <Toolbar meet applied edits basis publishing open_menu />
                 {move || alert_line(edit_error.get(), "access-inline-error no-print")}
                 {move || {
                     let options = applied
@@ -693,14 +697,19 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                             LoadState::Ready(Some(schedule)) => {
                                 view! {
                                     <Warnings schedule=schedule.clone() />
-                                    <Board schedule=schedule.clone() options busy=false actions />
+                                    <Board
+                                        schedule=schedule.clone()
+                                        options
+                                        busy=publishing.get()
+                                        actions
+                                    />
                                 }
                                     .into_any()
                             }
                         })
                 }}
             </section>
-            <PublishPanel meet=meet.get_value() applied edits basis />
+            <PublishPanel meet=meet.get_value() applied edits basis publishing />
         </Show>
         {move || {
             matches!(auth.state.get(), AuthState::SignedOut)
@@ -786,6 +795,7 @@ fn Toolbar(
     applied: RwSignal<Option<BuilderOptions>>,
     edits: RwSignal<Vec<BuilderEdit>>,
     basis: RwSignal<Basis>,
+    publishing: RwSignal<bool>,
     open_menu: RwSignal<Option<MenuId>>,
 ) -> impl IntoView {
     let auth = expect_context::<AuthContext>();
@@ -858,7 +868,7 @@ fn Toolbar(
                 id=UNDO_BUTTON_ID
                 class="builder-button-quiet"
                 type="button"
-                disabled=move || edits.with(Vec::is_empty)
+                disabled=move || publishing.get() || edits.with(Vec::is_empty)
                 on:click=move |_| {
                     edits
                         .update(|edits| {

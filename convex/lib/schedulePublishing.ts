@@ -23,8 +23,9 @@ export function platformLabel(group: Pick<BuiltGroup, 'gender' | 'weightClasses'
   return `${gender} ${group.weightClasses.join(', ')}${split}${AGE_GROUP_LABELS[group.ageGroup]}`;
 }
 
-export function labelOf(group: Pick<BuiltGroup, 'gender' | 'weightClasses' | 'split' | 'ageGroup' | 'publishedLabel'>): string {
-  return group.publishedLabel ?? platformLabel(group);
+export function labelOf(group: Pick<BuiltGroup, 'gender' | 'weightClasses' | 'split' | 'ageGroup' | 'publishedRows'>): string {
+  if (!group.publishedRows || group.publishedRows.length === 0) return platformLabel(group);
+  return [...new Set(group.publishedRows.map((row) => row.weightClass))].join(' / ');
 }
 
 export function timesOf(session: RowTimes, group: Pick<BuiltGroup, 'times'>): RowTimes {
@@ -46,7 +47,8 @@ export function publishedSchedule(schedule: BuiltSchedule): PublishedSchedule {
   const placements: Placement[] = [];
   for (const session of schedule.sessions) {
     for (const group of session.groups) {
-      rows.push({ ...timesOf(session, group), sessionId: session.number, platform: group.platform, weightClass: labelOf(group) });
+      const written = group.publishedRows ?? [{ ...timesOf(session, group), weightClass: labelOf(group) }];
+      for (const row of written) rows.push({ ...row, sessionId: session.number, platform: group.platform });
       for (const athlete of group.athletes) {
         const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: group.platform };
         placements.push(athlete.rosterId === undefined ? placement : { ...placement, rosterId: athlete.rosterId });
@@ -70,10 +72,16 @@ export type PublicationEmailContent = {
   reviewUrl?: string;
 };
 
+function ownStart(session: RowTimes, group: Pick<BuiltGroup, 'times'>): string {
+  const times = timesOf(session, group);
+  if (times.startTime === session.startTime && times.date === session.date) return '';
+  return ` at ${escapeHtml(times.startTime.slice(0, 5))}, weigh-in ${escapeHtml(times.weighInTime.slice(0, 5))}`;
+}
+
 function sessionLines(schedule: BuiltSchedule): string {
   return schedule.sessions
     .map((session) => {
-      const platforms = session.groups.map((g) => `${escapeHtml(g.platform)}: ${escapeHtml(labelOf(g))} (${g.athletes.length})`).join('; ');
+      const platforms = session.groups.map((g) => `${escapeHtml(g.platform)}${ownStart(session, g)}: ${escapeHtml(labelOf(g))} (${g.athletes.length})`).join('; ');
       return `<li>Session ${session.number}, ${escapeHtml(session.date)} ${escapeHtml(session.startTime.slice(0, 5))}: ${platforms}</li>`;
     })
     .join('');

@@ -70,6 +70,7 @@ pub(crate) fn PublishPanel(
     applied: RwSignal<Option<BuilderOptions>>,
     edits: RwSignal<Vec<BuilderEdit>>,
     basis: RwSignal<Basis>,
+    publishing: RwSignal<bool>,
 ) -> impl IntoView {
     let auth = expect_context::<AuthContext>();
     let meet = StoredValue::new(meet);
@@ -81,7 +82,7 @@ pub(crate) fn PublishPanel(
             <h2 id="builder-publish-heading">"Publish to MeetCal"</h2>
             {move || match auth.state.get() {
                 AuthState::SignedIn(user) => {
-                    view! { <SignedInPublish meet=meet.get_value() user applied edits basis /> }
+                    view! { <SignedInPublish meet=meet.get_value() user applied edits basis in_flight_edits=publishing /> }
                         .into_any()
                 }
                 AuthState::Loading => {
@@ -138,6 +139,7 @@ fn SignedInPublish(
     applied: RwSignal<Option<BuilderOptions>>,
     edits: RwSignal<Vec<BuilderEdit>>,
     basis: RwSignal<Basis>,
+    in_flight_edits: RwSignal<bool>,
 ) -> impl IntoView {
     let refreshes = RwSignal::new(0_u64);
     let meet = StoredValue::new(meet);
@@ -156,6 +158,7 @@ fn SignedInPublish(
     on_cleanup(move || {
         if let Some(publish) = in_flight.try_update_value(Option::take).flatten() {
             publish.abort();
+            in_flight_edits.try_set(false);
         }
     });
     let publishing = Memo::new(move |_| phase.get() == Phase::Publishing);
@@ -180,6 +183,7 @@ fn SignedInPublish(
         let sent_basis = basis.get_untracked();
         error.set(None);
         phase.set(Phase::Publishing);
+        in_flight_edits.set(true);
         let (task, handle) = abortable(async move {
             let outcome = api::publish_schedule(
                 &meet.get_value(),
@@ -204,6 +208,7 @@ fn SignedInPublish(
             let Ok(result) = task.await else {
                 return;
             };
+            in_flight_edits.try_set(false);
             match result {
                 Ok(published) => {
                     if let Phase::Published {

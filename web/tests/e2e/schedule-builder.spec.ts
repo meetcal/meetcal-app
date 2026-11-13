@@ -615,6 +615,32 @@ test("a refused build without edits doesn't claim to keep any", async ({ page })
   await expect(alert).toHaveText("This schedule couldn’t be built: The first session on 2026-11-21 would end after midnight");
 });
 
+test("the board takes no edits while a publish is on its way", async ({ page }) => {
+  const calls = await mockBuilder(page, { signedIn: true });
+  await loadAndBuild(page);
+  await page.getByRole("button", { name: "Ava Smith: Move To…" }).click();
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
+  await expect(sessionCard(page, 2)).toContainText("Ava Smith");
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await routeMutation(page, "schedulePublications:publish", async (route) => {
+    await held;
+    await route.fallback();
+  });
+  const publish = page.getByRole("region", { name: "Publish to MeetCal" });
+  await publish.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(publish.getByRole("button", { name: "Publishing…" })).toBeDisabled();
+  await expect(page.getByTestId("schedule-board")).toHaveAttribute("inert", "");
+  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+  release();
+  await expect(publish.getByRole("heading", { name: "Sent for Review" })).toBeVisible();
+  await expect(page.getByTestId("schedule-board")).not.toHaveAttribute("inert", "");
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+  expect(calls.publishes.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "2|ava smith", fromSession: 1, fromPlatform: "Red", occurrence: 0, toSession: 2, toPlatform: "Red" }]);
+});
+
 test("signed in, drafts save and list, and a publish is sent for review", async ({ page }) => {
   const calls = await mockBuilder(page, { signedIn: true });
   await page.goto("/schedule-builder");

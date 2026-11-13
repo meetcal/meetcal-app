@@ -1,7 +1,7 @@
 use super::browser::focus_element;
 use super::models::{
-    BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, MoveTarget, is_clock, move_targets,
-    session_when,
+    BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, MoveTarget, group_times, is_clock,
+    move_targets, session_when,
 };
 use crate::pages::comp_data::format::{
     display_weight_class, format_us_date, format_us_time, reference_value,
@@ -351,9 +351,12 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
             </header>
             {session
                 .groups
-                .into_iter()
+                .iter()
                 .enumerate()
-                .map(|(index, group)| view! { <GroupView session=id index group data actions /> })
+                .map(|(index, group)| {
+                    let own_times = group_times(&session, group);
+                    view! { <GroupView session=id index group=group.clone() own_times data actions /> }
+                })
                 .collect_view()}
         </article>
     }
@@ -471,6 +474,7 @@ fn GroupView(
     session: u32,
     index: usize,
     group: BuiltGroup,
+    own_times: Option<String>,
     data: BoardData,
     actions: BoardActions,
 ) -> impl IntoView {
@@ -482,6 +486,7 @@ fn GroupView(
                 <span class="builder-platform">{group.platform.clone()}</span>
                 <span class="builder-group-label">{group.label.clone()}</span>
                 <span class="builder-group-count">{count}</span>
+                {own_times.map(|times| view! { <span class="builder-group-time">{times}</span> })}
             </h4>
             <div class="builder-classes">
                 {group

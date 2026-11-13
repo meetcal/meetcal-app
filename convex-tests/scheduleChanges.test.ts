@@ -4,7 +4,7 @@ import { approve, BASE_GONE, decideByToken, emailContent, publish, reviewByToken
 import { forgetSport80Entrants, recordSport80Entrants, replaceMeetAthletes, replaceMeetSchedule } from '../convex/ingest';
 import { platformLabel, renderPublicationEmail, renderReviewPage, type PublicationEmailContent, type ReviewPageContent } from '../convex/lib/schedulePublishing';
 import { sha256Hex } from '../convex/lib/tokens';
-import { buildSchedule } from '../convex/lib/scheduleBuilder';
+import { buildFromPublished, buildSchedule, sport80Diff, type PublishedBase } from '../convex/lib/scheduleBuilder';
 import { suggestedPlace } from '../convex/lib/scheduleChanges';
 import { defaultBuilderOptions, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
@@ -596,6 +596,93 @@ describe('approving a publication whose published schedule is gone', () => {
     expect(await failure(store.as(null)(approve, { publicationId }))).toEqual({ status: 409, error: BASE_GONE });
     const token = await withReviewToken(store, publicationId);
     expect(await failure(store.as(null)(decideByToken, { ...token, decision: 'approve' }))).toEqual({ status: 409, error: BASE_GONE });
+  });
+});
+
+const handRow = (sessionId: number, platform: string, startTime: string, weighInTime: string, weightClass: string, date = '2027-03-06') => ({ meet: MEET, date, sessionId, startTime, weighInTime, platform, weightClass });
+const sortedRows = (store: ReturnType<typeof server>) =>
+  store.rows('session_schedule').sort((a, b) => Number(a.sessionId) - Number(b.sessionId) || String(a.platform).localeCompare(String(b.platform)) || String(a.startTime).localeCompare(String(b.startTime)));
+
+describe('published rows without a lifter of their own', () => {
+  const rows = () => [
+    handRow(1, 'Red', '12:00:00', '10:00:00', 'W 58'),
+    handRow(1, 'Green', '12:00:00', '10:00:00', 'Spare platform'),
+    handRow(2, 'Red', '14:00:00', '12:00:00', 'M 89'),
+    handRow(3, 'Red', '09:00:00', '07:00:00', 'W 59'),
+    handRow(3, 'Red', '10:00:00', '08:00:00', 'W 64'),
+  ];
+  const handLoaded = () => server({ ...organizer, athletes: [rostered(ann, 1), rostered(cal, 2), rostered(gia, 3)], session_schedule: rows() });
+  const untouched = (list: Row[]) => list.filter((row) => row.platform === 'Green' || row.sessionId === 3);
+
+  it('are written back exactly, two rows of one session and platform and a platform nobody lifts on included', async () => {
+    const store = handLoaded();
+    expect((await board(store)).sessions.find((s) => s.id === 3)?.groups[0]?.label).toBe('W 59 / W 64');
+    await publishAs(store, 'user_a', 'published', null);
+    expect(sortedRows(store)).toEqual(rows().sort((a, b) => a.sessionId - b.sessionId || a.platform.localeCompare(b.platform) || a.startTime.localeCompare(b.startTime)));
+  });
+
+  it('are written back exactly when an edit changes another session', async () => {
+    const store = handLoaded();
+    await publishAs(store, 'user_a', 'published', null, [{ kind: 'moveAthlete', athlete: keyOf(ann), fromSession: 1, fromPlatform: 'Red', occurrence: 0, toSession: 2, toPlatform: 'Red' }]);
+    expect(untouched(sortedRows(store))).toEqual(untouched(rows()).sort((a, b) => a.sessionId - b.sessionId || a.platform.localeCompare(b.platform) || a.startTime.localeCompare(b.startTime)));
+  });
+});
+
+describe('platforms of one session at their own times', () => {
+  const base = (): PublishedBase => ({
+    rows: [handRow(1, 'Red', '09:00:00', '07:30:00', 'W 58'), handRow(1, 'Blue', '09:30:00', '08:00:00', 'M 89')],
+    roster: [
+      { ...rostered(ann, 1), _id: 'ann' },
+      { ...rostered(cal, 1, { sessionPlatform: 'Blue' }), _id: 'cal' },
+    ],
+    sport80: null,
+  });
+
+  it("are shown in the email's lines, and the session takes its times from the platforms it still holds", () => {
+    const published = base();
+    const options = { ...defaultBuilderOptions(meetRow), platforms: ['Red', 'Blue'] };
+    const built = buildFromPublished(published, sport80Diff(published), options);
+    expect(built.sessions[0]).toMatchObject({ startTime: '09:00:00', weighInTime: '07:30:00' });
+    const { html } = renderPublicationEmail({ meet: MEET, status: 'live', userId: 'u', schedule: built, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: true });
+    expect(html).toContain('Red: W 58 (1); Blue at 09:30, weigh-in 08:00: M 89 (1)');
+    const emptied = buildFromPublished(published, sport80Diff(published), options, [
+      { kind: 'moveAthlete', athlete: keyOf(ann), fromSession: 1, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'Blue' },
+    ]);
+    expect(emptied.sessions[0]).toMatchObject({ startTime: '09:30:00', weighInTime: '08:00:00' });
+  });
+});
+
+describe('a split class an edit changed part of', () => {
+  it('loses its letters in every part, the parts no edit touched too', async () => {
+    const store = server(organizer);
+    await publishAs(store, 'user_a', 'published', null, [{ kind: 'moveAthlete', athlete: keyOf(ida), fromSession: 4, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'Red' }]);
+    expect(store.rows('session_schedule').filter((row) => row.sessionId === 3 || row.sessionId === 4).map((row) => [row.sessionId, row.weightClass])).toEqual([
+      [3, 'W 63'],
+      [4, 'W 63'],
+    ]);
+  });
+});
+
+describe('overlaps on a hand-loaded schedule', () => {
+  const handLoaded = () =>
+    server({ athletes: [rostered(ann, 1), rostered(cal, 2)], session_schedule: [handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'), handRow(2, 'Red', '10:45:00', '08:45:00', 'M 89')] });
+
+  it('are not warned about unless an edit retimed a session, and the session length comes from the rows', async () => {
+    const store = handLoaded();
+    expect((await opened(store)).options.sessionMinutes).toBe(105);
+    expect((await board(store)).warnings.map((w) => w.code)).not.toContain('overlap');
+    const retimed = await board(store, [{ kind: 'setSessionTime', session: 2, date: '2027-03-06', startTime: '10:00' }]);
+    expect(retimed.warnings.map((w) => w.code)).toContain('overlap');
+  });
+});
+
+describe('an added entrant already on the roster without a session', () => {
+  it('is placed on that row, matched by name and gender when it has no member id, not added again', async () => {
+    const jane: Lifter = { memberId: 'noid:jane-doe', name: 'Jane Doe', gender: 'Women', weightClass: '58', entryTotal: 85 };
+    const store = server({ ...organizer, athletes: [...roster(), { ...entrant(jane), meet: MEET, adaptive: false }] });
+    await store.record([...sport80Today(), listed({ ...jane, memberId: '120' })]);
+    await publishAs(store, 'user_a', 'published', null, [{ kind: 'addAthlete', athlete: '120|jane doe', toSession: 1, toPlatform: 'Red' }]);
+    expect(store.rows('athletes').filter((a) => a.name === 'Jane Doe').map((a) => [a.memberId, a.sessionNumber, a.sessionPlatform])).toEqual([['noid:jane-doe', 1, 'Red']]);
   });
 });
 

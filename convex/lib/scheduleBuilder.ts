@@ -8,6 +8,7 @@ import { platformLabel } from './schedulePublishing';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { bareWeightClass } from './weightClass';
 import {
+  BUILDER_LIMITS,
   MAX_BUILDER_DAYS,
   MAX_BUILDER_PLATFORMS,
   MINUTES_PER_DAY,
@@ -38,6 +39,8 @@ export type BuiltAthlete = BuilderEntrant & { key: string; withdrawn?: true };
 
 export type RowTimes = { date: string; startTime: string; weighInTime: string };
 
+export type PublishedPart = RowTimes & { weightClass: string };
+
 export type BuiltGroup = {
   platform: string;
   gender: string;
@@ -45,8 +48,8 @@ export type BuiltGroup = {
   split: string;
   weightClasses: string[];
   athletes: BuiltAthlete[];
-  publishedLabel?: string;
   times?: RowTimes;
+  publishedRows?: PublishedPart[];
 };
 
 export type BuiltSession = {
@@ -64,9 +67,16 @@ export type BuilderWarning = { code: BuilderWarningCode; message: string };
 
 export type BuiltSchedule = { athletes: number; sessions: BuiltSession[]; warnings: BuilderWarning[] };
 
-type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean; publishedLabel?: string };
+type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean };
 
-type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group>; published?: { session: RowTimes; platforms: Map<string, RowTimes> }; retimed?: boolean };
+type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group>; published?: Map<string, PublishedPart[]>; retimed?: boolean };
+
+function earliest<Times extends RowTimes>(times: readonly Times[]): Times | undefined {
+  const startOf = (t: RowTimes) => minutesOfStoredClock(t.startTime) ?? MINUTES_PER_DAY;
+  return times.reduce<Times | undefined>((first, t) => (first === undefined || compareBytes(t.date, first.date) < 0 || (t.date === first.date && startOf(t) < startOf(first)) ? t : first), undefined);
+}
+
+const timesOfPart = ({ date, startTime, weighInTime }: RowTimes): RowTimes => ({ date, startTime, weighInTime });
 
 const GENDER_ORDER = ['Women', 'Men'];
 const POOL_ORDER: readonly AgePool[] = ['youth', '', 'open', 'masters'];
@@ -374,7 +384,7 @@ function groupLabels(group: Group, athletes: readonly BuiltAthlete[], options: B
   return { gender, ageGroup: pools.length === 1 && pool !== undefined ? pool : '', split: '', mixed: genders.length > 1 };
 }
 
-export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinutes: number): BuilderWarning[] {
+export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinutes: number, warnsOf: (session: BuiltSession) => boolean = () => true): BuilderWarning[] {
   const scheduled = sessions.flatMap((session) => {
     const start = minutesOfClock(session.startTime.slice(0, 5));
     return start === null || session.date === '' ? [] : [{ session, start }];
@@ -383,6 +393,7 @@ export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinute
   scheduled.forEach(({ session, start }, i) => {
     for (const later of scheduled.slice(i + 1)) {
       if (later.session.date !== session.date || later.start >= start + sessionMinutes || start >= later.start + sessionMinutes) continue;
+      if (!warnsOf(session) && !warnsOf(later.session)) continue;
       const shared = session.groups.map((g) => g.platform).filter((platform) => later.session.groups.some((g) => g.platform === platform));
       for (const platform of shared) {
         warnings.push({ code: 'overlap', message: `Sessions ${session.number} and ${later.session.number} use the ${platform} platform at the same time.` });
@@ -397,12 +408,13 @@ type Numbering = 'inTimeOrder' | 'asPublished';
 function finish(slots: readonly Slot[], options: BuilderOptions, athletes: number, skipped: number, numbering: Numbering = 'inTimeOrder'): BuiltSchedule {
   const warnings: BuilderWarning[] = [];
   const editedSplits = new Set(slots.flatMap((slot) => [...slot.groups.values()].filter((g) => g.edited && g.splitOf !== '').map((g) => g.splitOf)));
+  const untouchedPublished = (slot: Slot, platform: string, group: Group) => !group.edited && slot.published?.has(platform) === true;
   const kept = slots
     .map((slot) => ({
       slot,
       groups: options.platforms.flatMap((platform) => {
         const group = slot.groups.get(platform);
-        return group && group.athletes.length > 0 ? [{ platform, group }] : [];
+        return group && (group.athletes.length > 0 || untouchedPublished(slot, platform, group)) ? [{ platform, group }] : [];
       }),
     }))
     .filter(({ groups }) => groups.length > 0)
@@ -415,37 +427,41 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
   const sessions = kept.map(({ slot, groups }, i): BuiltSession => {
     const number = numbering === 'asPublished' ? slot.id : i + 1;
     const scheduled = slot.start !== null && slot.date !== '';
-    const published = slot.retimed ? undefined : slot.published;
+    const computed: RowTimes = {
+      date: scheduled ? slot.date : '',
+      startTime: scheduled ? storedClockOf(slot.start ?? 0) : '',
+      weighInTime: scheduled ? storedClockOf((slot.start ?? 0) - WEIGH_IN_MINUTES) : '',
+    };
     const builtGroups = groups.map(({ platform, group }): BuiltGroup => {
       const sorted = [...group.athletes].sort(byTotal);
       const labels = groupLabels(group, sorted, options, editedSplits);
-      const rowTimes = published?.platforms.get(platform);
       if (labels.mixed) warnings.push({ code: 'mixedGroup', message: `Session ${number} ${platform} mixes women and men.` });
       if (sorted.length > options.maxAthletesPerPlatform) {
         warnings.push({ code: 'overCapacity', message: `Session ${number} ${platform} has ${sorted.length} athletes, more than the ${options.maxAthletesPerPlatform} allowed.` });
       }
-      return {
+      const built: BuiltGroup = {
         platform,
         gender: athleteGenderLabel(labels.gender),
         ageGroup: labels.ageGroup,
         split: labels.split,
         weightClasses: sortByWeightClass([...new Set(sorted.map((a) => a.weightClass))], (c) => c),
         athletes: sorted.map((a) => ({ ...a, gender: athleteGenderLabel(a.gender) })),
-        ...(group.edited || group.publishedLabel === undefined ? {} : { publishedLabel: group.publishedLabel }),
-        ...(rowTimes ? { times: rowTimes } : {}),
       };
+      const rows = slot.published?.get(platform);
+      if (!rows) return built;
+      const own = slot.retimed ? undefined : earliest(rows);
+      const relabelled = group.splitOf !== '' && editedSplits.has(group.splitOf);
+      const publishedRows = group.edited
+        ? undefined
+        : rows.map((row) => ({ ...(slot.retimed ? computed : timesOfPart(row)), weightClass: relabelled ? platformLabel(built) : row.weightClass }));
+      return { ...built, ...(own ? { times: timesOfPart(own) } : {}), ...(publishedRows ? { publishedRows } : {}) };
     });
-    const times: RowTimes =
-      scheduled && published
-        ? published.session
-        : {
-            date: scheduled ? slot.date : '',
-            startTime: scheduled ? storedClockOf(slot.start ?? 0) : '',
-            weighInTime: scheduled ? storedClockOf((slot.start ?? 0) - WEIGH_IN_MINUTES) : '',
-          };
-    return { id: slot.id, number, ...times, groups: builtGroups };
+    const own = slot.published && !slot.retimed && scheduled ? earliest(builtGroups.flatMap((group) => (group.times ? [group.times] : []))) : undefined;
+    return { id: slot.id, number, ...(own ?? computed), groups: builtGroups };
   });
-  warnings.push(...overlapWarnings(sessions, options.sessionMinutes));
+  const retimed = new Set(kept.filter(({ slot }) => slot.retimed).map(({ slot }) => slot.id));
+  const warnsOf = numbering === 'asPublished' ? (session: BuiltSession) => retimed.has(session.id) : () => true;
+  warnings.push(...overlapWarnings(sessions, options.sessionMinutes, warnsOf));
   const unscheduled = sessions.filter((s) => s.startTime === '').length;
   if (athletes === 0) warnings.unshift({ code: 'noEntrants', message: 'The meet has no entrants yet.' });
   if (unscheduled > 0) {
@@ -550,22 +566,15 @@ export function publishedPlatforms(base: Pick<PublishedBase, 'rows' | 'roster'>)
 
 function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnIds: ReadonlySet<string>): Slot[] {
   const slots = new Map<number, Slot>();
-  const labels = new Map<string, string>();
   for (const row of [...base.rows].sort((a, b) => a.sessionId - b.sessionId)) {
-    const platform = row.platform.trim();
-    const times: RowTimes = { date: row.date, startTime: row.startTime, weighInTime: row.weighInTime };
+    const part: PublishedPart = { date: row.date, startTime: row.startTime, weighInTime: row.weighInTime, weightClass: row.weightClass };
     const start = minutesOfStoredClock(row.startTime);
-    labels.set(`${row.sessionId}|${platform}`, row.weightClass);
-    const slot = slots.get(row.sessionId);
-    if (!slot) {
-      slots.set(row.sessionId, { id: row.sessionId, date: row.date, start, groups: new Map(), published: { session: times, platforms: new Map([[platform, times]]) } });
-      continue;
-    }
-    slot.published?.platforms.set(platform, times);
+    const slot = slots.get(row.sessionId) ?? { id: row.sessionId, date: row.date, start, groups: new Map<string, Group>(), published: new Map<string, PublishedPart[]>() };
+    slots.set(row.sessionId, slot);
+    if (slot.published) addTo(slot.published, row.platform.trim(), part);
     if (start !== null && (slot.start === null || start < slot.start)) {
       slot.start = start;
       slot.date = row.date;
-      if (slot.published) slot.published.session = times;
     }
   }
   for (const athlete of base.roster) {
@@ -580,9 +589,12 @@ function publishedSlots(base: PublishedBase, options: BuilderOptions, withdrawnI
     group.athletes.push(withdrawnIds.has(athlete._id) ? { ...built, withdrawn: true } : built);
   }
   for (const slot of slots.values()) {
+    for (const platform of slot.published?.keys() ?? []) {
+      if (!slot.groups.has(platform)) slot.groups.set(platform, { gender: '', ageGroup: '', split: '', splitOf: '', athletes: [], edited: false });
+    }
     for (const [platform, group] of slot.groups) {
-      const label = labels.get(`${slot.id}|${platform}`);
-      Object.assign(group, publishedGroupLabels(group, label ?? '', options.separateAgeGroups), label === undefined ? {} : { publishedLabel: label });
+      const label = slot.published?.get(platform)?.[0]?.weightClass ?? '';
+      Object.assign(group, publishedGroupLabels(group, label, options.separateAgeGroups));
     }
   }
   return [...slots.values()];
@@ -632,19 +644,35 @@ export function unlistedRemovals(build: PublishedBuild): string[] {
   return build.removed.filter((athlete) => !athlete.withdrawn).map((athlete) => athlete.name);
 }
 
+function publishedSessionMinutes(rows: readonly PublishedRow[], fallback: number): number {
+  const starts = new Map<string, number[]>();
+  for (const row of rows) {
+    const start = minutesOfStoredClock(row.startTime);
+    if (row.date !== '' && start !== null) addTo(starts, `${row.date}|${row.platform.trim()}`, start);
+  }
+  const gaps = [...starts.values()].flatMap((list) => {
+    const sorted = [...new Set(list)].sort((a, b) => a - b);
+    return sorted.slice(1).map((start, i) => start - (sorted[i] ?? start));
+  });
+  if (gaps.length === 0) return fallback;
+  const { min, max } = BUILDER_LIMITS.sessionMinutes;
+  return Math.min(max, Math.max(min, Math.min(...gaps)));
+}
+
 export function publishedOptions(rows: readonly PublishedRow[], meet: { startDate: string; endDate: string }): BuilderOptions {
   const defaults = defaultBuilderOptions(meet);
+  const sessionMinutes = publishedSessionMinutes(rows, defaults.sessionMinutes);
   const firstStarts = new Map<string, number>();
   for (const row of rows) {
     const start = minutesOfStoredClock(row.startTime);
     if (row.date === '' || start === null) continue;
     firstStarts.set(row.date, Math.min(start, firstStarts.get(row.date) ?? start));
   }
-  const latestFirstStart = MINUTES_PER_DAY - defaults.sessionMinutes;
+  const latestFirstStart = MINUTES_PER_DAY - sessionMinutes;
   const days = [...firstStarts]
     .sort(([a], [b]) => compareBytes(a, b))
     .slice(0, MAX_BUILDER_DAYS)
     .map(([date, start]) => ({ date, firstStart: storedClockOf(Math.min(latestFirstStart, Math.max(WEIGH_IN_MINUTES, start))).slice(0, 5) }));
   const platforms = [...new Set([...rows].sort((a, b) => a.sessionId - b.sessionId).map((row) => row.platform.trim()))].filter((p) => p !== '').slice(0, MAX_BUILDER_PLATFORMS);
-  return { ...defaults, days: days.length > 0 ? days : defaults.days, platforms: platforms.length > 0 ? platforms : defaults.platforms };
+  return { ...defaults, sessionMinutes, days: days.length > 0 ? days : defaults.days, platforms: platforms.length > 0 ? platforms : defaults.platforms };
 }

@@ -1,4 +1,4 @@
-import { isPlaceholderMemberId } from './memberIds';
+import { hasNoMemberId, isPlaceholderMemberId } from './memberIds';
 import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import { currentWeightClasses } from './referenceData';
@@ -49,6 +49,12 @@ export function foldedNameAndGender(foldedName: string, gender: string): string 
 
 export function sameNameAndGender(a: { name: string; gender: string }, b: { name: string; gender: string }): boolean {
   return foldedNameAndGender(normalizeName(a.name), a.gender) === foldedNameAndGender(normalizeName(b.name), b.gender);
+}
+
+type NamedLifter = { memberId: string; name: string; gender: string };
+
+export function sameUnnumberedLifter(a: NamedLifter, b: NamedLifter): boolean {
+  return (hasNoMemberId(a.memberId) || hasNoMemberId(b.memberId)) && sameNameAndGender(a, b);
 }
 
 export function acceptedEntries<Row extends { name: string; memberId: string }>(rows: readonly Row[]): { accepted: Row[]; rejected: number } {

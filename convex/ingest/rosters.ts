@@ -7,7 +7,7 @@ import { normalizeGender } from '../lib/normalize';
 import { hasNoMemberId, ONE_OFF_MEMBER_ID, placeholderMemberId } from '../lib/memberIds';
 import { normalizeName } from '../lib/names';
 import { exceedsShrink } from '../lib/shrinkGuard';
-import { acceptedEntries, halfSession, hasSession, rosterProblems, sameNameAndGender } from '../lib/roster';
+import { acceptedEntries, halfSession, hasSession, rosterProblems, sameNameAndGender, sameUnnumberedLifter } from '../lib/roster';
 import { athletesFields, sessionScheduleFields } from '../schema';
 import { recordWrite } from './hints';
 import { apiError } from '../lib/validation';
@@ -358,7 +358,13 @@ export async function writeBuiltSchedule(
     const entrant = row ? undefined : addable.get(key);
     if (entrant) {
       addable.delete(key);
-      additions.push({ entrant, sessionNumber: placement.sessionNumber, platform: placement.platform });
+      const unscheduled = roster.find((candidate) => !taken.has(String(candidate._id)) && !hasSession(candidate) && sameUnnumberedLifter(candidate, entrant));
+      if (unscheduled) {
+        taken.add(String(unscheduled._id));
+        placed.set(String(unscheduled._id), { sessionNumber: placement.sessionNumber, platform: placement.platform });
+      } else {
+        additions.push({ entrant, sessionNumber: placement.sessionNumber, platform: placement.platform });
+      }
       continue;
     }
     if (!row) throw entriesChanged(placement.name);

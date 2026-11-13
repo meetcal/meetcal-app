@@ -3280,6 +3280,13 @@ main > div:has(> h4) > p {
     margin: 0;
 }
 
+.builder-group-time {
+    flex-basis: 100%;
+    color: var(--text-secondary);
+    font-size: 0.86rem;
+    font-weight: 500;
+}
+
 .builder-withdrawn-line {
     display: flex;
     flex-wrap: wrap;
