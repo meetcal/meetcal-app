@@ -16,6 +16,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::histories;
 use crate::utils::backend::{queries, query_each};
 use crate::utils::format::us_date;
+use crate::utils::lifters::counted_key;
 use crate::utils::meet_names::{equivalent_meets, year_of};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
@@ -97,15 +98,15 @@ async fn run(title: &str, memberships: &[ClubMembership], with_medals: bool) -> 
     let names = distinct_names(memberships);
     let by_name = histories(&names).await?;
 
-    // PRs are judged against each athlete's whole history, not just the group's meets.
-    let mut pr_totals: HashSet<(String, String, String)> = HashSet::new();
+    let mut pr_totals: HashSet<PrKey> = HashSet::new();
     let mut all_rows: Vec<LiftingResults> = Vec::new();
     for rows in by_name.values() {
-        let mut sorted: Vec<&LiftingResults> = rows.iter().collect();
-        sorted.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.meet.cmp(&b.meet)));
-        for (row, flags) in sorted.iter().zip(pr_flags(&sorted)) {
-            if flags.total {
-                pr_totals.insert(pr_key(row));
+        for mut sorted in rows_by_lifter(rows).into_values() {
+            sorted.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.meet.cmp(&b.meet)));
+            for (row, flags) in sorted.iter().zip(pr_flags(&sorted)) {
+                if flags.total {
+                    pr_totals.insert(pr_key(row));
+                }
             }
         }
         all_rows.extend(rows.iter().cloned());
@@ -122,8 +123,23 @@ async fn run(title: &str, memberships: &[ClubMembership], with_medals: bool) -> 
     Ok(())
 }
 
-fn pr_key(row: &LiftingResults) -> (String, String, String) {
-    (fold(&row.name), fold(&row.meet), row.date.clone())
+fn rows_by_lifter(rows: &[LiftingResults]) -> HashMap<String, Vec<&LiftingResults>> {
+    let mut by_lifter: HashMap<String, Vec<&LiftingResults>> = HashMap::new();
+    for row in rows {
+        by_lifter.entry(counted_key(row)).or_default().push(row);
+    }
+    by_lifter
+}
+
+type PrKey = (String, String, String, String);
+
+fn pr_key(row: &LiftingResults) -> PrKey {
+    (
+        fold(&row.name),
+        fold(&row.meet),
+        row.date.clone(),
+        counted_key(row),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -226,7 +242,7 @@ type LifterEntry<'a> = (
 pub(crate) fn report(
     title: &str,
     group_rows: &[LiftingResults],
-    pr_totals: &HashSet<(String, String, String)>,
+    pr_totals: &HashSet<PrKey>,
     medals: Option<&BTreeMap<String, [usize; 3]>>,
 ) -> Report {
     let mut years: BTreeMap<String, Vec<&LiftingResults>> = BTreeMap::new();
@@ -258,7 +274,7 @@ pub(crate) fn report(
     }
     by_year_data.set_header(header);
     for (year, rows) in &years {
-        let athletes: HashSet<String> = rows.iter().map(|row| fold(&row.name)).collect();
+        let athletes: HashSet<String> = rows.iter().map(|row| counted_key(row)).collect();
         let meets: HashSet<String> = rows.iter().map(|row| fold(&row.meet)).collect();
         let (mut taken, mut made) = (0, 0);
         for lift in [Lift::Snatch, Lift::CleanAndJerk] {
@@ -309,10 +325,9 @@ pub(crate) fn report(
         }
     }
 
-    // Each athlete's best total with the group (source errors left out), and best Sinclair.
     let mut best: HashMap<String, LifterEntry> = HashMap::new();
     for row in group_rows {
-        let entry = best.entry(fold(&row.name)).or_insert((
+        let entry = best.entry(counted_key(row)).or_insert((
             None,
             None,
             0,
@@ -342,7 +357,7 @@ pub(crate) fn report(
     let mut best_qpoints: HashMap<String, f64> = HashMap::new();
     for row in group_rows {
         if let Some(score) = row_qpoints(row) {
-            let entry = best_qpoints.entry(fold(&row.name)).or_insert(score);
+            let entry = best_qpoints.entry(counted_key(row)).or_insert(score);
             *entry = entry.max(score);
         }
     }
@@ -386,7 +401,7 @@ pub(crate) fn report(
                 row.age.clone(),
                 date,
                 points(sinclair),
-                points(best_qpoints.get(&fold(&row.name)).copied()),
+                points(best_qpoints.get(&counted_key(row)).copied()),
                 results.to_string(),
                 first,
                 last,
@@ -407,6 +422,33 @@ pub(crate) fn report(
 mod tests {
     use super::*;
     use crate::utils::stats::tests::row;
+
+    #[test]
+    fn prs_are_judged_per_lifter_and_kept_apart_for_namesakes_at_one_meet() {
+        let lifted = |lifter: &str, total: f64| {
+            let mut result = row(
+                "John Smith",
+                "2026-03-01",
+                "Meet",
+                "Open Men's 89kg",
+                88.0,
+                [total * 0.45, 0.0, 0.0],
+                [total * 0.55, 0.0, 0.0],
+            );
+            result.lifter_id = Some(lifter.to_owned());
+            result
+        };
+        let rows = [lifted("L1", 300.0), lifted("L2", 250.0)];
+        let groups = rows_by_lifter(&rows);
+        assert_eq!(groups.len(), 2);
+        assert_ne!(pr_key(&rows[0]), pr_key(&rows[1]));
+        let mut marked = lifted("L1", 300.0);
+        marked.lifter_id = None;
+        marked.sole_lifter_id = Some("L1".to_owned());
+        let mut unmarked = marked.clone();
+        unmarked.sole_lifter_id = None;
+        assert_ne!(pr_key(&marked), pr_key(&unmarked));
+    }
 
     #[test]
     fn a_meets_members_are_those_registered_at_the_same_event() {
