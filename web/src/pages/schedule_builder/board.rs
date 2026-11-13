@@ -11,6 +11,17 @@ use leptos::prelude::*;
 
 pub(crate) const UNDO_BUTTON_ID: &str = "builder-undo";
 
+pub(crate) fn alert_line(message: Option<String>, class: &'static str) -> Option<AnyView> {
+    message.map(|message| {
+        view! {
+            <p class=class role="alert">
+                {message}
+            </p>
+        }
+        .into_any()
+    })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum MenuId {
     Athlete {
@@ -26,6 +37,7 @@ pub(crate) enum MenuId {
     },
     Swap(u32),
     Time(u32),
+    Add(String),
     Export,
 }
 
@@ -37,7 +49,7 @@ pub(crate) struct BoardActions {
 }
 
 impl BoardActions {
-    fn edit_from(self, trigger_id: &str, edit: BuilderEdit) {
+    pub(crate) fn edit_from(self, trigger_id: &str, edit: BuilderEdit) {
         self.open_menu.set(None);
         focus_element(trigger_id);
         if self.add_edit.run(edit) {
@@ -62,7 +74,7 @@ impl BoardData {
     }
 }
 
-fn move_items(
+pub(crate) fn move_items(
     targets: Vec<MoveTarget>,
     trigger_id: String,
     actions: BoardActions,
@@ -416,17 +428,7 @@ fn TimeForm(
                     }
                 />
             </label>
-            {move || {
-                problem
-                    .get()
-                    .map(|message| {
-                        view! {
-                            <p class="access-inline-error" role="alert">
-                                {message}
-                            </p>
-                        }
-                    })
-            }}
+            {move || alert_line(problem.get().map(str::to_owned), "access-inline-error")}
             <button class="builder-button" type="submit">
                 "Save Time"
             </button>
@@ -558,7 +560,7 @@ fn athlete_menu_id(session: u32, platform: &str, row: usize, athlete: &BuiltAthl
     }
 }
 
-fn athlete_details(athlete: &BuiltAthlete) -> String {
+pub(crate) fn athlete_details(athlete: &BuiltAthlete) -> String {
     let mut details = vec![
         format!("Age {}", athlete.age),
         display_weight_class(&athlete.weight_class),
@@ -582,6 +584,7 @@ fn AthleteRow(
     actions: BoardActions,
 ) -> impl IntoView {
     let details = athlete_details(&athlete);
+    let withdrawn = athlete.withdrawn;
     let menu_id = athlete_menu_id(session, &platform, row, &athlete);
     let key = StoredValue::new(athlete.key.clone());
     let platform = StoredValue::new(platform);
@@ -591,6 +594,14 @@ fn AthleteRow(
             <div class="builder-athlete-text">
                 <span class="builder-athlete-name">{athlete.name.clone()}</span>
                 <span class="builder-athlete-detail">{details}</span>
+                {withdrawn
+                    .then(|| {
+                        view! {
+                            <span class="builder-status-pill builder-withdrawn">
+                                "No Longer on Sport80"
+                            </span>
+                        }
+                    })}
             </div>
             <Menu
                 id=menu_id
@@ -633,6 +644,7 @@ mod tests {
             club: " Barbell Club ".to_owned(),
             weight_class: "48".to_owned(),
             entry_total: 100.0,
+            withdrawn: false,
         };
         assert_eq!(
             athlete_details(&athlete),
@@ -663,6 +675,7 @@ mod tests {
             club: String::new(),
             weight_class: "77".to_owned(),
             entry_total: 120.0,
+            withdrawn: false,
         };
         let first = athlete_menu_id(2, "Red", 0, &twin);
         assert_ne!(first, athlete_menu_id(2, "Red", 1, &twin));
@@ -680,6 +693,7 @@ mod tests {
             club: String::new(),
             weight_class: "77".to_owned(),
             entry_total: 120.0,
+            withdrawn: false,
         };
         let group = [lifter("3|mia lee"), lifter("4|ann"), lifter("3|mia lee")];
         assert_eq!(

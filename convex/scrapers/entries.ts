@@ -87,6 +87,7 @@ type MeetResult = {
   notOnStartList?: number;
   rejected?: number;
   deleted?: number;
+  sport80Listed?: boolean;
   withWso?: number;
   skipped?: string;
   error?: string;
@@ -117,6 +118,7 @@ export const run = internalAction({
           result.skipped = 'meet completed';
           if (!dryRun && targetExpired(stored.completedOn, Date.now())) {
             await ctx.runMutation(internal.scrapers.entryTargets.remove, { url: target.url });
+            await ctx.runMutation(internal.ingest.forgetSport80Entrants, { meet: stored.meet });
             result.skipped = `meet completed ${stored.completedOn}, target removed`;
           }
           continue;
@@ -130,6 +132,8 @@ export const run = internalAction({
           { meet: stored.meet, rows: entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
         );
         Object.assign(result, counts);
+        const listed: { published: boolean } = await ctx.runMutation(internal.ingest.recordSport80Entrants, { meet: stored.meet, rows: entries });
+        result.sport80Listed = listed.published;
       } catch (error) {
         result.error = errorMessage(error);
         console.error(`entries (${target.label}): ${result.error}`);

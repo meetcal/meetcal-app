@@ -59,11 +59,17 @@ export const builderEditValidator = v.union(
   }),
   v.object({ kind: v.literal('swapSessions'), session: v.number(), withSession: v.number() }),
   v.object({ kind: v.literal('setSessionTime'), session: v.number(), date: v.string(), startTime: v.string() }),
+  v.object({ kind: v.literal('addAthlete'), athlete: v.string(), toSession: v.number(), toPlatform: v.string() }),
+  v.object({ kind: v.literal('removeAthlete'), athlete: v.string(), fromSession: v.number(), fromPlatform: v.string(), occurrence: v.number() }),
 );
+
+export const scheduleBaseValidator = v.union(v.literal('entries'), v.literal('published'));
+export const baseVersionValidator = v.union(v.string(), v.null());
 
 export type BuilderOptions = Infer<typeof builderOptionsValidator>;
 export type BuilderEdit = Infer<typeof builderEditValidator>;
 export type BuilderOrder = BuilderOptions['order'];
+export type ScheduleBase = Infer<typeof scheduleBaseValidator>;
 
 export function minutesOfClock(clock: string): number | null {
   const match = /^(\d{1,2}):(\d{2})$/.exec(clock.trim());
@@ -72,6 +78,10 @@ export function minutesOfClock(clock: string): number | null {
   const minutes = Number(match[2]);
   if (hours > 23 || minutes > 59) return null;
   return hours * 60 + minutes;
+}
+
+export function minutesOfStoredClock(stored: string): number | null {
+  return minutesOfClock(stored.trim().split(':').slice(0, 2).join(':'));
 }
 
 export function storedClockOf(minutes: number): string {

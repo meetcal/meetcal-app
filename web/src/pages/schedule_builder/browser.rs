@@ -99,3 +99,14 @@ pub(crate) fn local_date(ms: f64) -> String {
         .as_string()
         .unwrap_or_default()
 }
+
+pub(crate) fn local_date_time(ms: f64) -> String {
+    let style = js_sys::Object::new();
+    for (field, value) in [("dateStyle", "medium"), ("timeStyle", "short")] {
+        let _ = js_sys::Reflect::set(&style, &field.into(), &value.into());
+    }
+    js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ms))
+        .to_locale_string("en-US", &style)
+        .as_string()
+        .unwrap_or_default()
+}

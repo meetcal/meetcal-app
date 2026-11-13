@@ -1,3 +1,4 @@
+use super::board::alert_line;
 use super::models::{
     BREAK_MINUTES, Limit, MAX_ATHLETES_PER_PLATFORM, MAX_BUILDER_PLATFORMS, MAX_SESSIONS_PER_DAY,
     OptionsForm, SESSION_MINUTES, new_platform_name,
@@ -282,17 +283,7 @@ pub(crate) fn OptionsPanel(
                             .collect_view()}
                     </div>
                 </fieldset>
-                {move || {
-                    error
-                        .get()
-                        .map(|message| {
-                            view! {
-                                <p class="access-inline-error builder-error" role="alert">
-                                    {message}
-                                </p>
-                            }
-                        })
-                }}
+                {move || alert_line(error.get(), "access-inline-error builder-error")}
                 <button id=BUILD_BUTTON_ID class="builder-button builder-build" type="submit">
                     {move || build_label.get()}
                 </button>

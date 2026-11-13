@@ -7,12 +7,12 @@ import { normalizeGender } from '../lib/normalize';
 import { hasNoMemberId, ONE_OFF_MEMBER_ID, placeholderMemberId } from '../lib/memberIds';
 import { normalizeName } from '../lib/names';
 import { exceedsShrink } from '../lib/shrinkGuard';
-import { halfSession, hasSession, isJunkEntrant, isStoredMemberId, rosterProblems } from '../lib/roster';
+import { acceptedEntries, halfSession, hasSession, rosterProblems } from '../lib/roster';
 import { athletesFields, sessionScheduleFields } from '../schema';
 import { recordWrite } from './hints';
 import { apiError } from '../lib/validation';
 import type { PublishedSchedule } from '../lib/schedulePublishing';
-import { athleteKey } from '../lib/scheduleBuilder';
+import { athleteKey, type RosterChanges, type Sport80Entrant } from '../lib/scheduleBuilder';
 
 /**
  * An empty start list or schedule is a failed load, not a meet without
@@ -176,14 +176,8 @@ export const upsertEntryAthletes = internalMutation({
     const stored = [...existing];
     const published = existing.some(hasSession);
     const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0, notOnStartList: 0, rejected: 0, deleted: 0 };
-    const valid = rows.filter((row) => !isJunkEntrant(row) && isStoredMemberId(row.memberId));
-    counts.rejected = rows.length - valid.length;
-    // One entrant listed twice (two source rows for one member and name) is
-    // one roster row, as it was when the second updated the first: the last
-    // listing wins.
-    const byIdentity = new Map<string, (typeof rows)[number]>();
-    for (const row of valid) byIdentity.set(JSON.stringify([row.memberId, normalizeName(row.name)]), row);
-    const accepted = [...byIdentity.values()];
+    const { accepted, rejected } = acceptedEntries(rows);
+    counts.rejected = rejected;
     if (counts.rejected) console.warn(`upsertEntryAthletes: ${meet}: ${counts.rejected} placeholder row(s) not stored`);
     const incomingKeys = new Set(accepted.map((row) => normalizeName(row.name)));
     // Stored rows an incoming entrant is: kept, and not taken by another.
@@ -315,7 +309,20 @@ export const upsertEntryAthletes = internalMutation({
   },
 });
 
-export async function writeBuiltSchedule(ctx: MutationCtx, meet: string, published: PublishedSchedule): Promise<{ sessions: number; placed: number; cleared: number }> {
+const NO_ROSTER_CHANGES: RosterChanges = { add: [], remove: [] };
+
+function countsOf(keys: readonly string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
+  return counts;
+}
+
+export async function writeBuiltSchedule(
+  ctx: MutationCtx,
+  meet: string,
+  published: PublishedSchedule,
+  changes: RosterChanges = NO_ROSTER_CHANGES,
+): Promise<{ sessions: number; placed: number; cleared: number; added: number; removed: number }> {
   const roster = await readAll(
     ctx.db.query('athletes').withIndex('by_meet', (q) => q.eq('meet', meet)),
     MEET_ROSTER_MAX,
@@ -323,21 +330,54 @@ export async function writeBuiltSchedule(ctx: MutationCtx, meet: string, publish
   );
   const rowsByKey = new Map<string, Doc<'athletes'>[]>();
   for (const row of roster) rowsByKey.set(athleteKey(row), [...(rowsByKey.get(athleteKey(row)) ?? []), row]);
+  const addable = new Map(changes.add.map((entrant) => [athleteKey(entrant), entrant]));
   const placed = new Map<string, { sessionNumber: number; platform: string }>();
+  const additions: { entrant: Sport80Entrant; sessionNumber: number; platform: string }[] = [];
   for (const placement of published.placements) {
-    const row = rowsByKey.get(athleteKey(placement))?.shift();
+    const key = athleteKey(placement);
+    const row = rowsByKey.get(key)?.shift();
+    const entrant = row ? undefined : addable.get(key);
+    if (entrant) {
+      addable.delete(key);
+      additions.push({ entrant, sessionNumber: placement.sessionNumber, platform: placement.platform });
+      continue;
+    }
     if (!row) throw apiError(409, `the entries changed since this schedule was built (${placement.name} is no longer entered); build it again`);
     placed.set(row._id, { sessionNumber: placement.sessionNumber, platform: placement.platform });
   }
+  const removals = countsOf(changes.remove);
   let cleared = 0;
+  let removed = 0;
   for (const row of roster) {
     const place = placed.get(row._id);
+    const removable = removals.get(athleteKey(row)) ?? 0;
     if (place) {
       if (row.sessionNumber !== place.sessionNumber || row.sessionPlatform !== place.platform) await ctx.db.patch(row._id, { sessionNumber: place.sessionNumber, sessionPlatform: place.platform });
+    } else if (removable > 0) {
+      removals.set(athleteKey(row), removable - 1);
+      await ctx.db.delete(row._id);
+      removed++;
     } else if (hasSession(row)) {
       await ctx.db.patch(row._id, { sessionNumber: undefined, sessionPlatform: undefined });
       cleared++;
     }
+  }
+  for (const { entrant, sessionNumber, platform } of additions) {
+    const { memberId, name, age, club, gender, weightClass, entryTotal, wso } = entrant;
+    await ctx.db.insert('athletes', {
+      memberId,
+      name,
+      age,
+      club,
+      gender: normalizeGender(gender),
+      weightClass,
+      entryTotal,
+      meet,
+      adaptive: false,
+      sessionNumber,
+      sessionPlatform: platform,
+      ...(wso ? { wso } : {}),
+    });
   }
   const existing = await readAll(
     ctx.db.query('session_schedule').withIndex('by_meet', (q) => q.eq('meet', meet)),
@@ -351,5 +391,82 @@ export async function writeBuiltSchedule(ctx: MutationCtx, meet: string, publish
     { kind: 'table', key: 'athletes' },
   ]);
   await recordWrite(ctx, 'session_schedule', [{ kind: 'meet', key: meet }]);
-  return { sessions: new Set(published.rows.map((r) => r.sessionId)).size, placed: placed.size, cleared };
+  return { sessions: new Set(published.rows.map((r) => r.sessionId)).size, placed: placed.size + additions.length, cleared, added: additions.length, removed };
 }
+
+async function sport80RowsOf(ctx: MutationCtx, meet: string) {
+  const rows = await readAll(
+    ctx.db.query('sport80_entrants').withIndex('by_meet', (q) => q.eq('meet', meet)),
+    MEET_ROSTER_MAX,
+    'Sport80 entrants of one meet',
+  );
+  const check = await ctx.db
+    .query('sport80_entrant_checks')
+    .withIndex('by_meet', (q) => q.eq('meet', meet))
+    .first();
+  return { rows, check };
+}
+
+async function forgetSport80(ctx: MutationCtx, meet: string): Promise<number> {
+  const { rows, check } = await sport80RowsOf(ctx, meet);
+  for (const row of rows) await ctx.db.delete(row._id);
+  if (check) await ctx.db.delete(check._id);
+  return rows.length;
+}
+
+export const forgetSport80Entrants = internalMutation({
+  args: { meet: v.string() },
+  handler: async (ctx, { meet }) => ({ deleted: await forgetSport80(ctx, meet) }),
+});
+
+export const recordSport80Entrants = internalMutation({
+  args: { meet: v.string(), rows: v.array(entryRow) },
+  handler: async (ctx, { meet, rows }) => {
+    if (rows.some((row) => row.meet !== meet)) throw new Error('every row must belong to `meet`');
+    const roster = await readAll(
+      ctx.db.query('athletes').withIndex('by_meet', (q) => q.eq('meet', meet)),
+      MEET_ROSTER_MAX,
+      'athletes of one meet',
+    );
+    if (!roster.some(hasSession)) return { published: false, inserted: 0, updated: 0, deleted: await forgetSport80(ctx, meet) };
+    const { accepted } = acceptedEntries(rows);
+    if (accepted.length > MEET_ROSTER_MAX) throw new Error(`refusing ${meet}'s Sport80 list: ${accepted.length} entrants is more than ${MEET_ROSTER_MAX}`);
+    const { rows: stored, check } = await sport80RowsOf(ctx, meet);
+    const storedByKey = new Map(stored.map((row) => [athleteKey(row), row]));
+    const kept = new Set<string>();
+    const counts = { published: true, inserted: 0, updated: 0, deleted: 0 };
+    for (const row of accepted) {
+      const values = {
+        meet,
+        memberId: row.memberId,
+        name: row.name,
+        age: row.age,
+        club: row.club,
+        gender: normalizeGender(row.gender),
+        weightClass: row.weightClass,
+        entryTotal: row.entryTotal,
+        ...(row.wso?.trim() ? { wso: row.wso.trim() } : {}),
+      };
+      const key = athleteKey(row);
+      const existing = storedByKey.get(key);
+      storedByKey.delete(key);
+      if (existing) kept.add(existing._id);
+      if (!existing) {
+        await ctx.db.insert('sport80_entrants', values);
+        counts.inserted++;
+      } else if (typedKeys(values).some((field) => existing[field] !== values[field]) || (existing.wso !== undefined && values.wso === undefined)) {
+        await ctx.db.replace(existing._id, values);
+        counts.updated++;
+      }
+    }
+    for (const row of stored) {
+      if (kept.has(row._id)) continue;
+      await ctx.db.delete(row._id);
+      counts.deleted++;
+    }
+    const marker = { meet, checkedAt: Date.now(), count: accepted.length };
+    if (check) await ctx.db.patch(check._id, marker);
+    else await ctx.db.insert('sport80_entrant_checks', marker);
+    return counts;
+  },
+});

@@ -1,4 +1,5 @@
 import { isPlaceholderMemberId } from './memberIds';
+import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import { currentWeightClasses } from './referenceData';
 import { bareWeightClass } from './weightClass';
@@ -40,6 +41,13 @@ export function isJunkEntrant(row: { name: string; memberId: string }): boolean 
 /** A membership number the syncs store: digits, or a `noid:` placeholder for an entrant without one. */
 export function isStoredMemberId(memberId: string): boolean {
   return /^\d+$/.test(memberId) || isPlaceholderMemberId(memberId);
+}
+
+export function acceptedEntries<Row extends { name: string; memberId: string }>(rows: readonly Row[]): { accepted: Row[]; rejected: number } {
+  const storable = rows.filter((row) => !isJunkEntrant(row) && isStoredMemberId(row.memberId));
+  const lastListingOfEachEntrant = new Map<string, Row>();
+  for (const row of storable) lastListingOfEachEntrant.set(JSON.stringify([row.memberId, normalizeName(row.name)]), row);
+  return { accepted: [...lastListingOfEachEntrant.values()], rejected: rows.length - storable.length };
 }
 
 /**

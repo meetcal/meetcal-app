@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { builderEditValidator, builderOptionsValidator } from './lib/scheduleBuilderOptions';
+import { baseVersionValidator, builderEditValidator, builderOptionsValidator, scheduleBaseValidator } from './lib/scheduleBuilderOptions';
 
 /**
  * The Convex data model as it stood before the Rust port, extended (never
@@ -336,6 +336,8 @@ export default defineSchema({
     meet: v.string(),
     options: builderOptionsValidator,
     edits: v.array(builderEditValidator),
+    base: v.optional(scheduleBaseValidator),
+    baseVersion: v.optional(baseVersionValidator),
     updatedAt: v.number(),
   })
     .index('by_userId_and_meet', ['userId', 'meet'])
@@ -347,6 +349,8 @@ export default defineSchema({
     contactEmail: v.optional(v.string()),
     options: builderOptionsValidator,
     edits: v.array(builderEditValidator),
+    base: v.optional(scheduleBaseValidator),
+    baseVersion: v.optional(baseVersionValidator),
     status: v.union(v.literal('pending'), v.literal('live'), v.literal('approved'), v.literal('rejected'), v.literal('superseded'), v.literal('expired')),
     createdAt: v.number(),
     decidedAt: v.optional(v.number()),
@@ -367,6 +371,20 @@ export default defineSchema({
     .index('by_loadedAt', ['loadedAt']),
 
   schedule_builder_searches: defineTable({ searchedAt: v.number() }).index('by_searchedAt', ['searchedAt']),
+
+  sport80_entrants: defineTable({
+    meet: v.string(),
+    memberId: v.string(),
+    name: v.string(),
+    age: v.number(),
+    club: v.string(),
+    gender: v.string(),
+    weightClass: v.string(),
+    entryTotal: v.number(),
+    wso: v.optional(v.string()),
+  }).index('by_meet', ['meet']),
+
+  sport80_entrant_checks: defineTable({ meet: v.string(), checkedAt: v.number(), count: v.number() }).index('by_meet', ['meet']),
 
   // A user's `Subscriptions` entitlement as RevenueCat's API last reported it
   // (`convex/entitlements.ts`), one row per Clerk user id (RevenueCat's app

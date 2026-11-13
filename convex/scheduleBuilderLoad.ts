@@ -132,6 +132,7 @@ export const load = action({
         console.error(`scheduleBuilder load (${meet.name}): ${errorMessage(error)}`);
         throw apiError(409, "the meet's entries changed more than MeetCal updates on its own; they'll be checked by hand. Try again later");
       }
+      await ctx.runMutation(internal.ingest.recordSport80Entrants, { meet: meet.name, rows: entries });
     }
     await ctx.runMutation(internal.scheduleBuilder.finishLoad, { claim: claimed.claim, meet: meet.name });
     return { meet: meet.name, refreshed: true };

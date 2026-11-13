@@ -3255,6 +3255,37 @@ main > div:has(> h4) > p {
     font-weight: 700;
 }
 
+.builder-changes {
+    display: grid;
+    gap: 8px;
+}
+
+.builder-changes-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 14px;
+}
+
+.builder-changes-head h2 {
+    flex: 1 1 auto;
+    margin: 0;
+}
+
+.builder-changes .builder-subheading {
+    margin-top: 10px;
+}
+
+.builder-changes .builder-help {
+    margin: 0;
+}
+
+.builder-withdrawn {
+    justify-self: start;
+    margin-top: 4px;
+    background: color-mix(in srgb, #c53b35 12%, var(--card));
+}
+
 @media (max-width: 560px) {
     .builder-session-head,
     .builder-group {

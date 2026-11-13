@@ -1,5 +1,5 @@
 use crate::utils::api::{
-    BuilderDay, BuilderEdit, BuilderOptions, Grouping, MeetMatch, SessionOrder,
+    Basis, BuilderDay, BuilderEdit, BuilderOptions, Grouping, MeetMatch, ScheduleBase, SessionOrder,
 };
 use serde::{Deserialize, Serialize};
 
@@ -45,9 +45,20 @@ pub(crate) const MAX_SESSIONS_PER_DAY: Limit = Limit {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct PublishedSchedule {
+    pub version: Option<String>,
+    pub options: BuilderOptions,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Defaults {
     pub meet: String,
     pub options: BuilderOptions,
+    #[serde(default)]
+    pub sport80_link: Option<String>,
+    #[serde(default)]
+    pub published: Option<PublishedSchedule>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -65,6 +76,42 @@ pub(crate) struct BuiltAthlete {
     pub club: String,
     pub weight_class: String,
     pub entry_total: f64,
+    #[serde(default)]
+    pub withdrawn: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub(crate) struct BoardPlace {
+    pub session: u32,
+    pub number: u32,
+    pub platform: String,
+}
+
+impl BoardPlace {
+    pub(crate) fn label(&self) -> String {
+        format!("Session {} · {}", self.number, self.platform)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub(crate) struct AddedEntrant {
+    pub athlete: BuiltAthlete,
+    pub suggestion: Option<BoardPlace>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub(crate) struct WithdrawnAthlete {
+    pub athlete: BuiltAthlete,
+    pub place: BoardPlace,
+    pub occurrence: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Sport80Changes {
+    pub checked_at: Option<f64>,
+    pub added: Vec<AddedEntrant>,
+    pub withdrawn: Vec<WithdrawnAthlete>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -98,6 +145,8 @@ pub(crate) struct BuiltSchedule {
     pub athletes: u32,
     pub sessions: Vec<BuiltSession>,
     pub warnings: Vec<BuilderWarning>,
+    #[serde(default)]
+    pub changes: Option<Sport80Changes>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -112,6 +161,7 @@ pub(crate) struct DraftSummary {
 pub(crate) struct SavedDraft {
     pub options: BuilderOptions,
     pub edits: Vec<BuilderEdit>,
+    pub basis: Basis,
     pub updated_at: f64,
 }
 
@@ -173,6 +223,8 @@ pub(crate) fn publication_status_label(status: &str) -> &'static str {
 pub(crate) struct LocalWork {
     pub options: BuilderOptions,
     pub edits: Vec<BuilderEdit>,
+    #[serde(default)]
+    pub basis: Basis,
     pub saved_at: f64,
 }
 
@@ -180,32 +232,58 @@ pub(crate) struct LocalWork {
 pub(crate) struct Start {
     pub options: BuilderOptions,
     pub edits: Vec<BuilderEdit>,
+    pub basis: Basis,
     pub built: bool,
+    pub set_aside: bool,
+}
+
+pub(crate) const SET_ASIDE_NOTICE: &str = "Your saved schedule was made before this meet’s latest publish, so the builder opens on the published schedule.";
+
+pub(crate) fn published_basis(published: &PublishedSchedule) -> Basis {
+    Basis {
+        base: ScheduleBase::Published,
+        base_version: published.version.clone(),
+    }
 }
 
 pub(crate) fn starting_point(
-    defaults: &BuilderOptions,
+    defaults: &Defaults,
     draft: Option<SavedDraft>,
     local: Option<LocalWork>,
 ) -> Start {
     let newest = match (draft, local) {
         (Some(draft), Some(local)) if local.saved_at > draft.updated_at => {
-            Some((local.options, local.edits))
+            Some((local.options, local.edits, local.basis))
         }
-        (Some(draft), _) => Some((draft.options, draft.edits)),
-        (None, Some(local)) => Some((local.options, local.edits)),
+        (Some(draft), _) => Some((draft.options, draft.edits, draft.basis)),
+        (None, Some(local)) => Some((local.options, local.edits, local.basis)),
         (None, None) => None,
     };
-    match newest {
-        Some((options, edits)) => Start {
+    let wanted = defaults
+        .published
+        .as_ref()
+        .map_or_else(Basis::default, published_basis);
+    match (newest, defaults.published.as_ref()) {
+        (Some((options, edits, basis)), _) if basis == wanted => Start {
             options,
             edits,
+            basis,
             built: true,
+            set_aside: false,
         },
-        None => Start {
-            options: defaults.clone(),
+        (saved, Some(published)) => Start {
+            options: published.options.clone(),
             edits: Vec::new(),
+            basis: wanted,
+            built: true,
+            set_aside: saved.is_some(),
+        },
+        (_, None) => Start {
+            options: defaults.options.clone(),
+            edits: Vec::new(),
+            basis: wanted,
             built: false,
+            set_aside: false,
         },
     }
 }
@@ -411,25 +489,60 @@ pub(crate) struct MoveTarget {
     pub label: String,
 }
 
+pub(crate) fn place_targets(sessions: &[BuiltSession], platforms: &[String]) -> Vec<MoveTarget> {
+    sessions
+        .iter()
+        .flat_map(|session| {
+            platforms.iter().map(move |platform| MoveTarget {
+                session: session.id,
+                platform: platform.clone(),
+                label: format!("Session {} · {platform}", session.number),
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn move_targets(
     sessions: &[BuiltSession],
     platforms: &[String],
     from_session: u32,
     from_platform: &str,
 ) -> Vec<MoveTarget> {
-    sessions
-        .iter()
-        .flat_map(|session| {
-            platforms
-                .iter()
-                .filter(move |platform| session.id != from_session || *platform != from_platform)
-                .map(move |platform| MoveTarget {
-                    session: session.id,
-                    platform: platform.clone(),
-                    label: format!("Session {} · {platform}", session.number),
-                })
-        })
+    place_targets(sessions, platforms)
+        .into_iter()
+        .filter(|target| target.session != from_session || target.platform != from_platform)
         .collect()
+}
+
+pub(crate) fn added_note(count: usize) -> String {
+    match count {
+        0 => "No new lifters.".to_owned(),
+        1 => "1 new lifter isn’t placed, so they stay off the start list when you publish.".to_owned(),
+        count => format!(
+            "{count} new lifters aren’t placed, so they stay off the start list when you publish."
+        ),
+    }
+}
+
+pub(crate) fn withdrawn_note(count: usize) -> &'static str {
+    if count == 0 {
+        "Every published lifter is still on Sport80."
+    } else {
+        ""
+    }
+}
+
+pub(crate) fn rebuild_warning(published: bool, edits: usize) -> String {
+    let your_edits = if edits == 1 {
+        "your edit".to_owned()
+    } else {
+        format!("your {edits} edits")
+    };
+    match (published, edits) {
+        (true, 0) => "Rebuilding from scratch regroups every entrant and replaces the published sessions when you publish.".to_owned(),
+        (true, _) => format!("Rebuilding from scratch regroups every entrant, replaces the published sessions when you publish, and discards {your_edits}."),
+        (false, _) => format!("Building again discards {your_edits}."),
+    }
 }
 
 pub(crate) fn session_when(session: &BuiltSession) -> String {
@@ -734,9 +847,29 @@ mod tests {
         );
     }
 
+    fn meet_defaults(published: Option<PublishedSchedule>) -> Defaults {
+        Defaults {
+            meet: "Turkey Cup".to_owned(),
+            options: options(),
+            sport80_link: None,
+            published,
+        }
+    }
+
+    fn entries_basis() -> Basis {
+        Basis::default()
+    }
+
+    fn published_on(version: &str) -> Basis {
+        Basis {
+            base: ScheduleBase::Published,
+            base_version: Some(version.to_owned()),
+        }
+    }
+
     #[test]
     fn the_newest_saved_work_wins_and_none_starts_unbuilt() {
-        let defaults = options();
+        let defaults = meet_defaults(None);
         let mut drafted = options();
         drafted.session_minutes = 90;
         let mut local = options();
@@ -744,19 +877,23 @@ mod tests {
         let draft = |at: f64| SavedDraft {
             options: drafted.clone(),
             edits: Vec::new(),
+            basis: entries_basis(),
             updated_at: at,
         };
         let work = |at: f64| LocalWork {
             options: local.clone(),
             edits: Vec::new(),
+            basis: entries_basis(),
             saved_at: at,
         };
         assert_eq!(
             starting_point(&defaults, None, None),
             Start {
-                options: defaults.clone(),
+                options: options(),
                 edits: Vec::new(),
-                built: false
+                basis: entries_basis(),
+                built: false,
+                set_aside: false,
             }
         );
         assert_eq!(
@@ -774,6 +911,126 @@ mod tests {
         assert!(starting_point(&defaults, None, Some(work(1.0))).built);
     }
 
+    #[test]
+    fn a_published_meet_opens_on_its_schedule_unless_the_work_was_made_on_it() {
+        let mut published_options = options();
+        published_options.platforms = vec!["Red".to_owned(), "Blue".to_owned()];
+        let defaults = meet_defaults(Some(PublishedSchedule {
+            version: Some("p2".to_owned()),
+            options: published_options.clone(),
+        }));
+        let edit = BuilderEdit::SwapSessions {
+            session: 1,
+            with_session: 2,
+        };
+        let work = |basis: Basis| LocalWork {
+            options: options(),
+            edits: vec![edit.clone()],
+            basis,
+            saved_at: 1.0,
+        };
+        let fresh = starting_point(&defaults, None, None);
+        assert_eq!(fresh.options, published_options);
+        assert_eq!(fresh.basis, published_on("p2"));
+        assert!(fresh.built && !fresh.set_aside && fresh.edits.is_empty());
+        let resumed = starting_point(&defaults, None, Some(work(published_on("p2"))));
+        assert_eq!(resumed.edits, vec![edit.clone()]);
+        assert!(!resumed.set_aside);
+        for stale in [published_on("p1"), entries_basis()] {
+            let start = starting_point(&defaults, None, Some(work(stale)));
+            assert_eq!(start.basis, published_on("p2"));
+            assert!(start.edits.is_empty() && start.set_aside);
+        }
+        let saved: SavedDraft = serde_json::from_value(serde_json::json!({
+            "options": serde_json::to_value(options()).unwrap(),
+            "edits": [],
+            "basis": { "base": "published", "baseVersion": "p2" },
+            "updatedAt": 1
+        }))
+        .unwrap();
+        assert_eq!(saved.basis, published_on("p2"));
+        let older: LocalWork = serde_json::from_value(serde_json::json!({
+            "options": serde_json::to_value(options()).unwrap(),
+            "edits": [],
+            "savedAt": 1
+        }))
+        .unwrap();
+        assert_eq!(older.basis, entries_basis());
+    }
+
+    #[test]
+    fn the_sport80_lists_say_what_publishing_leaves_out() {
+        assert_eq!(added_note(0), "No new lifters.");
+        assert_eq!(
+            added_note(1),
+            "1 new lifter isn’t placed, so they stay off the start list when you publish."
+        );
+        assert_eq!(
+            added_note(3),
+            "3 new lifters aren’t placed, so they stay off the start list when you publish."
+        );
+        assert_eq!(withdrawn_note(0), "Every published lifter is still on Sport80.");
+        assert_eq!(withdrawn_note(2), "");
+        assert_eq!(
+            rebuild_warning(false, 1),
+            "Building again discards your edit."
+        );
+        assert_eq!(
+            rebuild_warning(false, 4),
+            "Building again discards your 4 edits."
+        );
+        assert_eq!(
+            rebuild_warning(true, 0),
+            "Rebuilding from scratch regroups every entrant and replaces the published sessions when you publish."
+        );
+        assert_eq!(
+            rebuild_warning(true, 2),
+            "Rebuilding from scratch regroups every entrant, replaces the published sessions when you publish, and discards your 2 edits."
+        );
+    }
+
+    #[test]
+    fn a_published_base_answer_parses_with_its_sport80_changes() {
+        let preview: BuiltSchedule = serde_json::from_value(serde_json::json!({
+            "athletes": 1,
+            "sessions": [{
+                "id": 3, "number": 1, "date": "2026-11-14", "startTime": "09:00:00", "weighInTime": "07:00:00",
+                "groups": [{
+                    "platform": "Red", "gender": "Female", "ageGroup": "open", "split": "", "label": "W 48",
+                    "weightClasses": ["48"],
+                    "athletes": [{ "key": "1|ann", "memberId": "1", "name": "Ann", "age": 25, "club": "Club", "gender": "Female", "weightClass": "48", "entryTotal": 100, "withdrawn": true }]
+                }]
+            }],
+            "warnings": [],
+            "changes": {
+                "checkedAt": 1700000000000_u64,
+                "added": [{
+                    "athlete": { "key": "2|bea", "memberId": "2", "name": "Bea", "age": 22, "club": "", "gender": "Female", "weightClass": "48", "entryTotal": 90 },
+                    "suggestion": { "session": 3, "number": 1, "platform": "Red" }
+                }],
+                "withdrawn": [{
+                    "athlete": { "key": "1|ann", "memberId": "1", "name": "Ann", "age": 25, "club": "Club", "gender": "Female", "weightClass": "48", "entryTotal": 100, "withdrawn": true },
+                    "place": { "session": 3, "number": 1, "platform": "Red" },
+                    "occurrence": 0
+                }]
+            }
+        }))
+        .unwrap();
+        let athlete = &preview.sessions[0].groups[0].athletes[0];
+        assert!(athlete.withdrawn);
+        let changes = preview.changes.unwrap();
+        assert_eq!(
+            changes.added[0]
+                .suggestion
+                .as_ref()
+                .map(BoardPlace::label)
+                .as_deref(),
+            Some("Session 1 · Red")
+        );
+        assert_eq!(changes.withdrawn[0].place.session, 3);
+        assert_eq!(changes.withdrawn[0].athlete.name, "Ann");
+    }
+
     fn session(id: u32, number: u32) -> BuiltSession {
         BuiltSession {
             id,
@@ -789,6 +1046,7 @@ mod tests {
     fn an_athlete_can_move_to_every_other_session_and_platform() {
         let sessions = [session(4, 1), session(2, 2)];
         let platforms = ["Red".to_owned(), "Blue".to_owned()];
+        assert_eq!(place_targets(&sessions, &platforms).len(), 4);
         let labels = move_targets(&sessions, &platforms, 4, "Red")
             .into_iter()
             .map(|target| (target.session, target.platform, target.label))

@@ -90,6 +90,34 @@ pub(crate) enum BuilderEdit {
         date: String,
         start_time: String,
     },
+    AddAthlete {
+        athlete: String,
+        to_session: u32,
+        to_platform: String,
+    },
+    RemoveAthlete {
+        athlete: String,
+        from_session: u32,
+        from_platform: String,
+        occurrence: u32,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ScheduleBase {
+    #[default]
+    Entries,
+    Published,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Basis {
+    #[serde(default)]
+    pub base: ScheduleBase,
+    #[serde(default)]
+    pub base_version: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -149,6 +177,8 @@ pub(crate) struct PublishOutcome {
     pub status: PublishStatus,
     pub sessions: u32,
     pub athletes: u32,
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -161,6 +191,17 @@ struct ScheduleArgs<'a> {
     meet: &'a str,
     options: &'a BuilderOptions,
     edits: &'a [BuilderEdit],
+    base: ScheduleBase,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DraftArgs<'a> {
+    meet: &'a str,
+    options: &'a BuilderOptions,
+    edits: &'a [BuilderEdit],
+    base: ScheduleBase,
+    base_version: Option<&'a str>,
 }
 
 pub(super) fn builder_value(response: QueryResponse) -> Result<Value> {
@@ -249,6 +290,7 @@ pub(crate) async fn builder_preview<T: DeserializeOwned>(
     meet: &str,
     options: &BuilderOptions,
     edits: &[BuilderEdit],
+    base: ScheduleBase,
 ) -> Result<T> {
     public_call(
         Endpoint::Query,
@@ -257,6 +299,7 @@ pub(crate) async fn builder_preview<T: DeserializeOwned>(
             meet,
             options,
             edits,
+            base,
         },
         REQUEST_TIMEOUT,
     )
@@ -268,6 +311,7 @@ struct ExportArgs<'a> {
     meet: &'a str,
     options: &'a BuilderOptions,
     edits: &'a [BuilderEdit],
+    base: ScheduleBase,
     format: ExportFormat,
 }
 
@@ -275,6 +319,7 @@ pub(crate) async fn builder_export(
     meet: &str,
     options: &BuilderOptions,
     edits: &[BuilderEdit],
+    base: ScheduleBase,
     format: ExportFormat,
 ) -> Result<ExportFile> {
     public_call(
@@ -284,6 +329,7 @@ pub(crate) async fn builder_export(
             meet,
             options,
             edits,
+            base,
             format,
         },
         REQUEST_TIMEOUT,
@@ -303,14 +349,17 @@ pub(crate) async fn save_builder_draft(
     meet: &str,
     options: &BuilderOptions,
     edits: &[BuilderEdit],
+    basis: &Basis,
 ) -> Result<()> {
     signed_in_call::<Value>(
         Endpoint::Mutation,
         BUILDER_SAVE_DRAFT,
-        ScheduleArgs {
+        DraftArgs {
             meet,
             options,
             edits,
+            base: basis.base,
+            base_version: basis.base_version.as_deref(),
         },
     )
     .await
@@ -329,6 +378,8 @@ struct PublishArgs<'a> {
     meet: &'a str,
     options: &'a BuilderOptions,
     edits: &'a [BuilderEdit],
+    base: ScheduleBase,
+    base_version: Option<&'a str>,
     contact_email: Option<&'a str>,
 }
 
@@ -336,6 +387,7 @@ pub(crate) async fn publish_schedule(
     meet: &str,
     options: &BuilderOptions,
     edits: &[BuilderEdit],
+    basis: &Basis,
     contact_email: Option<&str>,
 ) -> Result<PublishOutcome> {
     signed_in_call(
@@ -345,6 +397,8 @@ pub(crate) async fn publish_schedule(
             meet,
             options,
             edits,
+            base: basis.base,
+            base_version: basis.base_version.as_deref(),
             contact_email,
         },
     )
