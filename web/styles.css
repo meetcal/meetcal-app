@@ -507,7 +507,8 @@ select.data-filter {
     .data-filter { font-size: max(16px, 1rem); }
 }
 
-.visually-hidden {
+.visually-hidden,
+.builder-toolbar-status:empty {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -2910,10 +2911,6 @@ main > div:has(> h4) > p {
     color: var(--text-secondary);
     font-size: 0.86rem;
     font-weight: 650;
-}
-
-.builder-toolbar-status:empty {
-    display: none;
 }
 
 .builder-export .builder-menu-panel {

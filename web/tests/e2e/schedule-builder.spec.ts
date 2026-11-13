@@ -185,6 +185,9 @@ test("signed out, a meet loads, builds, takes an edit, exports and prints", asyn
 
   const exportButton = page.getByRole("button", { name: "Export", exact: true });
   const exports = page.getByRole("group", { name: "Export" });
+  const exportStatus = page.locator(".builder-toolbar").getByRole("status");
+  await expect(exportStatus).toBeAttached();
+  await expect(exportStatus).toHaveText("");
   await expect(exportButton).toHaveAttribute("aria-expanded", "false");
   await exportButton.click();
   await expect(exportButton).toHaveAttribute("aria-expanded", "true");
