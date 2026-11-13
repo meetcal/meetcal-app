@@ -729,7 +729,9 @@ test("a published meet opens on its schedule, folds in Sport80's changes, and as
 
   await page.getByRole("button", { name: "Rebuild From Scratch" }).click();
   const confirm = page.getByRole("alertdialog", { name: "Rebuild from scratch?" });
-  await expect(confirm).toContainText("Rebuilding from scratch regroups every entrant, replaces the published sessions when you publish, and discards your edit.");
+  await expect(confirm).toContainText(
+    "Rebuilding from scratch regroups the start list, with Sport80’s new lifters added and the lifters it no longer lists taken off, and replaces the published sessions when you publish. It also discards your edit.",
+  );
   await confirm.getByRole("button", { name: "Keep Editing" }).click();
   await expect(confirm).toHaveCount(0);
   await page.getByRole("button", { name: "Rebuild From Scratch" }).click();
