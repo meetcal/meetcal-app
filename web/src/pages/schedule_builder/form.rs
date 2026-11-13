@@ -53,7 +53,7 @@ pub(crate) fn OptionsPanel(
     #[prop(into)] on_build: Callback<()>,
     #[prop(into)] build_label: Signal<&'static str>,
     #[prop(into)] error: Signal<Option<String>>,
-    #[prop(into)] busy: Signal<bool>,
+    busy: RwSignal<bool>,
 ) -> impl IntoView {
     let day_count = form.with_untracked(|form| form.days.len());
     let platform_count = Memo::new(move |_| form.with(|form| form.platforms.len()));
@@ -289,7 +289,7 @@ pub(crate) fn OptionsPanel(
                     id=BUILD_BUTTON_ID
                     class="builder-button builder-build"
                     type="submit"
-                    disabled=move || busy.get()
+                    disabled=busy
                 >
                     {move || build_label.get()}
                 </button>

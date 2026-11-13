@@ -601,7 +601,7 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                                 <button
                                     class="builder-button"
                                     type="button"
-                                    disabled=move || publishing.get()
+                                    disabled=publishing
                                     on:click=move |_| {
                                         if publishing.get_untracked() {
                                             return;

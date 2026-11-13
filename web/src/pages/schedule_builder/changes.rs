@@ -60,7 +60,7 @@ pub(crate) fn sport80_panel(
     view! {
         <section
             class="builder-panel builder-changes no-print"
-            inert=move || publishing.get()
+            inert=publishing
             aria-labelledby="builder-changes-heading"
             data-testid="sport80-changes"
         >
