@@ -88,7 +88,7 @@ async function failure(promise: Promise<unknown>): Promise<{ status: number; err
 
 type Board = {
   athletes: number;
-  sessions: { id: number; number: number; groups: { platform: string; label: string; athletes: { name: string; withdrawn?: boolean }[] }[] }[];
+  sessions: { id: number; number: number; groups: { platform: string; label: string; ownTimes?: string | null; athletes: { name: string; withdrawn?: boolean }[] }[] }[];
   warnings: { code: string }[];
   changes: {
     checkedAt: number | null;
@@ -512,7 +512,10 @@ describe('republishing a hand-loaded schedule', () => {
     const store = handLoaded();
     await store.record([listed(ann), listed(bea), listed(cal), listed(dan), listed(gia), listed(fay)]);
     const shown = await board(store);
-    expect(shown.sessions[0]?.groups.map((g) => g.label)).toEqual(["Women's 58 kg", 'M 89, 96']);
+    expect(shown.sessions[0]?.groups.map((g) => [g.label, g.ownTimes])).toEqual([
+      ["Women's 58 kg", null],
+      ['M 89, 96', 'Weigh-In 8:00 AM · Start 9:30 AM'],
+    ]);
     await publishAs(store, 'user_a', 'published', null, [{ kind: 'addAthlete', athlete: keyOf(fay), toSession: 2, toPlatform: 'Red' }]);
     const [blue, red, second] = scheduleRows(store);
     expect([blue, red]).toEqual([handRows()[1], handRows()[0]]);
@@ -645,7 +648,7 @@ describe('platforms of one session at their own times', () => {
     const built = buildFromPublished(published, sport80Diff(published), options);
     expect(built.sessions[0]).toMatchObject({ startTime: '09:00:00', weighInTime: '07:30:00' });
     const { html } = renderPublicationEmail({ meet: MEET, status: 'live', userId: 'u', schedule: built, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: true });
-    expect(html).toContain('Red: W 58 (1); Blue at 09:30, weigh-in 08:00: M 89 (1)');
+    expect(html).toContain('Red: W 58 (1); Blue (Weigh-In 8:00 AM · Start 9:30 AM): M 89 (1)');
     const emptied = buildFromPublished(published, sport80Diff(published), options, [
       { kind: 'moveAthlete', athlete: keyOf(ann), fromSession: 1, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'Blue' },
     ]);

@@ -117,30 +117,7 @@ pub(crate) struct BuiltGroup {
     pub weight_classes: Vec<String>,
     pub athletes: Vec<BuiltAthlete>,
     #[serde(default)]
-    pub times: Option<GroupTimes>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct GroupTimes {
-    pub date: String,
-    pub start_time: String,
-    pub weigh_in_time: String,
-}
-
-pub(crate) fn clock_line(weigh_in_time: &str, start_time: &str) -> String {
-    use crate::pages::comp_data::format::format_us_time;
-    format!(
-        "Weigh-In {} · Start {}",
-        format_us_time(weigh_in_time),
-        format_us_time(start_time)
-    )
-}
-
-pub(crate) fn group_times(session: &BuiltSession, group: &BuiltGroup) -> Option<String> {
-    let times = group.times.as_ref()?;
-    (times.start_time != session.start_time || times.weigh_in_time != session.weigh_in_time)
-        .then(|| clock_line(&times.weigh_in_time, &times.start_time))
+    pub own_times: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -1147,42 +1124,21 @@ mod tests {
     }
 
     #[test]
-    fn a_platform_shows_its_own_times_only_when_they_differ_from_its_session() {
-        let group = |times: Option<GroupTimes>| BuiltGroup {
-            platform: "Blue".to_owned(),
-            label: "M 89".to_owned(),
-            weight_classes: vec!["89".to_owned()],
-            athletes: Vec::new(),
-            times,
-        };
-        let at = |date: &str, start: &str, weigh_in: &str| GroupTimes {
-            date: date.to_owned(),
-            start_time: start.to_owned(),
-            weigh_in_time: weigh_in.to_owned(),
-        };
-        let first = session(1, 1);
-        assert_eq!(group_times(&first, &group(None)), None);
-        assert_eq!(
-            group_times(
-                &first,
-                &group(Some(at("2026-11-14", "09:00:00", "07:00:00")))
-            ),
-            None
-        );
-        assert_eq!(
-            group_times(
-                &first,
-                &group(Some(at("2026-11-14", "09:30:00", "08:00:00")))
-            )
-            .as_deref(),
-            Some("Weigh-In 8:00 AM · Start 9:30 AM")
-        );
+    fn a_platform_reads_its_own_times_from_the_answer() {
         let answer: BuiltGroup = serde_json::from_value(serde_json::json!({
             "platform": "Blue", "label": "M 89", "weightClasses": ["89"], "athletes": [],
-            "times": { "date": "2026-11-14", "startTime": "09:30:00", "weighInTime": "08:00:00" }
+            "ownTimes": "Weigh-In 8:00 AM · Start 9:30 AM"
         }))
         .unwrap();
-        assert_eq!(answer.times, Some(at("2026-11-14", "09:30:00", "08:00:00")));
+        assert_eq!(
+            answer.own_times.as_deref(),
+            Some("Weigh-In 8:00 AM · Start 9:30 AM")
+        );
+        let same: BuiltGroup = serde_json::from_value(serde_json::json!({
+            "platform": "Red", "label": "W 58", "weightClasses": ["58"], "athletes": [], "ownTimes": null
+        }))
+        .unwrap();
+        assert_eq!(same.own_times, None);
     }
 
     #[test]

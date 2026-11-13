@@ -336,8 +336,8 @@ Convex's answer.
   preview again so the board shows that check), and each new lifter with
   "Add to Session N · Platform" (the server's suggestion) and Add To…, the same disclosure list as
   Move To…, both sending `addAthlete`, plus how many new lifters stay off the start list. A
-  platform whose own times (`times`) differ from its session's shows them in its heading, on the
-  board and in print. While a publish is on its way the board is inert and Undo is disabled, so no
+  platform whose own times differ from its session's shows the line `preview` answers for it
+  (`ownTimes`) in its heading, on the board and in print. While a publish is on its way the board is inert and Undo is disabled, so no
   edit is made that its answer would discard. Lifters no
   longer on Sport80 are marked on the board, each with Remove (`removeAthlete`), and the section
   says how many there are.

@@ -1,6 +1,6 @@
 import { isoDateOf } from './dates';
 import { escapeHtml } from './email';
-import { meetDays } from './scheduleBuilderOptions';
+import { clockLabel, meetDays } from './scheduleBuilderOptions';
 import type { BuiltGroup, BuiltSchedule, RowTimes } from './scheduleBuilder';
 
 export const MAX_PUBLISHES_PER_DAY = 10;
@@ -72,10 +72,15 @@ export type PublicationEmailContent = {
   reviewUrl?: string;
 };
 
-function ownStart(session: RowTimes, group: Pick<BuiltGroup, 'times'>): string {
+export function ownTimesLabel(session: RowTimes, group: Pick<BuiltGroup, 'times'>): string | null {
   const times = timesOf(session, group);
-  if (times.startTime === session.startTime && times.date === session.date) return '';
-  return ` at ${escapeHtml(times.startTime.slice(0, 5))}, weigh-in ${escapeHtml(times.weighInTime.slice(0, 5))}`;
+  if (times.startTime === session.startTime && times.weighInTime === session.weighInTime) return null;
+  return `Weigh-In ${clockLabel(times.weighInTime)} · Start ${clockLabel(times.startTime)}`;
+}
+
+function ownStart(session: RowTimes, group: Pick<BuiltGroup, 'times'>): string {
+  const own = ownTimesLabel(session, group);
+  return own === null ? '' : ` (${escapeHtml(own)})`;
 }
 
 function sessionLines(schedule: BuiltSchedule): string {

@@ -1,9 +1,11 @@
 use super::browser::focus_element;
 use super::models::{
-    BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, MoveTarget, clock_line, group_times,
-    is_clock, move_targets, session_when,
+    BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, MoveTarget, is_clock, move_targets,
+    session_when,
 };
-use crate::pages::comp_data::format::{display_weight_class, format_us_date, reference_value};
+use crate::pages::comp_data::format::{
+    display_weight_class, format_us_date, format_us_time, reference_value,
+};
 use crate::utils::api::{BuilderEdit, BuilderOptions};
 use leptos::prelude::*;
 
@@ -263,9 +265,10 @@ fn session_times(session: &BuiltSession) -> String {
         return "No Time".to_owned();
     }
     format!(
-        "{} · {}",
+        "{} · Weigh-In {} · Start {}",
         format_us_date(&session.date),
-        clock_line(&session.weigh_in_time, &session.start_time)
+        format_us_time(&session.weigh_in_time),
+        format_us_time(&session.start_time)
     )
 }
 
@@ -348,12 +351,9 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
             </header>
             {session
                 .groups
-                .iter()
+                .into_iter()
                 .enumerate()
-                .map(|(index, group)| {
-                    let own_times = group_times(&session, group);
-                    view! { <GroupView session=id index group=group.clone() own_times data actions /> }
-                })
+                .map(|(index, group)| view! { <GroupView session=id index group data actions /> })
                 .collect_view()}
         </article>
     }
@@ -471,13 +471,12 @@ fn GroupView(
     session: u32,
     index: usize,
     group: BuiltGroup,
-    own_times: Option<String>,
     data: BoardData,
     actions: BoardActions,
 ) -> impl IntoView {
     let platform = StoredValue::new(group.platform.clone());
     let count = athlete_count(group.athletes.len());
-    let same_times = own_times.is_none();
+    let same_times = group.own_times.is_none();
     view! {
         <section class="builder-group">
             <h4 class="builder-group-head">
@@ -485,7 +484,7 @@ fn GroupView(
                 <span class="builder-group-label">{group.label.clone()}</span>
                 <span class="builder-group-count">{count}</span>
                 <span class="builder-group-time" hidden=same_times>
-                    {own_times}
+                    {group.own_times.clone()}
                 </span>
             </h4>
             <div class="builder-classes">

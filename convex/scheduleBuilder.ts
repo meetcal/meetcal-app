@@ -24,7 +24,7 @@ import {
   type PublishedBuild,
 } from './lib/scheduleBuilder';
 import { sport80Changes } from './lib/scheduleChanges';
-import { labelOf } from './lib/schedulePublishing';
+import { labelOf, ownTimesLabel } from './lib/schedulePublishing';
 import { meetPageUrl } from './scrapers/parse/entries';
 import { bytesToBase64 } from './lib/base64';
 import { EXPORT_CONTENT_TYPES, exportFileName, scheduleCsv, scheduleWorkbook } from './lib/scheduleExport';
@@ -176,7 +176,7 @@ export function withGroupLabels({ athletes, sessions, warnings }: BuiltSchedule)
   return {
     athletes,
     warnings,
-    sessions: sessions.map((session) => ({ ...session, groups: session.groups.map((group) => ({ ...group, label: labelOf(group) })) })),
+    sessions: sessions.map((session) => ({ ...session, groups: session.groups.map((group) => ({ ...group, label: labelOf(group), ownTimes: ownTimesLabel(session, group) })) })),
   };
 }
 
