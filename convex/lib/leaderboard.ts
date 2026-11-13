@@ -1,6 +1,6 @@
 import { plusYears } from './dates';
 import { genderNamedByWords, type Gender } from './gender';
-import { countedRowKey, isUnlinkedKey, NO_SOLE_LIFTERS, unlinkedNameKeys, type SoleLifters } from './lifterKeys';
+import { countedRowKey } from './lifterKeys';
 import { isPlausibleResult, LEADERBOARD_GUARD, totalAddsUp } from './plausible';
 import type { ApiLiftingResult } from './results';
 import { compareBytes } from './sort';
@@ -165,6 +165,7 @@ export type RankedFields = Pick<
   | 'total'
   | 'adaptive'
   | 'lifter_id'
+  | 'sole_lifter_id'
 >;
 
 export const consistentTotal = (row: RankedFields): boolean => totalAddsUp(row.total, row.snatch_best, row.cj_best, LEADERBOARD_GUARD.total);
@@ -270,7 +271,7 @@ export function addBests(best: Map<string, Candidate>, rows: Iterable<RankedFiel
     if (!keeps(filters, row)) continue;
     const value = metricValue(metric, row);
     if (value === null) continue;
-    const key = countedRowKey(row, NO_SOLE_LIFTERS);
+    const key = countedRowKey(row);
     const current = best.get(key);
     const next = { row, value };
     if (current === undefined || beats(next, current)) best.set(key, next);
@@ -279,23 +280,10 @@ export function addBests(best: Map<string, Candidate>, rows: Iterable<RankedFiel
 
 export function pruneBests(best: Map<string, Candidate>, limit: number): void {
   if (best.size <= limit) return;
-  const values = [...best].flatMap(([key, { value }]) => (isUnlinkedKey(key) ? [] : [value])).sort((a, b) => b - a);
+  const values = [...best.values()].map(({ value }) => value).sort((a, b) => b - a);
   const threshold = values[limit - 1];
   if (threshold === undefined) return;
   for (const [key, { value }] of best) if (value < threshold) best.delete(key);
-}
-
-export const unlinkedBestNames = (best: ReadonlyMap<string, Candidate>): string[] =>
-  unlinkedNameKeys([...best.entries()].filter(([key]) => isUnlinkedKey(key)).map(([, { row }]) => row));
-
-export function joinSoleLifters(best: ReadonlyMap<string, Candidate>, sole: SoleLifters): Map<string, Candidate> {
-  const joined = new Map<string, Candidate>();
-  for (const candidate of best.values()) {
-    const key = countedRowKey(candidate.row, sole);
-    const current = joined.get(key);
-    if (current === undefined || beats(candidate, current)) joined.set(key, candidate);
-  }
-  return joined;
 }
 
 export type CompactRow = [
@@ -316,10 +304,11 @@ export type CompactRow = [
   total: number,
   adaptive: boolean,
   lifterId: string,
+  soleLifterId: string,
 ];
 
 export function readCompactRow(row: unknown): CompactRow {
-  if (!Array.isArray(row) || row.length !== 17) throw new Error('leaderboard page row is not a compact row');
+  if (!Array.isArray(row) || row.length !== 18) throw new Error('leaderboard page row is not a compact row');
   const cells: unknown[] = row;
   const text = (index: number): string => {
     const cell = cells[index];
@@ -330,7 +319,7 @@ export function readCompactRow(row: unknown): CompactRow {
     const cell = cells[index];
     return typeof cell === 'number' ? cell : Number.NaN;
   };
-  return [text(0), text(1), text(2), text(3), text(4), number(5), number(6), number(7), number(8), number(9), number(10), number(11), number(12), number(13), number(14), cells[15] === true, text(16)];
+  return [text(0), text(1), text(2), text(3), text(4), number(5), number(6), number(7), number(8), number(9), number(10), number(11), number(12), number(13), number(14), cells[15] === true, text(16), text(17)];
 }
 
 export function toCompactRow(row: RankedFields): CompactRow {
@@ -352,6 +341,7 @@ export function toCompactRow(row: RankedFields): CompactRow {
     row.total,
     row.adaptive,
     row.lifter_id ?? '',
+    row.sole_lifter_id ?? '',
   ];
 }
 
@@ -361,9 +351,13 @@ export function parseCompactRows(json: string): RankedFields[] {
   return parsed.map((row: unknown) => fromCompactRow(readCompactRow(row)));
 }
 
-export function fromCompactRow([federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive, lifterId]: CompactRow): RankedFields {
+export function fromCompactRow([federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive, lifterId, soleLifterId]: CompactRow): RankedFields {
   const fields = { federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive };
-  return lifterId === '' ? fields : { ...fields, lifter_id: lifterId };
+  return {
+    ...fields,
+    ...(lifterId === '' ? {} : { lifter_id: lifterId }),
+    ...(soleLifterId === '' ? {} : { sole_lifter_id: soleLifterId }),
+  };
 }
 
 /** The athletes' bests, best first (ties: the earlier result, then the name), at most `limit`. */
@@ -373,10 +367,10 @@ export function rankBests(bests: Iterable<Candidate>, limit: number): Candidate[
     .slice(0, limit);
 }
 
-export function rank(rows: Iterable<RankedFields>, metric: LeaderboardMetric, filters: LeaderboardFilters, limit: number, sole: SoleLifters = NO_SOLE_LIFTERS): Candidate[] {
+export function rank(rows: Iterable<RankedFields>, metric: LeaderboardMetric, filters: LeaderboardFilters, limit: number): Candidate[] {
   const best = new Map<string, Candidate>();
   addBests(best, rows, metric, filters);
-  return rankBests(joinSoleLifters(best, sole).values(), limit);
+  return rankBests(best.values(), limit);
 }
 
 export type LeaderboardRow = {

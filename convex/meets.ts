@@ -32,8 +32,7 @@ import {
   readTimelinesView,
   type ZoneFormatters,
 } from './lib/meetData';
-import { apiRowOf, countedKey, rosterPersonKey, soleLiftersAmong } from './lib/lifterKeys';
-import { normalizeName } from './lib/names';
+import { apiRowOf, countedRowKey, rosterPersonKey } from './lib/lifterKeys';
 import { DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE, takeWithinBudget, tooLargeToRead, type DocumentBudget } from './lib/readBudget';
 import { compareBytes } from './lib/sort';
 import { matchingMeetNames, MAX_MATCHING_WORDS, parseMeetNames } from './lib/meetNameMatch';
@@ -192,10 +191,9 @@ async function meetAttendance(ctx: QueryCtx, meet: string, budget: DocumentBudge
   if (registrations === null) return null;
   const meetRow = oldestMeetNamed(meet, meetRows);
   const dates = results.map((r) => r.date).sort(compareBytes);
-  const sole = soleLiftersAmong(results.map(apiRowOf));
   return {
     meet,
-    lifters: new Set(results.map((r) => countedKey(r.lifterId, normalizeName(r.name), sole))).size,
+    lifters: new Set(results.map((r) => countedRowKey(apiRowOf(r)))).size,
     registrations: new Set(registrations.map(rosterPersonKey)).size,
     first_date: dates[0] ?? null,
     last_date: dates[dates.length - 1] ?? null,

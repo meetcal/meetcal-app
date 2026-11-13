@@ -2,7 +2,7 @@ import type { Doc } from '../_generated/dataModel';
 import { plausible } from './leaderboard';
 import { liftKey, rankOf, type RankedResult } from './clubStats';
 import { classNamedIn } from './weightClass';
-import { countedRowKey, NO_SOLE_LIFTERS } from './lifterKeys';
+import { countedRowKey } from './lifterKeys';
 import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import type { ApiLiftingResult } from './results';
@@ -63,7 +63,7 @@ function bestOfEachLifterByGroup(rows: readonly ApiLiftingResult[], classes: Rea
     const group = medalGroup(row, classes);
     if (group === null) continue;
     const lifters = groups.get(group) ?? new Map<string, ApiLiftingResult>();
-    const lifter = countedRowKey(row, NO_SOLE_LIFTERS);
+    const lifter = countedRowKey(row);
     const best = lifters.get(lifter);
     if (!best || row.total > best.total || (row.total === best.total && row.date > best.date)) lifters.set(lifter, row);
     groups.set(group, lifters);

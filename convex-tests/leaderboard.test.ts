@@ -22,7 +22,7 @@ import {
   rowSinclair,
   sinclair,
 } from '../convex/lib/leaderboard';
-import { LEADERBOARD_MAX_PAGES, LEADERBOARD_PAGE_SIZE, leaderboard, leaderboardPage, soleLifters, type LeaderboardAnswer } from '../convex/results';
+import { LEADERBOARD_MAX_PAGES, LEADERBOARD_PAGE_SIZE, leaderboard, leaderboardPage, type LeaderboardAnswer } from '../convex/results';
 import { fakeDb, handlerOf } from './fakeDb';
 import { itemAt } from '../convex/lib/json';
 
@@ -355,7 +355,7 @@ describe('results:leaderboard', () => {
 
   function actionCtx(seed: Record<string, Record<string, unknown>[]>) {
     const { db } = fakeDb(seed);
-    const handlers: Record<string, unknown> = { 'accessPass:passes': passes, 'results:leaderboardPage': leaderboardPage, 'results:soleLifters': soleLifters };
+    const handlers: Record<string, unknown> = { 'accessPass:passes': passes, 'results:leaderboardPage': leaderboardPage };
     const runQuery = jest.fn(async (ref: unknown, args: unknown) => handlerOf(handlers[getFunctionName(ref as never)])({ db }, args));
     return { ctx: { runQuery }, runQuery };
   }
@@ -411,21 +411,25 @@ describe('results:leaderboard', () => {
     expect(women.rows).toEqual([]);
   });
 
-  it('ranks two lifters of one name apart, and an unlinked result as the name’s only lifter', async () => {
-    const { ctx } = actionCtx({
-      access_passes: PASSES,
-      lifting_results: [
-        stored('John Smith', '2026-02-01', 130, 170, { nameKey: 'john smith', lifterId: 'L1' }),
-        stored('John Smith', '2026-03-01', 120, 160, { nameKey: 'john smith', lifterId: 'L2' }),
-        stored('Ada Lee', '2026-02-01', 90, 110, { nameKey: 'ada lee', lifterId: 'L3' }),
-        stored('Ada Lee', '2026-04-01', 95, 115, { nameKey: 'ada lee' }),
-      ],
-    });
-    const answer = await run(ctx, { pass: 'today' });
-    expect(answer.rows.map((r) => [r.name, r.lifter_id ?? null, r.value])).toEqual([
+  it('ranks two lifters of one name apart, and an unlinked result as the sole lifter it is marked with', async () => {
+    const results = (adaLee: Record<string, unknown>) => [
+      stored('John Smith', '2026-02-01', 130, 170, { nameKey: 'john smith', lifterId: 'L1' }),
+      stored('John Smith', '2026-03-01', 120, 160, { nameKey: 'john smith', lifterId: 'L2' }),
+      stored('Ada Lee', '2026-02-01', 90, 110, { nameKey: 'ada lee', lifterId: 'L3' }),
+      stored('Ada Lee', '2026-04-01', 95, 115, { nameKey: 'ada lee', ...adaLee }),
+    ];
+    const ranked = async (adaLee: Record<string, unknown>) =>
+      (await run(actionCtx({ access_passes: PASSES, lifting_results: results(adaLee) }).ctx, { pass: 'today' })).rows.map((r) => [r.name, r.lifter_id ?? null, r.value]);
+    expect(await ranked({ soleLifterId: 'L3' })).toEqual([
       ['John Smith', 'L1', 300],
       ['John Smith', 'L2', 280],
       ['Ada Lee', null, 210],
+    ]);
+    expect(await ranked({})).toEqual([
+      ['John Smith', 'L1', 300],
+      ['John Smith', 'L2', 280],
+      ['Ada Lee', null, 210],
+      ['Ada Lee', 'L3', 200],
     ]);
   });
 

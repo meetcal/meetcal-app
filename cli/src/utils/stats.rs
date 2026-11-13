@@ -570,6 +570,7 @@ pub(crate) mod tests {
             total: if sb > 0.0 && cb > 0.0 { sb + cb } else { 0.0 },
             adaptive: false,
             lifter_id: None,
+            sole_lifter_id: None,
         }
     }
 

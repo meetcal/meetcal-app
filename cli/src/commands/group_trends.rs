@@ -16,7 +16,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::histories;
 use crate::utils::backend::{queries, query_each};
 use crate::utils::format::us_date;
-use crate::utils::lifters::{counted_key, sole_lifters};
+use crate::utils::lifters::counted_key;
 use crate::utils::meet_names::{equivalent_meets, year_of};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
@@ -124,13 +124,9 @@ async fn run(title: &str, memberships: &[ClubMembership], with_medals: bool) -> 
 }
 
 fn rows_by_lifter(rows: &[LiftingResults]) -> HashMap<String, Vec<&LiftingResults>> {
-    let sole = sole_lifters(rows);
     let mut by_lifter: HashMap<String, Vec<&LiftingResults>> = HashMap::new();
     for row in rows {
-        by_lifter
-            .entry(counted_key(row, &sole))
-            .or_default()
-            .push(row);
+        by_lifter.entry(counted_key(row)).or_default().push(row);
     }
     by_lifter
 }
@@ -249,7 +245,6 @@ pub(crate) fn report(
     pr_totals: &HashSet<PrKey>,
     medals: Option<&BTreeMap<String, [usize; 3]>>,
 ) -> Report {
-    let sole = sole_lifters(group_rows);
     let mut years: BTreeMap<String, Vec<&LiftingResults>> = BTreeMap::new();
     for row in group_rows {
         years
@@ -279,7 +274,7 @@ pub(crate) fn report(
     }
     by_year_data.set_header(header);
     for (year, rows) in &years {
-        let athletes: HashSet<String> = rows.iter().map(|row| counted_key(row, &sole)).collect();
+        let athletes: HashSet<String> = rows.iter().map(|row| counted_key(row)).collect();
         let meets: HashSet<String> = rows.iter().map(|row| fold(&row.meet)).collect();
         let (mut taken, mut made) = (0, 0);
         for lift in [Lift::Snatch, Lift::CleanAndJerk] {
@@ -332,7 +327,7 @@ pub(crate) fn report(
 
     let mut best: HashMap<String, LifterEntry> = HashMap::new();
     for row in group_rows {
-        let entry = best.entry(counted_key(row, &sole)).or_insert((
+        let entry = best.entry(counted_key(row)).or_insert((
             None,
             None,
             0,
@@ -362,7 +357,7 @@ pub(crate) fn report(
     let mut best_qpoints: HashMap<String, f64> = HashMap::new();
     for row in group_rows {
         if let Some(score) = row_qpoints(row) {
-            let entry = best_qpoints.entry(counted_key(row, &sole)).or_insert(score);
+            let entry = best_qpoints.entry(counted_key(row)).or_insert(score);
             *entry = entry.max(score);
         }
     }
@@ -406,7 +401,7 @@ pub(crate) fn report(
                 row.age.clone(),
                 date,
                 points(sinclair),
-                points(best_qpoints.get(&counted_key(row, &sole)).copied()),
+                points(best_qpoints.get(&counted_key(row)).copied()),
                 results.to_string(),
                 first,
                 last,

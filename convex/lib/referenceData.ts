@@ -4,7 +4,7 @@ import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
 import { genderWordPattern } from './gender';
-import { countedRowKey, NO_SOLE_LIFTERS, soleLiftersAmong, type SoleLifters } from './lifterKeys';
+import { apiRowOf, countedRowKey, type CountedRow } from './lifterKeys';
 import { normalizeGender } from './normalize';
 import { isPlausibleResult } from './plausible';
 import { narrowedByAgeAndGender } from './referenceFilters';
@@ -111,12 +111,11 @@ export async function computeIntlRankings(ctx: QueryCtx) {
 
 export type RankedTotal = { name: string; total: number };
 
-export type LinkedTotal = RankedTotal & { lifter_id?: string };
+export type LinkedTotal = RankedTotal & CountedRow;
 
 export const rankedTotalOf = ({ name, total }: RankedTotal): RankedTotal => ({ name, total });
 
-const linkedRow = (row: { name: string; total: number; lifterId?: string }): LinkedTotal =>
-  row.lifterId === undefined ? { name: row.name, total: row.total } : { name: row.name, total: row.total, lifter_id: row.lifterId };
+const linkedRow = (row: { name: string; total: number; lifterId?: string; soleLifterId?: string }): LinkedTotal => ({ ...apiRowOf(row), total: row.total });
 
 /** Source rows per transaction for large historical ranking classes. */
 const NATIONAL_RANKING_PAGE_SIZE = 1000;
@@ -138,10 +137,10 @@ function rankable<T extends Parameters<typeof isPlausibleResult>[0]>(row: T): ro
   return typeof row.total === 'number' && row.total > 0 && isPlausibleResult(row);
 }
 
-export function bestTotalPerAthlete<T extends LinkedTotal>(rows: Iterable<T>, sole: SoleLifters = NO_SOLE_LIFTERS): T[] {
+export function bestTotalPerAthlete<T extends LinkedTotal>(rows: Iterable<T>): T[] {
   const best = new Map<string, T>();
   for (const row of rows) {
-    const key = countedRowKey(row, sole);
+    const key = countedRowKey(row);
     const existing = best.get(key);
     if (existing && existing.total >= row.total) continue;
     best.set(key, row);
@@ -176,7 +175,7 @@ export async function computeNationalRankingsForYear(
   for (const row of rows) {
     if (rankable(row)) ranked.push({ ...linkedRow(row), date: row.date });
   }
-  return bestTotalPerAthlete(ranked, soleLiftersAmong(ranked)).map(({ name, total, date }) => ({ name, total, date }));
+  return bestTotalPerAthlete(ranked).map(({ name, total, date }) => ({ name, total, date }));
 }
 
 type RankingGender = 'Men' | 'Women';

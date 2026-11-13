@@ -15,7 +15,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::utils::backend::{functions, premium_action};
 use crate::utils::filters::{category, parse_date, plus_years, unknown_federation, year_range};
 use crate::utils::format::{display_body_weight, us_date};
-use crate::utils::lifters::{counted_key, sole_lifters};
+use crate::utils::lifters::counted_key;
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
@@ -233,13 +233,12 @@ pub(crate) fn rank<'a>(
     filters: &Filters,
     limit: usize,
 ) -> Vec<(&'a LiftingResults, f64)> {
-    let sole = sole_lifters(rows);
     let mut best: HashMap<String, (&LiftingResults, f64)> = HashMap::new();
     for row in rows.iter().filter(|row| filters.keeps(row)) {
         let Some(value) = metric.value(row) else {
             continue;
         };
-        best.entry(counted_key(row, &sole))
+        best.entry(counted_key(row))
             .and_modify(|current| {
                 if value > current.1 || (value == current.1 && row.date < current.0.date) {
                     *current = (row, value);
@@ -528,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn ranks_two_lifters_of_one_name_apart_and_an_unlinked_row_as_the_names_only_lifter() {
+    fn ranks_two_lifters_of_one_name_apart_and_an_unlinked_row_as_the_sole_lifter_it_fits() {
         let mut rows = rows();
         rows[0].lifter_id = Some("L1".to_owned());
         rows[1].lifter_id = Some("L2".to_owned());
@@ -536,6 +535,10 @@ mod tests {
         let names: Vec<&str> = ranked.iter().map(|(r, _)| r.name.as_str()).collect();
         assert_eq!(names, ["Bo", "Ada", "Ada", "Cy"]);
         rows[1].lifter_id = None;
+        let ranked = rank(&rows, Metric::Total, &Filters::default(), 10);
+        let names: Vec<&str> = ranked.iter().map(|(r, _)| r.name.as_str()).collect();
+        assert_eq!(names, ["Bo", "Ada", "Ada", "Cy"]);
+        rows[1].sole_lifter_id = Some("L1".to_owned());
         let ranked = rank(&rows, Metric::Total, &Filters::default(), 10);
         let names: Vec<&str> = ranked.iter().map(|(r, _)| r.name.as_str()).collect();
         assert_eq!(names, ["Bo", "Ada", "Cy"]);

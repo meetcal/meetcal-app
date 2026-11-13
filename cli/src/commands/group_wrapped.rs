@@ -13,7 +13,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
 use crate::utils::athletes::NAMES_PER_READ;
 use crate::utils::backend::{queries, query_all_pages, query_each};
-use crate::utils::lifters::{counted_key, sole_lifters};
+use crate::utils::lifters::counted_key;
 use crate::utils::meet_names::equivalent_meets;
 use crate::utils::output::Report;
 use crate::utils::stats::{Lift, fold, number, percentage, valid_lift, valid_total};
@@ -244,10 +244,9 @@ pub(crate) async fn run_compare(group: Group<'_>, current_year: i32) -> Result<(
 }
 
 pub(crate) fn calculate_group_stats(results: &[LiftingResults]) -> GroupWrappedStats {
-    let sole = sole_lifters(results);
     let athlete_count = results
         .iter()
-        .map(|result| counted_key(result, &sole))
+        .map(counted_key)
         .collect::<HashSet<_>>()
         .len();
 
@@ -588,6 +587,7 @@ mod tests {
             total,
             adaptive: false,
             lifter_id: None,
+            sole_lifter_id: None,
         }
     }
 
@@ -711,18 +711,27 @@ mod tests {
 
     #[test]
     fn group_stats_count_two_lifters_of_one_name_as_two() {
-        let lifted = |date: &str, lifter: Option<&str>| LiftingResults {
+        let lifted = |date: &str, lifter: Option<&str>, sole: Option<&str>| LiftingResults {
             lifter_id: lifter.map(str::to_owned),
+            sole_lifter_id: sole.map(str::to_owned),
             ..result("Jane Doe", "Meet One", date, 170.0)
         };
         let results = vec![
-            lifted("2026-01-01", Some("L1")),
-            lifted("2026-02-01", Some("L2")),
-            lifted("2026-03-01", None),
+            lifted("2026-01-01", Some("L1"), None),
+            lifted("2026-02-01", Some("L2"), None),
+            lifted("2026-03-01", None, None),
         ];
         assert_eq!(calculate_group_stats(&results).athlete_count, 3);
-        let one = vec![lifted("2026-01-01", Some("L1")), lifted("2026-03-01", None)];
-        assert_eq!(calculate_group_stats(&one).athlete_count, 1);
+        let joined = vec![
+            lifted("2026-01-01", Some("L1"), None),
+            lifted("2026-03-01", None, Some("L1")),
+        ];
+        assert_eq!(calculate_group_stats(&joined).athlete_count, 1);
+        let ruled_out = vec![
+            lifted("2026-01-01", Some("L1"), None),
+            lifted("2026-03-01", None, None),
+        ];
+        assert_eq!(calculate_group_stats(&ruled_out).athlete_count, 2);
     }
 
     #[test]
@@ -783,6 +792,7 @@ mod scoring_tests {
             total,
             adaptive: false,
             lifter_id: None,
+            sole_lifter_id: None,
         }
     }
 
