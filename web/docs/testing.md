@@ -106,8 +106,13 @@ writes both apps, the site and the Schedule Builder, into `dist/`.
 
 Playwright serves `dist/` with `serve` and `tests/serve.json`: `/schedule-builder`
 gets the builder's own document (`seo/schedule-builder.html`, as Vercel's rewrite
-serves it), and every other path without a dot gets `index.html`, the site's
-app. A config test keeps the builder's rewrite equal to `vercel.json`'s.
+serves it), and every other path without a dot, at any depth, gets `index.html`,
+the site's app; a path with a dot is served as the file it names, or `404.html`.
+serve-handler turns the first `*` in a rewrite source into `(.*)`, so the
+catch-all is `/:path([^.]+)`, never `[^.]*`, and never `**`, whose match would
+rewrite the builder's document to `index.html` again. A config test runs
+serve-handler on a stand-in `dist/` to check each case, and keeps the builder's
+rewrite equal to `vercel.json`'s.
 
 Size budgets live in `tests/budgets.json`. `npm run test:config` holds each
 app's Wasm to its own raw and brotli-11 budget (`wasmRawBytes` and
