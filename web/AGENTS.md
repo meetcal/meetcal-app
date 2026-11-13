@@ -36,7 +36,7 @@ Run from this folder.
 
 | Task | Command |
 |---|---|
-| Dev server (http://localhost:3000) | `mise run run` (the site; `mise run run-schedule-builder` serves the Schedule Builder on http://localhost:3001/schedule-builder) |
+| Dev server (http://localhost:3000) | `mise run run` (the site alone, without the Schedule Builder; `mise run run-schedule-builder` serves the Schedule Builder on http://localhost:3001/schedule-builder) |
 | Format (Leptos `view!` included) | `mise run fmt` |
 | Lint | `mise run lint` (`cargo fmt --check` + `clippy -D warnings`) |
 | Rust tests | `cargo test --locked` |

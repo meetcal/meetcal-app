@@ -13,7 +13,7 @@ node = "24"
 "npm:prettier" = "3.10.0"
 
 [tasks.run]
-run = "env -u NO_COLOR trunk serve --port 3000 --open"
+run = "env -u NO_COLOR MEETCAL_WEB_SITE_ONLY=1 trunk serve --port 3000 --open"
 [tasks.run-schedule-builder]
 run = "env -u NO_COLOR trunk serve schedule-builder.html --port 3001 --dist dist-schedule-builder --open"
 [tasks.lint]

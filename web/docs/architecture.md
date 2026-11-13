@@ -29,7 +29,10 @@ library (`src/lib.rs`): the header, footer, route metadata, auth, `utils/api` an
   site's `dist/`. The two pages differ only in their `data-bin` (a config test compares them).
   Every `trunk build --release --locked` (CI, `scripts/vercel-build.sh`, `mise run build`) builds
   both.
-- `mise run run` serves the site; `mise run run-schedule-builder` serves the builder on port 3001.
+- `mise run run` serves the site alone: it sets `MEETCAL_WEB_SITE_ONLY=1`, so the hook skips the
+  builder's build on every rebuild, and `trunk serve` answers `/schedule-builder` with the site's
+  `index.html`, which has no builder route. `mise run run-schedule-builder` serves the builder on
+  port 3001. A config test runs the hook with and without the variable.
 
 ## Data: Convex over HTTP
 

@@ -183,7 +183,7 @@ while IFS='|' read -r stem path title description robots; do
   render_page "${stem}" "${path}" "${title}" "${description}" "${robots}" "${output}"
 done < "${shells_dir}/routes.txt"
 
-if [[ "${app}" == "meetcal-web" ]]; then
+if [[ "${app}" == "meetcal-web" && "${MEETCAL_WEB_SITE_ONLY:-}" != "1" ]]; then
   builder_dist="$(mktemp -d)"
   trap 'rm -f "${template}"; rm -rf "${builder_dist}"' EXIT
   profile_flags=()
