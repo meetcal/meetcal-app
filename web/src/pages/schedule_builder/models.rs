@@ -517,7 +517,8 @@ pub(crate) fn move_targets(
 pub(crate) fn added_note(count: usize) -> String {
     match count {
         0 => "No new lifters.".to_owned(),
-        1 => "1 new lifter isn’t placed, so they stay off the start list when you publish.".to_owned(),
+        1 => "1 new lifter isn’t placed, so they stay off the start list when you publish."
+            .to_owned(),
         count => format!(
             "{count} new lifters aren’t placed, so they stay off the start list when you publish."
         ),
@@ -969,7 +970,10 @@ mod tests {
             added_note(3),
             "3 new lifters aren’t placed, so they stay off the start list when you publish."
         );
-        assert_eq!(withdrawn_note(0), "Every published lifter is still on Sport80.");
+        assert_eq!(
+            withdrawn_note(0),
+            "Every published lifter is still on Sport80."
+        );
         assert_eq!(withdrawn_note(2), "");
         assert_eq!(
             rebuild_warning(false, 1),
