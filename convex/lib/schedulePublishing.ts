@@ -1,8 +1,7 @@
 import { isoDateOf } from './dates';
 import { escapeHtml } from './email';
 import { clockLabel, meetDays } from './scheduleBuilderOptions';
-import type { BuiltAthlete, BuiltGroup, BuiltSchedule, PublishedPart, RowTimes } from './scheduleBuilder';
-import { bareWeightClass } from './weightClass';
+import type { BuiltGroup, BuiltSchedule, LockedPlace, PublishedPart, RowTimes } from './scheduleBuilder';
 
 export const MAX_PUBLISHES_PER_DAY = 10;
 export const REVIEW_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -39,17 +38,9 @@ export function rowsOf(session: RowTimes, group: ShownGroup): PublishedPart[] {
   return group.publishedRows && group.publishedRows.length > 0 ? group.publishedRows : [{ ...timesOf(session, group), weightClass: labelOf(group) }];
 }
 
-const classesNamedIn = (label: string) => label.split(/[^0-9A-Za-z+.]+/).filter((token) => token !== '').map(bareWeightClass);
-
-export type RowWithAthletes = { row: PublishedPart; athletes: BuiltAthlete[] };
-
-export function athletesByRow(session: RowTimes, group: ShownGroup & Pick<BuiltGroup, 'athletes'>): RowWithAthletes[] {
-  const parts = rowsOf(session, group).map((row) => ({ row, classes: classesNamedIn(row.weightClass), athletes: [] as BuiltAthlete[] }));
-  for (const athlete of group.athletes) {
-    const weightClass = bareWeightClass(athlete.weightClass);
-    (parts.find((part) => part.classes.includes(weightClass)) ?? parts[0])?.athletes.push(athlete);
-  }
-  return parts.map(({ row, athletes }) => ({ row, athletes }));
+export function lockedEditProblem(locked: readonly LockedPlace[]): string | null {
+  const [first] = locked;
+  return first ? `Session ${first.session} · ${first.platform} has several published rows, so it can't be changed here. Use Rebuild From Scratch to regroup it.` : null;
 }
 
 export function writtenPlatform(group: Pick<BuiltGroup, 'platform' | 'storedPlatform'>): string {
@@ -108,15 +99,15 @@ export function ownTimesLabel(session: RowTimes, group: ShownGroup): string | nu
   return sameTimes(times, session) ? null : timesLine(times);
 }
 
-function rowLine(session: RowTimes, platform: string, { row, athletes }: RowWithAthletes): string {
+function rowLine(session: RowTimes, group: BuiltGroup, row: PublishedPart): string {
   const own = sameTimes(row, session) ? '' : ` (${escapeHtml(timesLine(row))})`;
-  return `<li>${escapeHtml(platform)}${own}: ${escapeHtml(row.weightClass)} (${athletes.length})</li>`;
+  return `<li>${escapeHtml(group.platform)}${own}: ${escapeHtml(row.weightClass)} (${group.athletes.length})</li>`;
 }
 
 function sessionLines(schedule: BuiltSchedule): string {
   return schedule.sessions
     .map((session) => {
-      const rows = session.groups.flatMap((group) => athletesByRow(session, group).map((part) => rowLine(session, group.platform, part))).join('');
+      const rows = session.groups.flatMap((group) => rowsOf(session, group).map((row) => rowLine(session, group, row))).join('');
       return `<li>Session ${session.number}, ${escapeHtml(session.date)} ${escapeHtml(session.startTime.slice(0, 5))}<ul>${rows}</ul></li>`;
     })
     .join('');

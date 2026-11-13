@@ -73,6 +73,7 @@ import type * as lib_scheduleExport from "../lib/scheduleExport.js";
 import type * as lib_schedulePublishing from "../lib/schedulePublishing.js";
 import type * as lib_shrinkGuard from "../lib/shrinkGuard.js";
 import type * as lib_sort from "../lib/sort.js";
+import type * as lib_startList from "../lib/startList.js";
 import type * as lib_tokens from "../lib/tokens.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as lib_viewKeys from "../lib/viewKeys.js";
@@ -233,6 +234,7 @@ declare const fullApi: ApiFromModules<{
   "lib/schedulePublishing": typeof lib_schedulePublishing;
   "lib/shrinkGuard": typeof lib_shrinkGuard;
   "lib/sort": typeof lib_sort;
+  "lib/startList": typeof lib_startList;
   "lib/tokens": typeof lib_tokens;
   "lib/validation": typeof lib_validation;
   "lib/viewKeys": typeof lib_viewKeys;

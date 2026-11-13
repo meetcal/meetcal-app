@@ -7,7 +7,7 @@ export type AddedEntrant = { athlete: BuiltAthlete; suggestion: BoardPlace | nul
 
 export type WithdrawnAthlete = { athlete: BuiltAthlete; place: BoardPlace; occurrence: number };
 
-export type Sport80Changes = { checkedAt: number | null; added: AddedEntrant[]; withdrawn: WithdrawnAthlete[] };
+export type Sport80Changes = { checkedAt: number | null; added: AddedEntrant[]; withdrawn: WithdrawnAthlete[]; lockedWithdrawn: number };
 
 type Candidate = { session: BuiltSession; group: BuiltGroup };
 
@@ -33,7 +33,7 @@ const fewerAthletes = (a: Candidate, b: Candidate) => a.group.athletes.length - 
 export function suggestedPlace(entrant: BuiltAthlete, sessions: readonly BuiltSession[], separateAgeGroups: boolean): BoardPlace | null {
   const pool = ageGroupOf(entrant.age, separateAgeGroups);
   const samePool = (candidate: Candidate) => !separateAgeGroups || candidate.group.ageGroup === pool;
-  const sameGender = sessions.flatMap((session) => session.groups.filter((group) => group.gender === entrant.gender).map((group) => ({ session, group })));
+  const sameGender = sessions.flatMap((session) => session.groups.filter((group) => group.gender === entrant.gender && !group.locked).map((group) => ({ session, group })));
   const sameClass = sameGender.filter((candidate) => candidate.group.weightClasses.includes(entrant.weightClass) && samePool(candidate));
   const chosen =
     sameClass.length > 0
@@ -61,5 +61,6 @@ export function sport80Changes(build: PublishedBuild, checkedAt: number | null, 
     checkedAt,
     added: build.unplaced.map((athlete) => ({ athlete, suggestion: suggestedPlace(athlete, build.sessions, separateAgeGroups) })),
     withdrawn: build.sessions.flatMap((session) => session.groups.flatMap((group) => withdrawnOf(session, group))),
+    lockedWithdrawn: build.sessions.flatMap((session) => session.groups.filter((group) => group.locked).flatMap((group) => group.athletes.filter((athlete) => athlete.withdrawn))).length,
   };
 }

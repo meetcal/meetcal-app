@@ -338,9 +338,12 @@ Convex's answer.
   Move To…, both sending `addAthlete`, plus how many new lifters stay off the start list. A
   platform whose own times differ from its session's shows the lines `preview` answers for it
   (`ownTimes`: one line, or one per published row when its rows start at different times) in its
-  heading, on the board and in print. While a publish is on its way the board and the Sport80
-  panel are inert, and Undo and both Rebuild From Scratch buttons are disabled, so no edit or
-  rebuild is made that its answer would discard. Lifters no
+  heading, on the board and in print. A platform Convex answers as `locked` (several published
+  rows in one session) offers no Move To, class chips or Remove, a `locked` session no Swap With…
+  or Edit Time, and neither is a Move To, Add To or Swap target; the Sport80 note says to use
+  Rebuild From Scratch for withdrawn lifters there (`lockedWithdrawn`). While a publish is on its
+  way the board and the Sport80 panel are inert, and Undo and both Rebuild From Scratch buttons are
+  disabled, so no edit or rebuild is made that its answer would discard. Lifters no
   longer on Sport80 are marked on the board, each with Remove (`removeAthlete`), and the section
   says how many there are.
 - A function error's `error` is shown as the sentence the server wrote, and a 401 asks the user to

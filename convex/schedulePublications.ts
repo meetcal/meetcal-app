@@ -11,6 +11,7 @@ import { buildFromPublished, unlistedRemovals, type BuiltSchedule, type RosterCh
 import { baseVersionValidator, builderEditValidator, builderOptionsValidator, scheduleBaseValidator } from './lib/scheduleBuilderOptions';
 import { meetByName } from './lib/meetData';
 import {
+  lockedEditProblem,
   MAX_PUBLISHES_PER_DAY,
   PENDING_PUBLICATION_DAYS,
   publishedSchedule,
@@ -108,8 +109,9 @@ async function reviewOf(ctx: QueryCtx, publication: Doc<'schedule_publications'>
 
 function approvalProblem(built: BaseBuild, publication: Pick<Doc<'schedule_publications'>, 'baseVersion'>, version: string | null): string | null {
   if ((publication.baseVersion ?? null) !== version) return STALE_APPROVAL;
-  const stillListed = built.base === 'published' ? unlistedRemovals(built.schedule) : [];
-  return stillListed.length > 0 ? stillListedProblem(stillListed) : null;
+  if (built.base !== 'published') return null;
+  const stillListed = unlistedRemovals(built.schedule);
+  return lockedEditProblem(built.schedule.locked) ?? (stillListed.length > 0 ? stillListedProblem(stillListed) : null);
 }
 
 async function writeBuild(ctx: MutationCtx, meet: string, built: BaseBuild, options: Doc<'schedule_publications'>['options']): Promise<number> {
@@ -139,7 +141,7 @@ export const publish = mutation({
     if ((baseVersion ?? null) !== opened) throw apiError(409, STALE_BASE);
     const built = await buildOn(ctx, row, base ?? 'entries', options, edits);
     const schedule = built.schedule;
-    const problem = publishProblem(schedule, row);
+    const problem = (built.base === 'published' ? lockedEditProblem(built.schedule.locked) : null) ?? publishProblem(schedule, row);
     if (problem) throw apiError(400, problem);
     const live = await isOrganizer(ctx, row.name, userId);
     const stillListed = !live && built.base === 'published' ? unlistedRemovals(built.schedule) : [];

@@ -8,6 +8,7 @@ import { buildFromPublished, buildSchedule, sport80Diff, type PublishedBase } fr
 import { suggestedPlace } from '../convex/lib/scheduleChanges';
 import { clockLabel, defaultBuilderOptions, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
 import { sessionRows, startListRows } from '../convex/lib/scheduleExport';
+import { joinRoster } from '../convex/lib/meetData';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 const NOW = Date.UTC(2027, 0, 10, 12);
@@ -155,7 +156,7 @@ describe("recording Sport80's list", () => {
 describe('the changes on Sport80', () => {
   it('lists nothing before Sport80 was checked, rather than everyone as withdrawn', async () => {
     const store = server();
-    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: null, added: [], withdrawn: [] });
+    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: null, added: [], withdrawn: [], lockedWithdrawn: 0 });
   });
 
   it('answers the new entrants with a session each and the withdrawn with where they lift, never an adaptive athlete', async () => {
@@ -205,7 +206,7 @@ describe('building on the published schedule', () => {
       [4, [['W 63 A', ['Ida Ito', 'Jo Kim']]]],
     ]);
     expect(answer.sessions.map((s) => s.id)).toEqual([1, 2, 3, 4]);
-    expect(answer.changes).toEqual({ checkedAt: null, added: [], withdrawn: [] });
+    expect(answer.changes).toEqual({ checkedAt: null, added: [], withdrawn: [], lockedWithdrawn: 0 });
   });
 
   it('marks the withdrawn on the board, places a new entrant and removes a withdrawn one', async () => {
@@ -456,7 +457,7 @@ describe('lifters without a member id', () => {
       session_schedule: [scheduleRow(1, '09:00:00', 'W 58'), scheduleRow(2, '11:00:00', 'M 89')],
     });
     await store.record([listed(ann), listed({ ...bea, memberId: 'noid:bea-cho' }), listed(cal)]);
-    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: NOW, added: [], withdrawn: [] });
+    expect(await store.as(null)(changes, { meet: MEET })).toEqual({ checkedAt: NOW, added: [], withdrawn: [], lockedWithdrawn: 0 });
   });
 });
 
@@ -821,53 +822,145 @@ describe('overlaps between platforms at their own times', () => {
   });
 });
 
-describe('a platform with several published rows at their own times', () => {
+describe('a platform with several published rows', () => {
   const kim: Lifter = { memberId: '111', name: 'Kim Ng', gender: 'Women', weightClass: '59', entryTotal: 90 };
   const lea: Lifter = { memberId: '112', name: 'Lea Orr', gender: 'Women', weightClass: '64', entryTotal: 95 };
-  const mae: Lifter = { memberId: '113', name: 'Mae Park', gender: 'Women', weightClass: '64', entryTotal: 100 };
-  const flights = (first: string, second: string): PublishedBase => ({
-    rows: [handRow(1, 'Red', '09:00:00', '07:00:00', first), handRow(1, 'Red', '10:00:00', '08:00:00', second)],
-    roster: [
-      { ...rostered(kim, 1), _id: 'kim' },
-      { ...rostered(lea, 1), _id: 'lea' },
-      { ...rostered(mae, 1), _id: 'mae' },
-    ],
-    sport80: null,
-  });
-  const built = (published: PublishedBase) => buildFromPublished(published, sport80Diff(published), { ...defaultBuilderOptions(meetRow), platforms: ['Red'] });
-  const startTimes = (rows: ReturnType<typeof startListRows>) => rows.map((row) => [row[6], row[4], row[5]]);
+  const nia: Lifter = { memberId: '113', name: 'Nia Ruiz', gender: 'Women', weightClass: '64', entryTotal: 99 };
+  const flights = () => [
+    handRow(1, 'Red', '09:00:00', '07:00:00', 'W 59'),
+    handRow(1, 'Red', '10:00:00', '08:00:00', 'W 64'),
+    handRow(1, 'Blue', '09:00:00', '07:00:00', 'M 89'),
+    handRow(2, 'Red', '12:00:00', '10:00:00', 'W 63'),
+    handRow(2, 'Blue', '12:00:00', '10:00:00', 'M 96'),
+  ];
+  const lifters = () => [rostered(kim, 1), rostered(lea, 1), rostered(cal, 1, { sessionPlatform: 'Blue' }), rostered(gia, 2), rostered(dan, 2, { sessionPlatform: 'Blue' })];
+  const locked = () => server({ ...organizer, athletes: lifters(), session_schedule: flights() });
+  const LOCKED = "Session 1 · Red has several published rows, so it can't be changed here. Use Rebuild From Scratch to regroup it.";
+  const touching: Args[] = [
+    { kind: 'moveAthlete', athlete: keyOf(kim), fromSession: 1, fromPlatform: 'Red', occurrence: 0, toSession: 2, toPlatform: 'Red' },
+    { kind: 'moveAthlete', athlete: keyOf(kim), toSession: 2, toPlatform: 'Red' },
+    { kind: 'moveAthlete', athlete: keyOf(gia), fromSession: 2, fromPlatform: 'Red', occurrence: 0, toSession: 1, toPlatform: 'Red' },
+    { kind: 'moveClass', fromSession: 1, fromPlatform: 'Red', weightClass: '59', toSession: 2, toPlatform: 'Red' },
+    { kind: 'moveClass', fromSession: 2, fromPlatform: 'Red', weightClass: '63', toSession: 1, toPlatform: 'Red' },
+    { kind: 'addAthlete', athlete: keyOf(nia), toSession: 1, toPlatform: 'Red' },
+    { kind: 'removeAthlete', athlete: keyOf(lea), fromSession: 1, fromPlatform: 'Red', occurrence: 0 },
+    { kind: 'swapSessions', session: 1, withSession: 2 },
+    { kind: 'swapSessions', session: 2, withSession: 1 },
+    { kind: 'setSessionTime', session: 1, date: '2027-03-06', startTime: '08:00' },
+  ];
+  const rowsOfSession1Red = (store: ReturnType<typeof server>) => sortedRows(store).filter((row) => row.sessionId === 1 && row.platform === 'Red');
+  const lockedWarnings = (answer: Board) => answer.warnings.filter((w) => w.code === 'lockedEdit');
 
-  it('shows each row at its own time on the board, in the email and in both export sheets', async () => {
-    const schedule = built(flights('W 59', 'W 64'));
-    expect(sessionRows(schedule)).toEqual([
-      [1, 'Red', '2027-03-06', '7:00 AM', '9:00 AM', 'W 59', 1],
+  it('skips and counts every edit kind that would touch it, and the board marks it and its session', async () => {
+    const store = locked();
+    await store.record([listed(kim), listed(lea), listed(cal), listed(gia), listed(dan), listed(nia)]);
+    const untouched = await board(store);
+    const red = untouched.sessions[0]?.groups.find((g) => g.platform === 'Red') as Board['sessions'][number]['groups'][number] & { locked?: boolean };
+    expect(red.locked).toBe(true);
+    expect((untouched.sessions[0] as { locked?: boolean }).locked).toBe(true);
+    expect((untouched.sessions[1] as { locked?: boolean }).locked).toBeUndefined();
+    for (const edit of touching) {
+      const answer = await board(store, [edit]);
+      expect([edit.kind, labels(answer)]).toEqual([edit.kind, labels(untouched)]);
+      expect(lockedWarnings(answer).map((w) => (w as { message?: string }).message)).toEqual(['1 edit would change a platform with several published rows and was left out. Use Rebuild From Scratch to regroup it.']);
+    }
+    expect(lockedWarnings(await board(store, touching)).map((w) => (w as { message?: string }).message)).toEqual([
+      `${touching.length} edits would change a platform with several published rows and were left out. Use Rebuild From Scratch to regroup it.`,
+    ]);
+    const blue = await board(store, [{ kind: 'moveAthlete', athlete: keyOf(cal), fromSession: 1, fromPlatform: 'Blue', occurrence: 0, toSession: 2, toPlatform: 'Blue' }]);
+    expect(lockedWarnings(blue)).toEqual([]);
+    expect(blue.sessions[1]?.groups.find((g) => g.platform === 'Blue')?.athletes.map((a) => a.name)).toEqual(['Cal Diaz', 'Dan Fox']);
+  });
+
+  it('refuses a publish that tries one, and an approval of one', async () => {
+    for (const edit of touching) {
+      const store = locked();
+      await store.record([listed(kim), listed(lea), listed(cal), listed(gia), listed(dan), listed(nia)]);
+      expect(await failure(publishAs(store, 'user_a', 'published', null, [edit]))).toEqual({ status: 400, error: LOCKED });
+      expect(sortedRows(store)).toEqual(inRowOrder(flights()));
+    }
+    const store = locked();
+    await publishAs(store, 'user_b', 'published', null);
+    const waiting = pendingId(store);
+    await (store.ctx.db as { patch: (id: string, value: Row) => Promise<void> }).patch(waiting, { edits: [touching[0]] });
+    expect(await failure(store.as(null)(approve, { publicationId: waiting }))).toEqual({ status: 409, error: LOCKED });
+    expect(sortedRows(store)).toEqual(inRowOrder(flights()));
+  });
+
+  it('is written back exactly when other sessions are edited', async () => {
+    const store = locked();
+    await publishAs(store, 'user_a', 'published', null, [{ kind: 'moveAthlete', athlete: keyOf(cal), fromSession: 1, fromPlatform: 'Blue', occurrence: 0, toSession: 2, toPlatform: 'Blue' }]);
+    expect(rowsOfSession1Red(store)).toEqual(inRowOrder(flights().slice(0, 2)));
+    expect(store.rows('athletes').filter((a) => a.sessionNumber === 1 && a.sessionPlatform === 'Red').map((a) => a.name)).toEqual(['Kim Ng', 'Lea Orr']);
+    expect(store.rows('athletes').find((a) => a.name === 'Cal Diaz')).toMatchObject({ sessionNumber: 2, sessionPlatform: 'Blue' });
+  });
+
+  it('is never suggested for a new lifter, and its withdrawn lifters are counted for Rebuild From Scratch', async () => {
+    const store = locked();
+    await store.record([listed(kim), listed(cal), listed(gia), listed(dan), listed(nia)]);
+    const answer = await board(store);
+    expect(answer.changes.added.map((a) => [a.athlete.name, a.suggestion])).toEqual([['Nia Ruiz', { session: 2, number: 2, platform: 'Red' }]]);
+    expect(answer.changes.withdrawn.map((w) => w.athlete.name)).toEqual(['Lea Orr']);
+    expect((answer.changes as { lockedWithdrawn?: number }).lockedWithdrawn).toBe(1);
+  });
+
+  it("lists each lifter at every row of the platform, as MeetCal's start list does", async () => {
+    const store = locked();
+    const shown = await board(store);
+    expect(shown.sessions[0]?.groups.map((g) => [g.platform, g.label, g.ownTimes])).toEqual([
+      ['Red', 'W 59 / W 64', 'W 59 · Weigh-In 7:00 AM · Start 9:00 AM\nW 64 · Weigh-In 8:00 AM · Start 10:00 AM'],
+      ['Blue', 'M 89', null],
+    ]);
+    const published = { rows: flights(), roster: lifters().map((athlete, i) => ({ ...athlete, _id: String(i) })), sport80: null };
+    const schedule = buildFromPublished(published, sport80Diff(published), { ...defaultBuilderOptions(meetRow), platforms: ['Red', 'Blue'] });
+    const exported = startListRows(schedule)
+      .filter((row) => row[0] === 1 && row[1] === 'Red')
+      .map((row) => [row[6], row[2], row[4]]);
+    const apiRows = flights().map((row) => ({ meet: MEET, date: row.date, platform: row.platform, session_id: row.sessionId, start_time: row.startTime, weigh_in_time: row.weighInTime, weight_class: row.weightClass }));
+    const roster = lifters().map((athlete, i) => ({ ...athlete, _id: String(i), _creationTime: 1 }));
+    const joined = joinRoster(roster as never, apiRows)
+      .filter((item) => item.session?.session_number === 1 && item.session.session_platform === 'Red')
+      .map((item) => [item.name, item.session?.date, clockLabel(item.session?.start_time ?? '')]);
+    expect(exported).toEqual(joined);
+    expect(exported).toEqual([
+      ['Kim Ng', '2027-03-06', '9:00 AM'],
+      ['Kim Ng', '2027-03-06', '10:00 AM'],
+      ['Lea Orr', '2027-03-06', '9:00 AM'],
+      ['Lea Orr', '2027-03-06', '10:00 AM'],
+    ]);
+    expect(sessionRows(schedule).filter((row) => row[0] === 1 && row[1] === 'Red')).toEqual([
+      [1, 'Red', '2027-03-06', '7:00 AM', '9:00 AM', 'W 59', 2],
       [1, 'Red', '2027-03-06', '8:00 AM', '10:00 AM', 'W 64', 2],
     ]);
-    expect(startTimes(startListRows(schedule))).toEqual([
-      ['Kim Ng', '9:00 AM', 'W 59'],
-      ['Lea Orr', '10:00 AM', 'W 64'],
-      ['Mae Park', '10:00 AM', 'W 64'],
-    ]);
     const { html } = renderPublicationEmail({ meet: MEET, status: 'live', userId: 'u', schedule, changes: { added: [], removed: [] }, lastLiveAt: null, hasSchedule: true });
-    expect(html).toContain('<li>Red: W 59 (1)</li><li>Red (Weigh-In 8:00 AM · Start 10:00 AM): W 64 (2)</li>');
-
-    const store = server({ athletes: [rostered(kim, 1), rostered(lea, 1)], session_schedule: [...flights('W 59', 'W 64').rows] });
-    const shown = await board(store);
-    expect(shown.sessions[0]?.groups.map((g) => [g.label, g.ownTimes])).toEqual([['W 59 / W 64', 'W 59 · Weigh-In 7:00 AM · Start 9:00 AM\nW 64 · Weigh-In 8:00 AM · Start 10:00 AM']]);
-    const file = (await store.as(null)(exportFile, { meet: MEET, options: await publishedOptions(store), edits: [], base: 'published', format: 'csv' })) as { content: string };
-    expect(file.content.split('\r\n').find((line) => line.includes('Lea Orr'))?.split(',').slice(3, 6)).toEqual(['8:00 AM', '10:00 AM', 'W 64']);
+    expect(html).toContain('<li>Red: W 59 (2)</li><li>Red (Weigh-In 8:00 AM · Start 10:00 AM): W 64 (2)</li>');
   });
+});
 
-  it("puts a lifter whose class no row's label names in the platform's first row", () => {
-    const schedule = built(flights('Flight A', 'Flight B'));
-    expect(startTimes(startListRows(schedule))).toEqual([
-      ['Kim Ng', '9:00 AM', 'Flight A'],
-      ['Lea Orr', '9:00 AM', 'Flight A'],
-      ['Mae Park', '9:00 AM', 'Flight A'],
-    ]);
-    expect(sessionRows(schedule).map((row) => [row[4], row[5], row[6]])).toEqual([
-      ['9:00 AM', 'Flight A', 3],
-      ['10:00 AM', 'Flight B', 0],
+describe('overlaps with every published row', () => {
+  it("warns when a retimed session meets a later row of another session's platform", async () => {
+    const store = server({
+      athletes: [rostered(ann, 1), rostered(bea, 1), rostered(cal, 2), rostered(gia, 3)],
+      session_schedule: [
+        handRow(1, 'Red', '09:00:00', '07:00:00', 'W 58'),
+        handRow(1, 'Red', '11:00:00', '09:00:00', 'W 58 B'),
+        handRow(2, 'Red', '14:00:00', '12:00:00', 'M 89'),
+        handRow(3, 'Red', '16:00:00', '14:00:00', 'W 63'),
+      ],
+    });
+    expect((await publishedOptions(store)).sessionMinutes).toBe(120);
+    const retimed = (await board(store, [{ kind: 'setSessionTime', session: 3, date: '2027-03-06', startTime: '12:00' }])) as unknown as TimedBoard;
+    expect(retimed.warnings.filter((w) => w.code === 'overlap').map((w) => w.message)).toEqual(['Sessions 1 and 3 use the Red platform at the same time.']);
+  });
+});
+
+describe('a split class whose part lost a lifter', () => {
+  it('keeps the letters of the parts no edit touched when nobody moved between them', async () => {
+    const store = server(organizer);
+    await publishAs(store, 'user_a', 'published', null, [{ kind: 'removeAthlete', athlete: keyOf(jo), fromSession: 4, fromPlatform: 'Red', occurrence: 0 }]);
+    expect(store.rows('session_schedule').filter((row) => row.sessionId === 3 || row.sessionId === 4).map((row) => [row.sessionId, row.weightClass])).toEqual([
+      [3, 'W 63 B'],
+      [4, 'W 63'],
     ]);
   });
 });

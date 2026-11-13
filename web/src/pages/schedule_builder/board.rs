@@ -127,6 +127,7 @@ pub(crate) fn Menu(
     #[prop(into)] title: String,
     #[prop(default = "builder-menu-button")] button_class: &'static str,
     #[prop(default = MenuKind::List)] kind: MenuKind,
+    #[prop(optional)] hidden: bool,
     children: ChildrenFn,
 ) -> impl IntoView {
     let is_open = {
@@ -152,6 +153,7 @@ pub(crate) fn Menu(
     view! {
         <div
             class="builder-menu no-print"
+            hidden=hidden
             on:keydown=move |event| {
                 if event.key() == "Escape" && is_open.get_untracked() {
                     event.stop_propagation();
@@ -278,6 +280,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
     let number = session.number;
     let times = session_times(&session);
     let unscheduled = !session.is_scheduled();
+    let locked = session.locked;
     let start = StoredValue::new((session.date.clone(), session.start_time.clone()));
     let swap_trigger = StoredValue::new(format!("builder-swap-{id}"));
     let time_trigger = StoredValue::new(format!("builder-time-{id}"));
@@ -288,7 +291,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                     <h3>{format!("Session {number}")}</h3>
                     <p class="builder-session-when">{times}</p>
                 </div>
-                <div class="builder-session-actions">
+                <div class="builder-session-actions" hidden=locked>
                     <Menu
                         id=MenuId::Swap(id)
                         open_menu=actions.open_menu
@@ -302,7 +305,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                                 .with_value(|sessions| {
                                     sessions
                                         .iter()
-                                        .filter(|other| other.id != id)
+                                        .filter(|other| other.id != id && !other.locked)
                                         .map(|other| {
                                             view! {
                                                 <MenuItem
@@ -477,6 +480,7 @@ fn GroupView(
     let platform = StoredValue::new(group.platform.clone());
     let count = athlete_count(group.athletes.len());
     let same_times = group.own_times.is_none();
+    let locked = group.locked;
     view! {
         <section class="builder-group">
             <h4 class="builder-group-head">
@@ -487,7 +491,7 @@ fn GroupView(
                     {group.own_times.clone()}
                 </span>
             </h4>
-            <div class="builder-classes">
+            <div class="builder-classes" hidden=locked>
                 {group
                     .weight_classes
                     .into_iter()
@@ -545,6 +549,7 @@ fn GroupView(
                                 platform=platform.get_value()
                                 row
                                 occurrence=occurrence_of(&group.athletes, row)
+                                locked
                                 trigger_id
                                 athlete=athlete.clone()
                                 data
@@ -604,6 +609,7 @@ fn AthleteRow(
     platform: String,
     row: usize,
     occurrence: u32,
+    locked: bool,
     trigger_id: String,
     athlete: BuiltAthlete,
     data: BoardData,
@@ -611,18 +617,20 @@ fn AthleteRow(
 ) -> impl IntoView {
     let details = athlete_details(&athlete);
     let withdrawn = athlete.withdrawn.then(|| {
-        let remove = edit_button(
-            format!("{trigger_id}-remove"),
-            &athlete.name,
-            "Remove".to_owned(),
-            BuilderEdit::RemoveAthlete {
-                athlete: athlete.key.clone(),
-                from_session: session,
-                from_platform: platform.clone(),
-                occurrence,
-            },
-            actions,
-        );
+        let remove = (!locked).then(|| {
+            edit_button(
+                format!("{trigger_id}-remove"),
+                &athlete.name,
+                "Remove".to_owned(),
+                BuilderEdit::RemoveAthlete {
+                    athlete: athlete.key.clone(),
+                    from_session: session,
+                    from_platform: platform.clone(),
+                    occurrence,
+                },
+                actions,
+            )
+        });
         view! {
             <span class="builder-withdrawn-line">
                 <span class="builder-status-pill builder-withdrawn">"No Longer on Sport80"</span>
@@ -648,6 +656,7 @@ fn AthleteRow(
                 label="Move To…"
                 whose=format!("{}: ", athlete.name)
                 title="Move To…"
+                hidden=locked
             >
                 {move || {
                     move_items(
@@ -752,6 +761,7 @@ mod tests {
             start_time: "09:00:00".to_owned(),
             weigh_in_time: "07:00:00".to_owned(),
             groups: Vec::new(),
+            locked: false,
         };
         assert_eq!(
             session_times(&session),

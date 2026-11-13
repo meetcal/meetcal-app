@@ -3117,6 +3117,12 @@ main > div:has(> h4) > p {
     flex: none;
 }
 
+.builder-menu[hidden],
+.builder-classes[hidden],
+.builder-session-actions[hidden] {
+    display: none;
+}
+
 .builder-menu-button,
 .builder-chip {
     min-height: 36px;

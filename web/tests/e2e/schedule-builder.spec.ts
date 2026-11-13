@@ -73,7 +73,7 @@ function schedule(edits: Edit[], { secondDay, twins = false }: Shape = {}) {
 const FLIGHT_TIMES = "W 77 · Weigh-In 9:00 AM · Start 11:00 AM\nW 87 · Weigh-In 10:00 AM · Start 12:00 PM";
 
 type Match = { eventId: string; name: string; startDate: string; endDate: string; place: string; entriesUrl: string | null };
-function publishedBoard(edits: Edit[], checkedAt: number) {
+function publishedBoard(edits: Edit[], checkedAt: number, locked = false) {
   const board = schedule(edits.filter((edit) => edit.kind === "moveAthlete"));
   const newcomer = athlete("9|ella late", "Ella Late", "53", 110);
   const add = edits.find((edit) => edit.kind === "addAthlete" && edit.athlete === newcomer.key);
@@ -82,9 +82,9 @@ function publishedBoard(edits: Edit[], checkedAt: number) {
     const groups = session.groups.map((group) => {
       const kept = group.athletes.filter((a) => !(removed && a.key === "2|ava smith")).map((a) => (a.key === "2|ava smith" ? { ...a, withdrawn: true } : a));
       const ownTimes = session.id === 2 ? FLIGHT_TIMES : null;
-      return { ...group, ownTimes, athletes: add?.toSession === session.id ? [...kept, newcomer] : kept };
+      return { ...group, ownTimes, locked: locked && session.id === 2, athletes: add?.toSession === session.id ? [...kept, newcomer] : kept };
     });
-    return { ...session, date: "2026-11-21", startTime: session.startTime || "11:00:00", weighInTime: session.weighInTime || "09:00:00", groups };
+    return { ...session, locked: locked && session.id === 2, date: "2026-11-21", startTime: session.startTime || "11:00:00", weighInTime: session.weighInTime || "09:00:00", groups };
   });
   const withdrawn = removed ? [] : [{ athlete: { ...athlete("2|ava smith", "Ava Smith", "53", 90), withdrawn: true }, place: { session: 1, number: 1, platform: "Red" }, occurrence: 0 }];
   return {
@@ -95,13 +95,14 @@ function publishedBoard(edits: Edit[], checkedAt: number) {
       checkedAt,
       added: add ? [] : [{ athlete: newcomer, suggestion: { session: 1, number: 1, platform: "Red" } }],
       withdrawn,
+      lockedWithdrawn: locked ? 1 : 0,
     },
   };
 }
 
-type MockSetup = Shape & { published?: boolean; signedIn?: boolean; loadError?: string; refuseSessionMinutes?: number[]; matches?: Match[]; truncated?: boolean };
+type MockSetup = Shape & { published?: boolean; locked?: boolean; signedIn?: boolean; loadError?: string; refuseSessionMinutes?: number[]; matches?: Match[]; truncated?: boolean };
 
-async function mockBuilder(page: Page, { published = false, signedIn = false, loadError = "", refuseSessionMinutes = [], matches = [], truncated = false, ...shape }: MockSetup = {}) {
+async function mockBuilder(page: Page, { published = false, locked = false, signedIn = false, loadError = "", refuseSessionMinutes = [], matches = [], truncated = false, ...shape }: MockSetup = {}) {
   const meetDays = shape.secondDay ? ["2026-11-21", shape.secondDay] : ["2026-11-21"];
   const options = { ...defaultOptions, days: meetDays.map((date) => ({ date, firstStart: "09:00" })) };
   await mockAuth(page, { signedIn });
@@ -146,7 +147,7 @@ async function mockBuilder(page: Page, { published = false, signedIn = false, lo
     if (refuseSessionMinutes.includes((args.options as Options).sessionMinutes)) {
       return route.fulfill(errorAnswer("Server Error", { status: 400, error: "the first session on 2026-11-21 would end after midnight" }));
     }
-    if (args.base === "published") return route.fulfill(valueAnswer(publishedBoard(args.edits as Edit[], calls.sport80.checkedAt)));
+    if (args.base === "published") return route.fulfill(valueAnswer(publishedBoard(args.edits as Edit[], calls.sport80.checkedAt, locked)));
     return route.fulfill(valueAnswer(schedule(args.edits as Edit[], shape)));
   });
   await routeQuery(page, "scheduleBuilder:exportFile", (route, args) => {
@@ -651,6 +652,27 @@ test("a platform published in several rows at their own times shows one line per
   await expect(times).toBeVisible();
   expect(await times.evaluate((element) => (element as HTMLElement).innerText)).toBe(FLIGHT_TIMES);
   await expect(sessionCard(page, 1).locator(".builder-group-time")).toBeHidden();
+});
+
+test("a platform with several published rows offers no edit that would touch it", async ({ page }) => {
+  await mockBuilder(page, { signedIn: true, published: true, locked: true });
+  await page.goto("/schedule-builder?meet=Turkey%20Cup");
+  const second = sessionCard(page, 2);
+  await expect(second).toContainText("Mia Lee");
+  await expect(second.getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Session 2: Swap With…" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Session 2: Edit Time" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Session 1: Swap With…" }).click();
+  await expect(page.getByRole("group", { name: "Swap With…" }).getByRole("button", { name: /^Session 2 · / })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Laney Johnson: Move To…" }).click();
+  await expect(page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  const changes = page.getByRole("region", { name: "Sport80 Changes" });
+  await changes.getByRole("button", { name: "Ella Late: Add To…" }).click();
+  await expect(page.getByRole("group", { name: "Add To…" }).getByRole("button", { name: "Session 1 · Red" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Add To…" }).getByRole("button", { name: "Session 2 · Red" })).toHaveCount(0);
+  await expect(changes).toContainText("A platform with several published rows has no Remove: use Rebuild From Scratch to take its lifters off.");
 });
 
 test("a publish on its way holds Rebuild From Scratch and the Sport80 changes too", async ({ page }) => {
