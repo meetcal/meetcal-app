@@ -6,7 +6,9 @@ import { internalAction, internalMutation, internalQuery, type ActionCtx, type M
 import { internal } from '../_generated/api';
 import { athletesWithSessions, clubAthleteCounts, computeMeetResults, computeRoster, computeScheduleRows, computeStats, computeTimelines, meetByName, packageAthlete, packageStaticText, plainRoster, previousBests, statsPreviousBestKeys, statsViewItems, toApiMeet, type PreviousBest, type TimelinesView } from '../lib/meetData';
 import { normalizeName } from '../lib/names';
-import { ADAPTIVE_RECORDS_SEASON_START, computeAdaptiveRecords, clubNamesPage, computeIntlRankings, bestTotalPerAthlete, nationalRankingPage, type RankedTotal, computeStandards, computeWsoList, computeWsoRows } from '../lib/referenceData';
+import { countedRowKey, NO_SOLE_LIFTERS, unlinkedNameKeys } from '../lib/lifterKeys';
+import { readSoleLifters } from '../results';
+import { ADAPTIVE_RECORDS_SEASON_START, computeAdaptiveRecords, clubNamesPage, computeIntlRankings, bestTotalPerAthlete, type LinkedTotal, nationalRankingPage, rankedTotalOf, type RankedTotal, computeStandards, computeWsoList, computeWsoRows } from '../lib/referenceData';
 import { writeQualifyingTotalsViews, writeRecordsViews } from '../lib/referenceViews';
 import { compareBytes } from '../lib/sort';
 import { adaptiveKey, ADAPTIVE_VIEW_ARGS, MEET_PART_SOURCES, meetKey, meetSessionKey, meetSessionPrefix, natKey, REF_VIEWS, VIEW_SOURCES, wsoKey } from '../lib/viewKeys';
@@ -20,7 +22,7 @@ const natArgs = { federation: v.string(), ageCategory: v.string() };
 
 const sourceVersions = v.array(v.object({ table: v.string(), version: v.number() }));
 
-const rankedTotals = v.array(v.object({ name: v.string(), total: v.number() }));
+const rankedTotals = v.array(v.object({ name: v.string(), total: v.number(), lifter_id: v.optional(v.string()) }));
 
 export const natPage = internalQuery({
   args: { ...natArgs, cursor: v.union(v.string(), v.null()) },
@@ -32,19 +34,21 @@ export const natPage = internalQuery({
 });
 
 async function readNat(ctx: ActionCtx, args: { federation: string; ageCategory: string }): Promise<{ rows: RankedTotal[]; sources: SourceVersion[] }> {
-  const best = new Map<string, RankedTotal>();
+  const best = new Map<string, LinkedTotal>();
   let cursor: string | null = null;
   let sources: SourceVersion[] | null = null;
   for (;;) {
-    const page: { rows: RankedTotal[]; cursor: string; isDone: boolean; sources: SourceVersion[] } =
+    const page: { rows: LinkedTotal[]; cursor: string; isDone: boolean; sources: SourceVersion[] } =
       await ctx.runQuery(internal.views.natPage, { ...args, cursor });
     sources ??= page.sources;
-    // One athlete under two spellings across pages is one ranking row (#217).
     for (const row of page.rows) {
-      const key = normalizeName(row.name);
+      const key = countedRowKey(row, NO_SOLE_LIFTERS);
       if ((best.get(key)?.total ?? -Infinity) < row.total) best.set(key, row);
     }
-    if (page.isDone) return { rows: bestTotalPerAthlete(best.values()), sources };
+    if (page.isDone) {
+      const sole = await readSoleLifters(ctx, unlinkedNameKeys(best.values()));
+      return { rows: bestTotalPerAthlete(best.values(), sole).map(rankedTotalOf), sources };
+    }
     cursor = page.cursor;
   }
 }
@@ -166,7 +170,7 @@ export const buildMeetStats = internalMutation({
   args: {
     meet: v.string(),
     sources: v.optional(v.array(v.object({ table: v.string(), version: v.number() }))),
-    known: v.optional(v.array(v.object({ key: v.string(), before: v.string(), best: v.union(v.number(), v.null()) }))),
+    known: v.optional(v.array(v.object({ key: v.string(), before: v.string(), lifter: v.optional(v.union(v.string(), v.null())), best: v.union(v.number(), v.null()) }))),
   },
   handler: async (ctx, { meet, sources, known }) => {
     const stamp = sources ?? (await snapshotVersions(ctx, VIEW_SOURCES.meetStats));
@@ -194,7 +198,7 @@ export const statsBuildPlan = internalQuery({
 
 /** Previous bests of up to STATS_PREVIOUS_BEST_BATCH athletes. */
 export const statsPreviousBests = internalQuery({
-  args: { wanted: v.array(v.object({ key: v.string(), before: v.string() })) },
+  args: { wanted: v.array(v.object({ key: v.string(), before: v.string(), lifter: v.optional(v.union(v.string(), v.null())) })) },
   handler: async (ctx, { wanted }) => await previousBests(ctx, wanted),
 });
 

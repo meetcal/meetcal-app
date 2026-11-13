@@ -24,7 +24,8 @@ function fakeCtx(tables: Record<string, Row[]>) {
             },
           };
           build(q);
-          return { take: async (count: number) => ((tables[table] ?? []).filter((row) => filters.every((f) => f(row))).slice(0, count)) };
+          const matching = () => (tables[table] ?? []).filter((row) => filters.every((f) => f(row)));
+          return { take: async (count: number) => matching().slice(0, count), first: async () => matching()[0] ?? null, unique: async () => matching()[0] ?? null };
         },
       }),
     },
@@ -393,6 +394,39 @@ describe('club meet stats for two lifters of one name (#247)', () => {
     const rows = await computeStatsRows(fakeCtx({ athletes: [x, y, yAgain], lifting_results: [yResult] }), 'Open');
     expect(rows.map((r) => [r.weight_class, r.total])).toEqual([['89', 300]]);
     expect(clubKey(itemAt(rows, 0).club)).toBe(clubKey('Ong Weightlifting'));
+  });
+
+  it('credits each linked result to the lifter its membership names, even in one class', async () => {
+    const x = { name: 'John Smith', meet: 'Open', club: 'Club X', gender: 'M', weightClass: '89', memberId: 'M1' };
+    const y = { ...x, club: 'Club Y', memberId: 'M2' };
+    const xResult = { ...result('John Smith', 130, 170), age: "Open Men's 89kg", lifterId: 'L1' };
+    const yResult = { ...result('John Smith', 120, 150), age: "Open Men's 89kg", lifterId: 'L2' };
+    const memberships = [
+      { membership: 'M1', athleteId: 'L1' },
+      { membership: 'M2', athleteId: 'L2' },
+    ];
+    const rows = await computeStatsRows(fakeCtx({ athletes: [x, y], lifting_results: [yResult, xResult], lifter_memberships: memberships }), 'Open');
+    expect(rows.map((r) => [r.club, r.total, r.placings[2]]).sort()).toEqual([
+      ['Club X', 300, 1],
+      ['Club Y', 270, 2],
+    ]);
+  });
+
+  it("reads a linked lifter's previous best from their own results, not another lifter's of the name", async () => {
+    const x = { name: 'John Smith', meet: 'Open', club: 'Club X', gender: 'M', weightClass: '89', memberId: 'M1' };
+    const today = { ...result('John Smith', 130, 170), age: "Open Men's 89kg", lifterId: 'L1' };
+    const ownEarlier = { ...result('John Smith', 120, 160), meet: 'Earlier', date: '2026-01-10', lifterId: 'L1' };
+    const othersEarlier = { ...result('John Smith', 160, 200), meet: 'Earlier', date: '2026-02-10', lifterId: 'L2' };
+    const rows = await computeStatsRows(
+      fakeCtx({
+        athletes: [x],
+        lifting_results: [today, ownEarlier, othersEarlier],
+        lifter_memberships: [{ membership: 'M1', athleteId: 'L1' }],
+      }),
+      'Open',
+    );
+    expect(rows.map((r) => [r.total, r.previous_best])).toEqual([[300, 280]]);
+    expect(clubStats(rows, 'Club X', 1).total_prs).toBe(1);
   });
 
   it('reads a superheavy class either way round, and falls back to the first entry when no class matches', async () => {

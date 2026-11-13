@@ -13,6 +13,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
 use crate::utils::athletes::NAMES_PER_READ;
 use crate::utils::backend::{queries, query_all_pages, query_each};
+use crate::utils::lifters::{counted_key, sole_lifters};
 use crate::utils::meet_names::equivalent_meets;
 use crate::utils::output::Report;
 use crate::utils::stats::{Lift, fold, number, percentage, valid_lift, valid_total};
@@ -243,9 +244,10 @@ pub(crate) async fn run_compare(group: Group<'_>, current_year: i32) -> Result<(
 }
 
 pub(crate) fn calculate_group_stats(results: &[LiftingResults]) -> GroupWrappedStats {
+    let sole = sole_lifters(results);
     let athlete_count = results
         .iter()
-        .map(|result| fold(&result.name))
+        .map(|result| counted_key(result, &sole))
         .collect::<HashSet<_>>()
         .len();
 
@@ -585,6 +587,7 @@ mod tests {
             cj_best: total - 75.0,
             total,
             adaptive: false,
+            lifter_id: None,
         }
     }
 
@@ -763,6 +766,7 @@ mod scoring_tests {
             cj_best,
             total,
             adaptive: false,
+            lifter_id: None,
         }
     }
 

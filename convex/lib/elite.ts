@@ -239,6 +239,18 @@ export type EliteAnswer = {
 /** A result of a member's, with what its scores need. */
 export type MemberResult = { row: RankedFields; member: EliteMember };
 
+export type LinkedMember = { memberKey: string; member: EliteMember; lifter: string | null };
+
+export const isLinkedMemberOrNull = (value: unknown): value is { member: EliteMember; lifter: string | null } | null =>
+  value === null || (isRecord(value) && isEliteMember(value.member) && (value.lifter === null || typeof value.lifter === 'string'));
+
+export function ownerOfResult(members: readonly LinkedMember[], row: Pick<RankedFields, 'lifter_id'>, soleLifter: string | null): LinkedMember | null {
+  const lifter = row.lifter_id ?? soleLifter;
+  const unmatched = members.find((candidate) => candidate.lifter === null) ?? null;
+  if (lifter === null) return unmatched;
+  return members.find((candidate) => candidate.lifter === lifter) ?? (lifter === soleLifter ? unmatched : null);
+}
+
 /** What a result scores by `method` in `list`, or null when it scores nothing there. */
 export function scoreResult(
   { row, member }: MemberResult,

@@ -136,24 +136,32 @@ describe('linking a name’s results to its lifters', () => {
       ],
     }));
 
-  it('links each row by its Sport80 history, and other federations by fit, with no hints while the answers are unchanged', async () => {
+  it('links each row by its Sport80 history, and other federations by fit, marking the views those rows feed stale once', async () => {
     const { ctx, rows } = await twoLifters();
-    const answer = await link(ctx, {
-      names: [
-        {
-          nameKey: 'taylor johnson',
-          histories: [history('20730', [sourceRow()]), history('24655', [sourceRow({ date: '2019-08-04', age: "Open Women's 71kg", total: 133, snatchBest: 58, cjBest: 75 })])],
-        },
-      ],
-    });
+    const names = [
+      {
+        nameKey: 'taylor johnson',
+        histories: [history('20730', [sourceRow()]), history('24655', [sourceRow({ date: '2019-08-04', age: "Open Women's 71kg", total: 133, snatchBest: 58, cjBest: 75 })])],
+      },
+    ];
+    const answer = await link(ctx, { names });
     expect(answer).toEqual({ history: 2, fit: 1, unlinked: 0, changed: 3, stale: [] });
     expect(rows('lifting_results').map((r) => [r.meet, r.lifterId, r.lifterMatch])).toEqual([
       ['Kentucky Open', '20730', 'history'],
       ['CT Open', '24655', 'history'],
       ['Masters Worlds', '24655', 'fit'],
     ]);
-    expect(rows('view_hints')).toEqual([]);
-    expect(rows('data_versions')).toEqual([]);
+    const hinted = () => rows('view_hints').map((hint) => [hint.kind, hint.key, hint.seq]);
+    expect(hinted()).toEqual(expect.arrayContaining([
+      ['meet', 'Kentucky Open', 0],
+      ['meet', 'CT Open', 0],
+      ['meet', 'Masters Worlds', 0],
+      ['athlete', 'taylor johnson', 0],
+    ]));
+    const before = hinted();
+    expect(rows('data_versions').map((r) => r.table)).toContain('lifting_results');
+    expect(await link(ctx, { names })).toMatchObject({ changed: 0 });
+    expect(hinted()).toEqual(before);
   });
 
   it('rewrites the name’s history with each row’s lifter, which every surface reads', async () => {

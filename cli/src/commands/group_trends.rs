@@ -16,6 +16,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::histories;
 use crate::utils::backend::{queries, query_each};
 use crate::utils::format::us_date;
+use crate::utils::lifters::{counted_key, sole_lifters};
 use crate::utils::meet_names::{equivalent_meets, year_of};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
@@ -97,15 +98,15 @@ async fn run(title: &str, memberships: &[ClubMembership], with_medals: bool) -> 
     let names = distinct_names(memberships);
     let by_name = histories(&names).await?;
 
-    // PRs are judged against each athlete's whole history, not just the group's meets.
     let mut pr_totals: HashSet<(String, String, String)> = HashSet::new();
     let mut all_rows: Vec<LiftingResults> = Vec::new();
     for rows in by_name.values() {
-        let mut sorted: Vec<&LiftingResults> = rows.iter().collect();
-        sorted.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.meet.cmp(&b.meet)));
-        for (row, flags) in sorted.iter().zip(pr_flags(&sorted)) {
-            if flags.total {
-                pr_totals.insert(pr_key(row));
+        for mut sorted in rows_by_lifter(rows).into_values() {
+            sorted.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.meet.cmp(&b.meet)));
+            for (row, flags) in sorted.iter().zip(pr_flags(&sorted)) {
+                if flags.total {
+                    pr_totals.insert(pr_key(row));
+                }
             }
         }
         all_rows.extend(rows.iter().cloned());
@@ -120,6 +121,18 @@ async fn run(title: &str, memberships: &[ClubMembership], with_medals: bool) -> 
 
     output::emit(report(title, &group_rows, &pr_totals, medals.as_ref()));
     Ok(())
+}
+
+fn rows_by_lifter(rows: &[LiftingResults]) -> HashMap<String, Vec<&LiftingResults>> {
+    let sole = sole_lifters(rows);
+    let mut by_lifter: HashMap<String, Vec<&LiftingResults>> = HashMap::new();
+    for row in rows {
+        by_lifter
+            .entry(counted_key(row, &sole))
+            .or_default()
+            .push(row);
+    }
+    by_lifter
 }
 
 fn pr_key(row: &LiftingResults) -> (String, String, String) {
@@ -229,6 +242,7 @@ pub(crate) fn report(
     pr_totals: &HashSet<(String, String, String)>,
     medals: Option<&BTreeMap<String, [usize; 3]>>,
 ) -> Report {
+    let sole = sole_lifters(group_rows);
     let mut years: BTreeMap<String, Vec<&LiftingResults>> = BTreeMap::new();
     for row in group_rows {
         years
@@ -258,7 +272,7 @@ pub(crate) fn report(
     }
     by_year_data.set_header(header);
     for (year, rows) in &years {
-        let athletes: HashSet<String> = rows.iter().map(|row| fold(&row.name)).collect();
+        let athletes: HashSet<String> = rows.iter().map(|row| counted_key(row, &sole)).collect();
         let meets: HashSet<String> = rows.iter().map(|row| fold(&row.meet)).collect();
         let (mut taken, mut made) = (0, 0);
         for lift in [Lift::Snatch, Lift::CleanAndJerk] {
@@ -309,10 +323,9 @@ pub(crate) fn report(
         }
     }
 
-    // Each athlete's best total with the group (source errors left out), and best Sinclair.
     let mut best: HashMap<String, LifterEntry> = HashMap::new();
     for row in group_rows {
-        let entry = best.entry(fold(&row.name)).or_insert((
+        let entry = best.entry(counted_key(row, &sole)).or_insert((
             None,
             None,
             0,
@@ -342,7 +355,7 @@ pub(crate) fn report(
     let mut best_qpoints: HashMap<String, f64> = HashMap::new();
     for row in group_rows {
         if let Some(score) = row_qpoints(row) {
-            let entry = best_qpoints.entry(fold(&row.name)).or_insert(score);
+            let entry = best_qpoints.entry(counted_key(row, &sole)).or_insert(score);
             *entry = entry.max(score);
         }
     }
@@ -386,7 +399,7 @@ pub(crate) fn report(
                 row.age.clone(),
                 date,
                 points(sinclair),
-                points(best_qpoints.get(&fold(&row.name)).copied()),
+                points(best_qpoints.get(&counted_key(row, &sole)).copied()),
                 results.to_string(),
                 first,
                 last,
