@@ -108,6 +108,7 @@ describe('defaults and preview', () => {
       status: 'upcoming',
       options: options(),
       sport80Link: 'https://usaweightlifting.sport80.com/public/events/15084',
+      version: null,
       published: null,
     });
   });

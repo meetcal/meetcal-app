@@ -43,8 +43,12 @@ export function isStoredMemberId(memberId: string): boolean {
   return /^\d+$/.test(memberId) || isPlaceholderMemberId(memberId);
 }
 
+export function foldedNameAndGender(foldedName: string, gender: string): string {
+  return `${foldedName}|${normalizeGender(gender)}`;
+}
+
 export function sameNameAndGender(a: { name: string; gender: string }, b: { name: string; gender: string }): boolean {
-  return normalizeName(a.name) === normalizeName(b.name) && normalizeGender(a.gender) === normalizeGender(b.gender);
+  return foldedNameAndGender(normalizeName(a.name), a.gender) === foldedNameAndGender(normalizeName(b.name), b.gender);
 }
 
 export function acceptedEntries<Row extends { name: string; memberId: string }>(rows: readonly Row[]): { accepted: Row[]; rejected: number } {

@@ -58,6 +58,8 @@ pub(crate) struct Defaults {
     #[serde(default)]
     pub sport80_link: Option<String>,
     #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
     pub published: Option<PublishedSchedule>,
 }
 
@@ -253,13 +255,13 @@ pub(crate) fn starting_point(
         (None, Some(local)) => Some((local.options, local.edits, local.basis)),
         (None, None) => None,
     };
-    let current = defaults
-        .published
-        .as_ref()
-        .and_then(|published| published.version.as_ref());
-    let fits = |basis: &Basis| match current {
-        Some(version) => basis.base_version.as_ref() == Some(version),
-        None => basis.base == ScheduleBase::Entries && basis.base_version.is_none(),
+    let fits = |basis: &Basis| match &defaults.published {
+        Some(published) => basis.base_version == published.version,
+        None => basis.base == ScheduleBase::Entries,
+    };
+    let entries_now = Basis {
+        base: ScheduleBase::Entries,
+        base_version: defaults.version.clone(),
     };
     let notice = match (&newest, &defaults.published) {
         (Some((_, _, basis)), _) if fits(basis) => None,
@@ -268,10 +270,14 @@ pub(crate) fn starting_point(
         (None, _) => None,
     };
     match (newest, defaults.published.as_ref()) {
-        (Some((options, edits, basis)), _) if notice.is_none() => Start {
+        (Some((options, edits, basis)), published) if notice.is_none() => Start {
             options,
             edits,
-            basis,
+            basis: if published.is_some() {
+                basis
+            } else {
+                entries_now
+            },
             built: true,
             notice,
         },
@@ -285,7 +291,7 @@ pub(crate) fn starting_point(
         (_, None) => Start {
             options: defaults.options.clone(),
             edits: Vec::new(),
-            basis: Basis::default(),
+            basis: entries_now,
             built: false,
             notice,
         },
@@ -867,6 +873,9 @@ mod tests {
             meet: "Turkey Cup".to_owned(),
             options: options(),
             sport80_link: None,
+            version: published
+                .as_ref()
+                .and_then(|published| published.version.clone()),
             published,
         }
     }
@@ -965,13 +974,24 @@ mod tests {
             assert!(start.edits.is_empty());
             assert_eq!(start.notice, Some(STALE_WORK_NOTICE));
         }
-        let unpublished = meet_defaults(None);
-        for gone in [published_on("p2"), from_scratch] {
-            let start = starting_point(&unpublished, None, Some(work(gone)));
-            assert_eq!(start.basis, entries_basis());
-            assert!(!start.built && start.edits.is_empty());
-            assert_eq!(start.notice, Some(UNPUBLISHED_WORK_NOTICE));
-        }
+        let mut unpublished = meet_defaults(None);
+        unpublished.version = Some("p3".to_owned());
+        let gone = starting_point(&unpublished, None, Some(work(published_on("p2"))));
+        assert_eq!(gone.basis.base_version.as_deref(), Some("p3"));
+        assert!(!gone.built && gone.edits.is_empty());
+        assert_eq!(gone.notice, Some(UNPUBLISHED_WORK_NOTICE));
+        let entries_work = starting_point(&unpublished, None, Some(work(from_scratch)));
+        assert_eq!(
+            entries_work.basis,
+            Basis {
+                base: ScheduleBase::Entries,
+                base_version: Some("p3".to_owned())
+            }
+        );
+        assert_eq!(entries_work.edits, vec![edit.clone()]);
+        assert_eq!(entries_work.notice, None);
+        let opened_fresh = starting_point(&unpublished, None, None);
+        assert_eq!(opened_fresh.basis.base_version.as_deref(), Some("p3"));
         let saved: SavedDraft = serde_json::from_value(serde_json::json!({
             "options": serde_json::to_value(options()).unwrap(),
             "edits": [],

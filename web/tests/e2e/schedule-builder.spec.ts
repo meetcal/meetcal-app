@@ -71,7 +71,7 @@ function schedule(edits: Edit[], { secondDay, twins = false }: Shape = {}) {
 }
 
 type Match = { eventId: string; name: string; startDate: string; endDate: string; place: string; entriesUrl: string | null };
-function publishedBoard(edits: Edit[]) {
+function publishedBoard(edits: Edit[], checkedAt: number) {
   const board = schedule(edits.filter((edit) => edit.kind === "moveAthlete"));
   const newcomer = athlete("9|ella late", "Ella Late", "53", 110);
   const add = edits.find((edit) => edit.kind === "addAthlete" && edit.athlete === newcomer.key);
@@ -89,7 +89,7 @@ function publishedBoard(edits: Edit[]) {
     sessions,
     warnings: [],
     changes: {
-      checkedAt: Date.UTC(2026, 10, 12, 15),
+      checkedAt,
       added: add ? [] : [{ athlete: newcomer, suggestion: { session: 1, number: 1, platform: "Red" } }],
       withdrawn,
     },
@@ -111,6 +111,7 @@ async function mockBuilder(page: Page, { published = false, signedIn = false, lo
     publishes: [] as Call[],
     publications: [] as Call[],
     deletes: [] as Call[],
+    sport80: { checkedAt: Date.UTC(2026, 10, 12, 15) },
   };
   const record = (list: Call[], route: { request(): { headers(): Record<string, string> } }, args: Record<string, unknown>) =>
     list.push({ args, authorization: route.request().headers().authorization });
@@ -142,7 +143,7 @@ async function mockBuilder(page: Page, { published = false, signedIn = false, lo
     if (refuseSessionMinutes.includes((args.options as Options).sessionMinutes)) {
       return route.fulfill(errorAnswer("Server Error", { status: 400, error: "the first session on 2026-11-21 would end after midnight" }));
     }
-    if (args.base === "published") return route.fulfill(valueAnswer(publishedBoard(args.edits as Edit[])));
+    if (args.base === "published") return route.fulfill(valueAnswer(publishedBoard(args.edits as Edit[], calls.sport80.checkedAt)));
     return route.fulfill(valueAnswer(schedule(args.edits as Edit[], shape)));
   });
   await routeQuery(page, "scheduleBuilder:exportFile", (route, args) => {
@@ -685,12 +686,15 @@ test("a published meet opens on its schedule, folds in Sport80's changes, and as
   await expect.poll(() => calls.loads.map((call) => call.args)).toEqual([{ url: MEET_PAGE_URL }]);
   await expect(changes.getByRole("button", { name: "Check Sport80 Now" })).toBeEnabled();
   const previewsAfterCheck = calls.previews.length;
-  await routeAction(page, "scheduleBuilderLoad:load", (route) =>
-    route.fulfill(valueAnswer({ meet: MEET, refreshed: false, checkedAt: Date.UTC(2026, 10, 12, 15), nextCheckAt: Date.UTC(2026, 10, 12, 15, 10) })),
-  );
+  const lastChecked = await changes.getByText(/^Last Checked/).innerText();
+  await routeAction(page, "scheduleBuilderLoad:load", (route) => {
+    calls.sport80.checkedAt = Date.UTC(2026, 10, 12, 17, 30);
+    return route.fulfill(valueAnswer({ meet: MEET, refreshed: false, checkedAt: calls.sport80.checkedAt, nextCheckAt: calls.sport80.checkedAt + 10 * 60 * 1000 }));
+  });
   await changes.getByRole("button", { name: "Check Sport80 Now" }).click();
   await expect(changes.getByRole("status")).toContainText("a few minutes ago. Check again after");
-  expect(calls.previews.length).toBe(previewsAfterCheck);
+  await expect(changes.getByText(/^Last Checked/)).not.toHaveText(lastChecked);
+  expect(calls.previews.length).toBeGreaterThan(previewsAfterCheck);
 
   const publish = page.getByRole("region", { name: "Publish to MeetCal" });
   await publish.getByRole("button", { name: "Publish", exact: true }).click();

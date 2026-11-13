@@ -1,7 +1,7 @@
 import { isoDateOf } from './dates';
 import { escapeHtml } from './email';
 import { meetDays } from './scheduleBuilderOptions';
-import type { BuiltGroup, BuiltSchedule } from './scheduleBuilder';
+import type { BuiltGroup, BuiltSchedule, RowTimes } from './scheduleBuilder';
 
 export const MAX_PUBLISHES_PER_DAY = 10;
 export const REVIEW_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -23,6 +23,14 @@ export function platformLabel(group: Pick<BuiltGroup, 'gender' | 'weightClasses'
   return `${gender} ${group.weightClasses.join(', ')}${split}${AGE_GROUP_LABELS[group.ageGroup]}`;
 }
 
+export function labelOf(group: Pick<BuiltGroup, 'gender' | 'weightClasses' | 'split' | 'ageGroup' | 'publishedLabel'>): string {
+  return group.publishedLabel ?? platformLabel(group);
+}
+
+export function timesOf(session: RowTimes, group: Pick<BuiltGroup, 'times'>): RowTimes {
+  return group.times ?? { date: session.date, startTime: session.startTime, weighInTime: session.weighInTime };
+}
+
 export function publishProblem(schedule: BuiltSchedule, meet: { startDate: string; endDate: string }): string | null {
   if (schedule.athletes === 0 || schedule.sessions.length === 0) return 'the meet has no entrants to publish yet';
   const days = meetDays(meet.startDate, meet.endDate);
@@ -38,7 +46,7 @@ export function publishedSchedule(schedule: BuiltSchedule): PublishedSchedule {
   const placements: Placement[] = [];
   for (const session of schedule.sessions) {
     for (const group of session.groups) {
-      rows.push({ date: session.date, sessionId: session.number, startTime: session.startTime, weighInTime: session.weighInTime, platform: group.platform, weightClass: platformLabel(group) });
+      rows.push({ ...timesOf(session, group), sessionId: session.number, platform: group.platform, weightClass: labelOf(group) });
       for (const athlete of group.athletes) {
         const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: group.platform };
         placements.push(athlete.rosterId === undefined ? placement : { ...placement, rosterId: athlete.rosterId });
@@ -65,7 +73,7 @@ export type PublicationEmailContent = {
 function sessionLines(schedule: BuiltSchedule): string {
   return schedule.sessions
     .map((session) => {
-      const platforms = session.groups.map((g) => `${escapeHtml(g.platform)}: ${escapeHtml(platformLabel(g))} (${g.athletes.length})`).join('; ');
+      const platforms = session.groups.map((g) => `${escapeHtml(g.platform)}: ${escapeHtml(labelOf(g))} (${g.athletes.length})`).join('; ');
       return `<li>Session ${session.number}, ${escapeHtml(session.date)} ${escapeHtml(session.startTime.slice(0, 5))}: ${platforms}</li>`;
     })
     .join('');

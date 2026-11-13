@@ -17,12 +17,14 @@ import {
   rosterEntrant,
   scratchEntrants,
   scratchRosterChanges,
+  sport80Diff,
   type BuiltSchedule,
+  type Sport80Diff,
   type PublishedBase,
   type PublishedBuild,
 } from './lib/scheduleBuilder';
 import { sport80Changes } from './lib/scheduleChanges';
-import { platformLabel } from './lib/schedulePublishing';
+import { labelOf } from './lib/schedulePublishing';
 import { meetPageUrl } from './scrapers/parse/entries';
 import { bytesToBase64 } from './lib/base64';
 import { EXPORT_CONTENT_TYPES, exportFileName, scheduleCsv, scheduleWorkbook } from './lib/scheduleExport';
@@ -65,8 +67,8 @@ async function rosterOf(ctx: QueryCtx, meet: string): Promise<RosterAthlete[]> {
 }
 
 export function checked(options: BuilderOptions, edits: readonly BuilderEdit[], base: ScheduleBase = 'entries'): void {
-  checkBuilderOptions(options, base === 'published' ? new Set(options.platforms) : undefined);
   checkBuilderEdits(edits);
+  if (base === 'entries') checkBuilderOptions(options);
 }
 
 async function revisionOf(ctx: QueryCtx, meet: string): Promise<Doc<'schedule_revisions'> | null> {
@@ -76,7 +78,11 @@ async function revisionOf(ctx: QueryCtx, meet: string): Promise<Doc<'schedule_re
     .first();
 }
 
-const versionOf = (revision: Doc<'schedule_revisions'> | null): string => String(revision?.revision ?? 0);
+const versionOf = (revision: Doc<'schedule_revisions'> | null): string | null => (revision ? String(revision.revision) : null);
+
+export async function scheduleVersion(ctx: QueryCtx, meet: string): Promise<string | null> {
+  return versionOf(await revisionOf(ctx, meet));
+}
 
 async function scheduleRowsOf(ctx: QueryCtx, meet: string): Promise<PublishedRow[]> {
   return readAll(
@@ -88,7 +94,7 @@ async function scheduleRowsOf(ctx: QueryCtx, meet: string): Promise<PublishedRow
 
 type MeetDates = Pick<Doc<'meets'>, 'name' | 'startDate' | 'endDate'>;
 
-export type PublishedMeet = { version: string; options: BuilderOptions; base: PublishedBase; checkedAt: number | null };
+export type PublishedMeet = { version: string | null; options: BuilderOptions; base: PublishedBase; diff: Sport80Diff; checkedAt: number | null };
 
 async function publishedMeetFrom(ctx: QueryCtx, meet: MeetDates, roster: RosterAthlete[]): Promise<PublishedMeet | null> {
   if (!roster.some(hasSession)) return null;
@@ -105,7 +111,20 @@ async function publishedMeetFrom(ctx: QueryCtx, meet: MeetDates, roster: RosterA
       )
     : null;
   const revision = await revisionOf(ctx, meet.name);
-  return { version: versionOf(revision), options: revision?.options ?? publishedOptions(rows, meet), base: { rows, roster, sport80 }, checkedAt: check?.checkedAt ?? null };
+  const base = { rows, roster, sport80 };
+  return { version: versionOf(revision), options: revision?.options ?? publishedOptions(rows, meet), base, diff: sport80Diff(base), checkedAt: check?.checkedAt ?? null };
+}
+
+export async function isPublished(ctx: QueryCtx, meet: string): Promise<boolean> {
+  return (await rosterOf(ctx, meet)).some(hasSession);
+}
+
+async function publishedPlatformsOf(ctx: QueryCtx, meet: string): Promise<Set<string>> {
+  return publishedPlatforms({ rows: await scheduleRowsOf(ctx, meet), roster: await rosterOf(ctx, meet) });
+}
+
+export async function checkedOn(ctx: QueryCtx, meet: string, base: ScheduleBase, options: BuilderOptions): Promise<void> {
+  if (base === 'published') checkBuilderOptions(options, await publishedPlatformsOf(ctx, meet));
 }
 
 export async function publishedMeetOf(ctx: QueryCtx, meet: MeetDates): Promise<PublishedMeet | null> {
@@ -121,17 +140,16 @@ export async function buildOn(ctx: QueryCtx, meet: MeetDates, base: ScheduleBase
   const published = await publishedMeetFrom(ctx, meet, roster);
   if (base === 'entries') {
     if (!published) return { base, schedule: buildSchedule(roster.map(rosterEntrant), options, edits), published, changes: NO_ROSTER_CHANGES };
-    return { base, schedule: buildSchedule(scratchEntrants(published.base), options, edits), published, changes: scratchRosterChanges(published.base) };
+    return { base, schedule: buildSchedule(scratchEntrants(published.base, published.diff), options, edits), published, changes: scratchRosterChanges(published.base, published.diff) };
   }
   if (!published) throw apiError(409, NOT_PUBLISHED);
   checkBuilderOptions(options, publishedPlatforms(published.base));
-  const schedule = buildFromPublished(published.base, options, edits);
-  return { base, schedule, published, changes: rosterChangesOf(published.base, schedule) };
+  const schedule = buildFromPublished(published.base, published.diff, options, edits);
+  return { base, schedule, published, changes: rosterChangesOf(published.diff, schedule) };
 }
 
-async function publishedSummaryOf(ctx: QueryCtx, meet: MeetDates): Promise<{ version: string; options: BuilderOptions } | null> {
-  if (!(await rosterOf(ctx, meet.name)).some(hasSession)) return null;
-  const revision = await revisionOf(ctx, meet.name);
+async function publishedSummaryOf(ctx: QueryCtx, meet: MeetDates, revision: Doc<'schedule_revisions'> | null): Promise<{ version: string | null; options: BuilderOptions } | null> {
+  if (!(await isPublished(ctx, meet.name))) return null;
   return { version: versionOf(revision), options: revision?.options ?? publishedOptions(await scheduleRowsOf(ctx, meet.name), meet) };
 }
 
@@ -139,6 +157,7 @@ export const defaults = query({
   args: { meet: v.string() },
   handler: async (ctx, { meet }) => {
     const row = await requireMeet(ctx, meet);
+    const revision = await revisionOf(ctx, row.name);
     return {
       meet: row.name,
       startDate: row.startDate,
@@ -147,7 +166,8 @@ export const defaults = query({
       status: row.status,
       options: defaultBuilderOptions(row),
       sport80Link: row.sourceId === undefined ? null : meetPageUrl(row.sourceId),
-      published: await publishedSummaryOf(ctx, row),
+      version: versionOf(revision),
+      published: await publishedSummaryOf(ctx, row, revision),
     };
   },
 });
@@ -156,7 +176,7 @@ export function withGroupLabels({ athletes, sessions, warnings }: BuiltSchedule)
   return {
     athletes,
     warnings,
-    sessions: sessions.map((session) => ({ ...session, groups: session.groups.map((group) => ({ ...group, label: platformLabel(group) })) })),
+    sessions: sessions.map((session) => ({ ...session, groups: session.groups.map((group) => ({ ...group, label: labelOf(group) })) })),
   };
 }
 
@@ -177,7 +197,7 @@ export const changes = query({
     const row = await requireMeet(ctx, meet);
     const published = await publishedMeetOf(ctx, row);
     if (!published) return { checkedAt: null, added: [], withdrawn: [] };
-    return sport80Changes(buildFromPublished(published.base, published.options), published.checkedAt, published.options.separateAgeGroups);
+    return sport80Changes(buildFromPublished(published.base, published.diff, published.options), published.checkedAt, published.options.separateAgeGroups);
   },
 });
 
@@ -241,6 +261,7 @@ export const saveDraft = mutation({
     const userId = await requireUserId(ctx);
     checked(options, edits, base);
     const row = await requireMeet(ctx, meet);
+    await checkedOn(ctx, row.name, base ?? 'entries', options);
     const now = Date.now();
     const existing = await draftOf(ctx, userId, row.name);
     if (existing) {

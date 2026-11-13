@@ -41,17 +41,17 @@ pub(crate) fn sport80_panel(
                 Err(error) => {
                     problem.try_set(Some(error.to_string()));
                 }
-                Ok(loaded) => match (loaded.refreshed, loaded.checked_at, loaded.next_check_at) {
-                    (false, Some(checked_at), Some(next_check_at)) => {
+                Ok(loaded) => {
+                    if let (false, Some(checked_at), Some(next_check_at)) =
+                        (loaded.refreshed, loaded.checked_at, loaded.next_check_at)
+                    {
                         cooldown.try_set(Some(cooldown_note(
                             &local_date_time(checked_at),
                             &local_date_time(next_check_at),
                         )));
                     }
-                    _ => {
-                        checks.try_update(|count| *count += 1);
-                    }
-                },
+                    checks.try_update(|count| *count += 1);
+                }
             }
             checking.try_set(false);
         });

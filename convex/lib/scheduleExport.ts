@@ -1,4 +1,4 @@
-import { platformLabel } from './schedulePublishing';
+import { labelOf, timesOf } from './schedulePublishing';
 import type { BuiltSchedule } from './scheduleBuilder';
 import { clockLabel } from './scheduleBuilderOptions';
 import { workbook, type Cell } from './xlsx';
@@ -11,14 +11,15 @@ export const SESSIONS_HEADER = ['Session', 'Platform', 'Date', 'Weigh-In', 'Star
 
 export function startListRows(schedule: BuiltSchedule): Cell[][] {
   return schedule.sessions.flatMap((session) =>
-    session.groups.flatMap((group) =>
-      group.athletes.map((athlete): Cell[] => [
+    session.groups.flatMap((group) => {
+      const times = timesOf(session, group);
+      return group.athletes.map((athlete): Cell[] => [
         session.number,
         group.platform,
-        session.date,
-        clockLabel(session.weighInTime),
-        clockLabel(session.startTime),
-        platformLabel(group),
+        times.date,
+        clockLabel(times.weighInTime),
+        clockLabel(times.startTime),
+        labelOf(group),
         athlete.name,
         athlete.gender,
         athlete.age,
@@ -26,14 +27,17 @@ export function startListRows(schedule: BuiltSchedule): Cell[][] {
         athlete.entryTotal,
         athlete.club,
         hasNoMemberId(athlete.memberId) ? '' : athlete.memberId,
-      ]),
-    ),
+      ]);
+    }),
   );
 }
 
 export function sessionRows(schedule: BuiltSchedule): Cell[][] {
   return schedule.sessions.flatMap((session) =>
-    session.groups.map((group): Cell[] => [session.number, group.platform, session.date, clockLabel(session.weighInTime), clockLabel(session.startTime), platformLabel(group), group.athletes.length]),
+    session.groups.map((group): Cell[] => {
+      const times = timesOf(session, group);
+      return [session.number, group.platform, times.date, clockLabel(times.weighInTime), clockLabel(times.startTime), labelOf(group), group.athletes.length];
+    }),
   );
 }
 
