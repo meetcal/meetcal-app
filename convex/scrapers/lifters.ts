@@ -422,7 +422,7 @@ async function backfillStep(ctx: ActionCtx, args: BackfillArgs): Promise<Backfil
     const startedAt = Date.now();
     const sightings: LifterSighting[] = [];
     const unread = new Set(args.unreadClassIds ?? []);
-    const reading: RankingsReading = { deadline: startedAt + BACKFILL_READ_STOP_MS, wholeTables: true };
+    const reading: RankingsReading = { deadline: startedAt + BACKFILL_READ_STOP_MS, wholeTables: true, retryDroppedConnections: true };
     let read = 0;
     while (read < slice.length && Date.now() - startedAt < BACKFILL_RUN_BUDGET_MS) {
       const batch = slice.slice(read, read + SPORT80_CONCURRENCY);
