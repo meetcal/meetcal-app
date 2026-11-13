@@ -47,6 +47,7 @@ import type * as lib_jwt from "../lib/jwt.js";
 import type * as lib_leaderboard from "../lib/leaderboard.js";
 import type * as lib_lifterCandidates from "../lib/lifterCandidates.js";
 import type * as lib_lifterHistory from "../lib/lifterHistory.js";
+import type * as lib_lifterKeys from "../lib/lifterKeys.js";
 import type * as lib_lifters from "../lib/lifters.js";
 import type * as lib_logLines from "../lib/logLines.js";
 import type * as lib_meetData from "../lib/meetData.js";
@@ -208,6 +209,7 @@ declare const fullApi: ApiFromModules<{
   "lib/leaderboard": typeof lib_leaderboard;
   "lib/lifterCandidates": typeof lib_lifterCandidates;
   "lib/lifterHistory": typeof lib_lifterHistory;
+  "lib/lifterKeys": typeof lib_lifterKeys;
   "lib/lifters": typeof lib_lifters;
   "lib/logLines": typeof lib_logLines;
   "lib/meetData": typeof lib_meetData;

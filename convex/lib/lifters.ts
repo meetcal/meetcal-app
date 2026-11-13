@@ -4,6 +4,7 @@ import type { lifterMatch } from '../schema';
 import { daysBetween } from './dates';
 import { itemAt } from './json';
 import { mastersAges, parseDivision } from './leaderboard';
+import { soleLifter } from './lifterKeys';
 import { normalizeName } from './names';
 import { isDatedResult } from './results';
 
@@ -169,7 +170,18 @@ export function linkFor(row: LinkableResult, lifters: readonly LifterFacts[], hi
   return fitting.length === 1 ? { lifterId: itemAt(fitting, 0).athleteId, lifterMatch: 'fit' } : null;
 }
 
-export function sameLink(row: Pick<Doc<'lifting_results'>, 'lifterId' | 'lifterMatch'>, link: LifterLink): boolean {
+export function soleLifterIds(
+  rows: readonly Pick<LinkableResult, 'age' | 'date'>[],
+  lifterIds: readonly (string | undefined)[],
+  lifters: readonly LifterFacts[],
+): (string | undefined)[] {
+  const sole = soleLifter(lifterIds.map((lifter_id) => ({ lifter_id })));
+  const facts = lifters.find((lifter) => lifter.athleteId === sole);
+  return rows.map((row, index) => (lifterIds[index] === undefined && facts !== undefined && fitsDivision(row, facts) ? facts.athleteId : undefined));
+}
+
+export function sameLink(row: Pick<Doc<'lifting_results'>, 'lifterId' | 'lifterMatch' | 'soleLifterId'>, link: LifterLink, soleLifterId: string | undefined): boolean {
+  if (row.soleLifterId !== soleLifterId) return false;
   if (link === null) return row.lifterId === undefined && row.lifterMatch === undefined;
   return row.lifterId === link.lifterId && row.lifterMatch === link.lifterMatch;
 }
