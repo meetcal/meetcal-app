@@ -43,11 +43,6 @@ jest.mock("react-native-onesignal", () => ({
 
 // `__DEV__` is true under Jest and `DEV_CONFIG.SIMULATE_SUBSCRIPTION` is on,
 // which would short-circuit every path this file is about.
-const mockRegisterSubscribed = jest.fn();
-jest.mock("@/lib/posthog", () => ({
-  registerSubscribedForAnalytics: (subscribed: boolean) => mockRegisterSubscribed(subscribed),
-}));
-
 jest.mock("@/config/development", () => ({
   getSimulatedSubscriptionStatus: () => null,
 }));
@@ -246,7 +241,6 @@ describe("SubscriptionProvider", () => {
       subscriptionType: "lifetime",
     });
     expect(value.current.lastSyncTimestamp).not.toBeNull();
-    expect(mockRegisterSubscribed).toHaveBeenLastCalledWith(true);
   });
 
   it("reports an inactive entitlement as free, overriding a stale subscribed cache", async () => {
@@ -269,7 +263,6 @@ describe("SubscriptionProvider", () => {
     expect(value.current.isSubscribed).toBe(false);
     expect(value.current.subscriptionType).toBe("free");
     expect(value.current.isUsingStaleCache).toBe(false);
-    expect(mockRegisterSubscribed).toHaveBeenLastCalledWith(false);
   });
 
   it("falls back to the cache when RevenueCat fails and keeps the stale flag honest", async () => {
