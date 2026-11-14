@@ -30,4 +30,13 @@ if (isPostHogConfigured) {
     });
 }
 
+export const SUBSCRIBED_ANALYTICS_PROPERTY = 'subscribed';
+
+export function registerSubscribedForAnalytics(subscribed: boolean): void {
+  if (!isPostHogConfigured) return;
+  posthog.register({ [SUBSCRIBED_ANALYTICS_PROPERTY]: subscribed }).catch((error: unknown) => {
+    if (__DEV__) console.warn('[posthog] could not record the subscription', error);
+  });
+}
+
 export { posthog };

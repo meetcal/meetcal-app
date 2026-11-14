@@ -7,6 +7,7 @@ import { OneSignal } from 'react-native-onesignal';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { devLog, devWarn } from '@/lib/logger';
+import { registerSubscribedForAnalytics } from '@/lib/posthog';
 import { SUBSCRIPTION_ENTITLEMENT_ID } from '@/lib/premium-intent';
 import type { ConfirmedEntitlement } from '@/lib/confirmed-entitlement';
 
@@ -303,6 +304,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       void confirmEntitlement();
     }
     void syncOneSignalMembershipTags(subscribed, type);
+    registerSubscribedForAnalytics(subscribed);
   }, [confirmEntitlement, syncOneSignalMembershipTags]);
 
   // A CustomerInfo refresh can finish before OneSignal finishes switching to the
