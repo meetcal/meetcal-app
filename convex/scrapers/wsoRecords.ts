@@ -85,13 +85,6 @@ async function fetchTabList(sheetId: string): Promise<SheetTab[]> {
 
 type TabFetch = { list?: readonly SheetTab[] } & ({ export?: false; headers?: number } | { export: true; headers?: never });
 
-/**
- * The tabs' CSVs, each tab named by gid or by name and checked against the
- * sheet's visible tabs first (`resolveTabs`): a tab hidden, renamed or
- * deleted fails the source, rather than Google serving the hidden tab's
- * stale records, or its first tab in place of a deleted one. `headers` is
- * passed on to `gvizCsvByGid`; `list` is the tab list when already fetched.
- */
 async function fetchTabs(sheetId: string, refs: readonly TabRef[], options: TabFetch = {}): Promise<string[]> {
   const gids = resolveTabs(options.list ?? (await fetchTabList(sheetId)), refs);
   const csvUrl = (gid: string) => (options.export ? sheetExportCsvByGid(sheetId, gid) : gvizCsvByGid(sheetId, gid, options.headers));
