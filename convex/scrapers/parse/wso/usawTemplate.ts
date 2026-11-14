@@ -8,9 +8,8 @@ import { normalizeAgeGroup } from './flat';
 // lift, record, name, then the holder's details. Minnesota-Dakotas and
 // Texas-Oklahoma ("Detailed" tab) use it.
 //
-// Columns are read by position: Texas-Oklahoma's age-group header carries a
-// "Current as of" note, and Minnesota-Dakotas' headers stop at "name, date,
-// place, event" while a claimed record's row goes on name, born, club, date,
+// Columns are read by position: Minnesota-Dakotas' headers stop at "name,
+// date, place, event" while a claimed record's row goes on name, born, club, date,
 // place, group, event (only a standard's row fits the headers). So a row
 // whose 14th cell is a date is the long form; otherwise date, place and event
 // follow the name. A record of 0 is no record: the sheets list classes
