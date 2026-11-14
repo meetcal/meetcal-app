@@ -36,6 +36,8 @@ export function sheetIdOf(url: string): string {
 export const gvizCsvByGid = (sheetId: string, gid: string | number, headers?: number) =>
   `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${headers === undefined ? '' : `&headers=${headers}`}&gid=${gid}`;
 
+export const sheetExportCsvByGid = (sheetId: string, gid: string | number) => `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+
 /** The sheet's HTML view, which lists its visible tabs (`sheetTabList`). */
 export const sheetHtmlViewUrl = (sheetId: string) => `https://docs.google.com/spreadsheets/d/${sheetId}/htmlview`;
 

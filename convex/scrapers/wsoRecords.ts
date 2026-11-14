@@ -14,6 +14,7 @@ import {
   gvizCsvByGid,
   gvizCsvFirstTab,
   resolveTabs,
+  sheetExportCsvByGid,
   sheetHtmlViewUrl,
   sheetIdOf,
   sheetTabList,
@@ -87,11 +88,16 @@ async function fetchTabList(sheetId: string): Promise<SheetTab[]> {
  * sheet's visible tabs first (`resolveTabs`): a tab hidden, renamed or
  * deleted fails the source, rather than Google serving the hidden tab's
  * stale records, or its first tab in place of a deleted one. `headers` is
- * passed on to `gvizCsvByGid`; `list` is the tab list when already fetched.
+ * passed on to `gvizCsvByGid`; `export` reads the tabs through
+ * `sheetExportCsvByGid` instead, which takes no `headers`; `list` is the tab
+ * list when already fetched.
  */
-async function fetchTabs(sheetId: string, refs: readonly TabRef[], { headers, list }: { headers?: number; list?: readonly SheetTab[] } = {}): Promise<string[]> {
-  const gids = resolveTabs(list ?? (await fetchTabList(sheetId)), refs);
-  return await mapLimited(gids, SHEET_CONCURRENCY, (gid) => fetchSheetText(gvizCsvByGid(sheetId, gid, headers)));
+type TabFetch = { list?: readonly SheetTab[] } & ({ export?: false; headers?: number } | { export: true; headers?: never });
+
+async function fetchTabs(sheetId: string, refs: readonly TabRef[], options: TabFetch = {}): Promise<string[]> {
+  const gids = resolveTabs(options.list ?? (await fetchTabList(sheetId)), refs);
+  const csvUrl = (gid: string) => (options.export ? sheetExportCsvByGid(sheetId, gid) : gvizCsvByGid(sheetId, gid, options.headers));
+  return await mapLimited(gids, SHEET_CONCURRENCY, (gid) => fetchSheetText(csvUrl(gid)));
 }
 
 /**
@@ -288,12 +294,14 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () =>
       usawTemplate(await fetchSheetText('https://docs.google.com/spreadsheets/d/1tVJuneaIrPigqz5V9dLH9kKMbtU3sQC9/export?format=csv'), 'Minnesota-Dakotas'),
   },
-  // The "Detailed" tab (gid 1649080864) is the current set; TX and OK are
-  // the 2025 per-state tabs. Read by gid: the Python asked for the name.
+  // The "Detailed" tab (gid 1649080864) is the current set, read by gid: the
+  // Python asked for the name. It is read through `/export`, not gviz: gviz
+  // serves only the rows a filter left on the sheet shows, and in November
+  // 2026 a filter on Age Group = M50 served 16 of the 298 classes.
   {
     wso: 'Texas-Oklahoma',
     scrape: async () => {
-      const [detailed] = await fetchTabs('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', [{ gid: '1649080864' }]);
+      const [detailed] = await fetchTabs('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', [{ gid: '1649080864' }], { export: true });
       return usawTemplate(detailed ?? '', 'Texas-Oklahoma');
     },
   },
