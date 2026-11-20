@@ -1,3 +1,4 @@
+import { bytesToBase64 } from './base64';
 import { sha256Hex } from './tokens';
 
 /**
@@ -25,12 +26,6 @@ function base64ToBytes(text: string): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(new ArrayBuffer(binary.length));
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
 }
 
 /** Equal strings, compared in time that does not depend on where they differ. */

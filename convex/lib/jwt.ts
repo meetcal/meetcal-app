@@ -1,4 +1,5 @@
 import { isRecord } from './json';
+import { bytesToBase64 } from './base64';
 
 /**
  * ES256 JWTs for MeetCal-issued tokens (`convex/apiTokens.ts`), signed with
@@ -32,9 +33,7 @@ export function publicJwk(key: SigningJwk): PublicJwk {
 }
 
 function base64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 const encodeJson = (value: unknown) => base64Url(new TextEncoder().encode(JSON.stringify(value)));
