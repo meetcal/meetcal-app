@@ -1,9 +1,38 @@
 # Architecture
 
-meetcal.app is a client-side rendered Leptos app. Trunk compiles it to WebAssembly; Vercel serves
-the static output and a small HTML shell per route. There is no server of its own: data comes from
+meetcal.app is a client-side rendered Leptos app. Trunk compiles it to WebAssembly, as two apps
+built from one crate (below); Vercel serves the static output and a small HTML shell per route. There is no server of its own: data comes from
 Convex and sign-in from Clerk, both called from the browser. Convex alone decides who sees the
 subscription data, through its access pass.
+
+## Two apps: the site and the Schedule Builder
+
+`/schedule-builder` is its own WebAssembly app, so its code never adds to the download of any other
+page. Both apps are binaries of the one `meetcal-web` crate and share everything else through its
+library (`src/lib.rs`): the header, footer, route metadata, auth, `utils/api` and `styles.css`.
+
+| App | Binary | Trunk page | Routes |
+|---|---|---|---|
+| The site | `meetcal-web` (`src/main.rs`, `SiteRoutes`) | `index.html` | Every route except `/schedule-builder` |
+| The Schedule Builder | `meetcal-web-schedule-builder` (`src/bin/meetcal-web-schedule-builder.rs`, `ScheduleBuilderRoutes`) | `schedule-builder.html` | `/schedule-builder` |
+
+- Both route sets sit in the same frame (`SiteFrame` in `src/app.rs`: the router, route metadata,
+  header, `<main>` and footer). `WasmApp::serving(path)` names the app that serves a path, and each
+  app provides its `WasmApp` as context.
+- A link into the other app is a whole-page load: `link_rel` gives it `rel="external"`, which the
+  router leaves to the browser. The header, footer and Not Found page use it on every link to a
+  page of the site, so the site's Schedule Builder link and the builder's links back to the site
+  load the other app's document and Wasm.
+- Trunk builds one app per page, so `trunk build` builds the site from `index.html`, and its
+  post-build hook (`scripts/generate-bootstrap.sh`) builds the builder from `schedule-builder.html`
+  into a temporary folder and copies its loader, Wasm, bootstrap, shell and snippets into the
+  site's `dist/`. The two pages differ only in their `data-bin` (a config test compares them).
+  Every `trunk build --release --locked` (CI, `scripts/vercel-build.sh`, `mise run build`) builds
+  both.
+- `mise run run` serves the site alone: it sets `MEETCAL_WEB_SITE_ONLY=1`, so the hook skips the
+  builder's build on every rebuild, and `trunk serve` answers `/schedule-builder` with the site's
+  `index.html`, which has no builder route. `mise run run-schedule-builder` serves the builder on
+  port 3001. A config test runs the hook with and without the variable.
 
 ## Data: Convex over HTTP
 
@@ -49,13 +78,16 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - 429 and 503 are retried twice, honoring `Retry-After` (1 to 10 seconds). Every query is a read,
   so a retry is safe. The site's only mutations, `deviceLogin:approve`, `deviceLogin:deny` and
   `apiTokens:revokeAllCli` (`POST /api/mutation`, from `/link`), and
-  `meetSubmissions:generateUploadUrl` and `meetSubmissions:submit` (from `/submit-meet`), are never
-  retried by themselves: the user taps again.
+  `meetSubmissions:generateUploadUrl` and `meetSubmissions:submit` (from `/submit-meet`), and
+  `scheduleBuilder:saveDraft`, `scheduleBuilder:deleteDraft` and `schedulePublications:publish`
+  (from `/schedule-builder`), are never retried by themselves: the user taps again.
 - The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api/catalog.rs`, Convex's `PREMIUM_FUNCTIONS`) take
   the access pass as their `pass` argument; `utils/api` adds it to their arguments. A search
   (`results:search`) takes it only with `startDate` and `endDate`: name suggestions are public.
   Every other query goes out without it, `results:wrapped` (Athlete Wrapped, below) included. No query carries the user's session token except
-  `accessPass:pass` and `deviceLogin:describe` (one user's own CLI sign-in, below): a query that reads its caller is cached per user, while every subscriber sends
+  `accessPass:pass`, `deviceLogin:describe` (one user's own CLI sign-in, below) and the Schedule
+  Builder's `scheduleBuilder:draft`, `scheduleBuilder:drafts` and
+  `schedulePublications:publications` (one user's own drafts and publishes, below): a query that reads its caller is cached per user, while every subscriber sends
   the same pass, so premium answers stay in Convex's shared query cache.
 - The pass comes from `accessPass:pass` (`POST /api/query` with `Authorization: Bearer <Clerk
   session token>`, Clerk's default token, as the app sends), which answers `{ pass, rotatesAt }`.
@@ -239,11 +271,62 @@ in the sitemap.
   what the user entered. Done, the page thanks the user and offers to send another meet.
 - Upload URLs are on the Convex deployment's own origin, which the CSP's `connect-src` already allows.
 
+## Building a meet's schedule: `/schedule-builder`
+
+Meet organizers build a meet's sessions from its Sport80 entries (`src/pages/schedule_builder/`,
+calls in `src/utils/api/schedule_builder.rs`, backend in `../convex/scheduleBuilder.ts`,
+`../convex/scheduleBuilderLoad.ts` and `../convex/schedulePublications.ts`). The page is public and
+indexable, in the sitemap, and linked as "Schedule Builder" in the header; signing in adds drafts
+and publishing. It is its own Wasm app ([Two apps](#two-apps-the-site-and-the-schedule-builder)),
+downloaded only when someone opens `/schedule-builder`, with its own size budget. Like every public page, it loads Clerk only when the browser has a Clerk session or
+the visitor taps Sign in, and its shell is the empty Load a Meet form. The page computes nothing about a schedule: it sends options and edits and shows
+Convex's answer.
+
+- Pasting the meet's Sport80 link (its entries list, public page or registration link; Convex
+  alone decides which links it takes) calls the action `scheduleBuilderLoad:load` (`{ url }`, within
+  `SPORT80_LOAD_TIMEOUT`), which answers `{ meet }`; the page then moves to
+  `/schedule-builder?meet=<name>`, the address the drafts list and a shared link open.
+- `scheduleBuilder:defaults` answers the meet's days and default options, which fill the options
+  form. The form's checks (`checked_options` in `models.rs`) give each limit a readable sentence,
+  and refuse, as `checkBuilderOptions` does, a day whose first start leaves no time for the
+  two-hour weigh-in or whose first session would end after midnight; the limits are the server's
+  `BUILDER_LIMITS`, maximums, `WEIGH_IN_MINUTES` and `MINUTES_PER_DAY`, which a test keeps equal.
+  The weigh-in is not an option: every session weighs in two hours before its start. Building sends the
+  options, with the edits made so far, to `scheduleBuilder:preview`, which answers the sessions,
+  each group's `label` (the one the export and a published schedule use) and the warnings. A new
+  build with changed options drops the edits after the user confirms, and only once `preview`
+  accepts the new options: a refused build brings the previous options and edits back.
+- Edits come from disclosure lists, with no drag and drop and no menu roles: Move To… on each
+  athlete, a class chip's Move Class To…, and Swap With… on each session each open a list of
+  plain buttons (the toolbar's Export list is the same disclosure), and Edit Time opens a small dialog. Escape or a click outside closes one and
+  returns focus to its button; after an edit, focus goes to the button in the same place on the
+  new board, or to Undo. Each edit is appended to the list sent to `preview` (at most
+  `MAX_BUILDER_EDITS`, the server's), and Undo drops the last. While the next answer loads, the
+  previous board stays on screen dimmed and `inert`.
+- Signed out, the options and edits of each meet are kept in `localStorage`
+  (`meetcal.scheduleBuilder:<meet>`, every access guarded, so the page works without it). Signed
+  in, Save Draft calls `scheduleBuilder:saveDraft`, and the landing page lists
+  `scheduleBuilder:drafts` with Delete (`scheduleBuilder:deleteDraft`). Opening a meet starts from
+  the newer of the saved draft (`scheduleBuilder:draft`) and the browser's copy, or from the
+  defaults, unbuilt.
+- Export opens a list of CSV, Excel and PDF. CSV and Excel save `scheduleBuilder:exportFile`'s
+  answer as a file (an Excel workbook arrives as base64). PDF prints the page: the print styles in
+  `styles.css` hide the header, footer, options and every control (`.no-print`) and keep each
+  session's date, weigh-in, start, platforms, group labels and athletes.
+- Publishing needs sign-in: `schedulePublications:publish` takes the options, edits and the contact
+  email (prefilled with the Clerk user's primary email) and answers `live` or `pending`, shown as
+  "Live on MeetCal" or "Sent for Review" until the options or edits change, when the form returns
+  for the next publish; `schedulePublications:publications` lists the user's publishes of the meet
+  and whether they organize it.
+- A function error's `error` is shown as the sentence the server wrote, and a 401 asks the user to
+  sign in again.
+
 ## Routes and metadata
 
 Each route needs a document that search engines and link previews can read before the Wasm loads:
 
-- Every route's first frame is in its HTML: `tests/shells.rs` renders the app's own `SiteRoutes`
+- Every route's first frame is in its HTML: `tests/shells.rs` renders the route set of the app
+  that serves it (`WasmAppRoutes`: `SiteRoutes`, or `ScheduleBuilderRoutes` for `/schedule-builder`)
   natively (Leptos' `ssr` feature, on in native tests only) for each route, as the app's first
   frame shows it before Clerk answers (the header, and for a gated route the page's heading, intro
   and a table skeleton from `catalog.rs`), and keeps `shells/<route>.html` and `shells/routes.txt`
@@ -259,9 +342,13 @@ Each route needs a document that search engines and link previews can read befor
   starts PostHog once the app has mounted), adds `modulepreload` for the glue and the auth bridge
   and `preload` for the Wasm, so all three download with the HTML, and renders every line of
   `shells/routes.txt` into its document (`index.html`, `404.html`, `dist/seo/<name>.html`), each
-  with its own title, description, canonical URL and robots directive and its route's shell. Competition data pages are
+  with its own title, description, canonical URL and robots directive and its route's shell. The
+  script runs once per app (`TRUNK_HTML_FILE` names which): the site's run renders every line but
+  `schedule-builder`, then builds the Schedule Builder, whose run writes its own bootstrap and
+  preloads (`meetcal-web-schedule-builder-<hash>.js` and `_bg.wasm`) into
+  `dist/seo/schedule-builder.html`; the site's run copies them into `dist/`. Competition data pages are
   `noindex, nofollow`, except the free `/wrapped`, which is `index, follow`, has its own
-  description and is in `public/sitemap.xml`.
+  description and is in `public/sitemap.xml`, as is `/schedule-builder`.
 - `vercel.json` rewrites each route to its shell (`/records` to `/seo/records.html`).
 - Once the app runs, `RouteMetadata` (`src/components/seo.rs`) keeps the title and meta tags in
   step as the user navigates. Data pages take theirs from `DATA_PAGES` in
@@ -295,7 +382,7 @@ instead; `/submit-meet`, which the header links to, has its own spec.
 
 Vercel's project `meetcal-web` builds this folder (project root `web/`) with
 `scripts/vercel-build.sh`: it installs Rust and Trunk, writes `public/posthog-env.js` from
-`POSTHOG_API_KEY`, and runs `trunk build --release --locked` into `dist/`. Production deploys from
+`POSTHOG_API_KEY`, and runs `trunk build --release --locked` into `dist/`, which builds both apps. Production deploys from
 `master`; every pull request gets a preview. `vercel.json` also sets the security headers,
 including the CSP, for every response.
 
@@ -303,7 +390,7 @@ Analytics: once the app has mounted, the bootstrap loads `public/posthog-env.js`
 `public/posthog-init.js` when the browser is idle, which start PostHog with the key the build
 wrote: autocapture, pageviews and web vitals, without surveys or dead-click capture.
 
-Caching (`vercel.json`): every content-hashed file (the glue, the Wasm, the stylesheet, the
-bootstrap and everything under `/snippets/`) is `immutable` for a year, and a config test checks
+Caching (`vercel.json`): every content-hashed file (both apps' glue and Wasm, which
+`/meetcal-web-(.*)` covers, the stylesheet, the bootstraps and everything under `/snippets/`) is `immutable` for a year, and a config test checks
 each hashed file in `dist/` against the rules. Images, icons and the manifest are cached for a day,
 the PostHog files for an hour, and the HTML revalidates on every visit.

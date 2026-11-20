@@ -6,6 +6,7 @@ export const publicRoutes = [
   ["/subscription", "Continue in the MeetCal app"],
   // The one free data page: open to everyone, signed out included.
   ["/wrapped", "Athlete Wrapped"],
+  ["/schedule-builder", "Schedule Builder"],
 ] as const;
 
 export const protectedDataRoutes = [

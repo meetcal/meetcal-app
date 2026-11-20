@@ -1,6 +1,6 @@
 import { ConvexError } from 'convex/values';
 import { athleteKey, balancedChunks, buildSchedule, interleave, layoutSlots, slotsThatFit, splitLabel, type BuilderEntrant, type BuiltSchedule } from '../convex/lib/scheduleBuilder';
-import { checkBuilderEdits, checkBuilderOptions, defaultBuilderOptions, meetDays, minutesOfClock, storedClockOf, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
+import { checkBuilderEdits, checkBuilderOptions, defaultBuilderOptions, meetDays, minutesOfClock, storedClockOf, WEIGH_IN_MINUTES, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
 
 let nextId = 1;
 function lifter(gender: 'Women' | 'Men', weightClass: string, entryTotal: number, extra: Partial<BuilderEntrant> = {}): BuilderEntrant {
@@ -13,7 +13,6 @@ function options(extra: Partial<BuilderOptions> = {}): BuilderOptions {
     days: [{ date: '2027-03-06', firstStart: '09:00' }],
     sessionMinutes: 120,
     breakMinutes: 0,
-    weighInMinutes: 120,
     maxAthletesPerPlatform: 10,
     maxSessionsPerDay: null,
     platforms: ['Red'],
@@ -158,16 +157,14 @@ describe('fitting sessions into days', () => {
     { date: '2027-03-07', firstStart: '09:00' },
   ];
 
-  it('spreads sessions evenly over the days with no cap, with breaks and weigh-ins', () => {
-    const schedule = buildSchedule(
-      many(4, (i) => lifter('Men', String(60 + i * 5), 100)),
-      options({ days, maxAthletesPerPlatform: 1, breakMinutes: 30, weighInMinutes: 90 }),
-    );
+  it('spreads sessions evenly over the days with no cap, with breaks, each weighing in two hours before its start', () => {
+    const schedule = buildSchedule(many(4, (i) => lifter('Men', String(60 + i * 5), 100)), options({ days, maxAthletesPerPlatform: 1, breakMinutes: 30 }));
+    expect(WEIGH_IN_MINUTES).toBe(120);
     expect(schedule.sessions.map((s) => [s.date, s.startTime, s.weighInTime])).toEqual([
-      ['2027-03-06', '09:00:00', '07:30:00'],
-      ['2027-03-06', '11:30:00', '10:00:00'],
-      ['2027-03-07', '09:00:00', '07:30:00'],
-      ['2027-03-07', '11:30:00', '10:00:00'],
+      ['2027-03-06', '09:00:00', '07:00:00'],
+      ['2027-03-06', '11:30:00', '09:30:00'],
+      ['2027-03-07', '09:00:00', '07:00:00'],
+      ['2027-03-07', '11:30:00', '09:30:00'],
     ]);
   });
 
@@ -216,6 +213,47 @@ describe('edits', () => {
     const schedule = buildSchedule(entrants, opts, [{ kind: 'moveAthlete', athlete: moved, toSession: 1, toPlatform: 'Blue' }]);
     expect(summary(schedule)[0]?.groups).toEqual(['Red:Female:58/63:2', 'Blue:Male:58/65:2']);
     expect(schedule.warnings.map((w) => w.code)).toEqual(['mixedGroup']);
+  });
+
+  describe('entrants who share an identity', () => {
+    const twins = () => {
+      nextId = 1;
+      const twin = { memberId: '300', name: 'Mia Lee' };
+      return [lifter('Women', '77', 125, twin), lifter('Women', '77', 120, twin), lifter('Women', '58', 70)];
+    };
+    const totalsOf = (schedule: BuiltSchedule) => schedule.sessions[0]?.groups.map((g) => [g.platform, g.athletes.map((a) => a.entryTotal)]);
+    const key = athleteKey({ memberId: '300', name: 'Mia Lee' });
+
+    it('moves the one named by its source group and its place among them as the board lists it', () => {
+      const move = (occurrence: number) => buildSchedule(twins(), opts, [{ kind: 'moveAthlete', athlete: key, fromSession: 1, fromPlatform: 'Red', occurrence, toSession: 1, toPlatform: 'Blue' }]);
+      expect(totalsOf(move(0))).toEqual([
+        ['Red', [70, 125]],
+        ['Blue', [120]],
+      ]);
+      expect(totalsOf(move(1))).toEqual([
+        ['Red', [70, 120]],
+        ['Blue', [125]],
+      ]);
+    });
+
+    it('skips a move whose entrant is no longer in its source group', () => {
+      for (const from of [
+        { fromSession: 1, fromPlatform: 'Red', occurrence: 2 },
+        { fromSession: 1, fromPlatform: 'Blue', occurrence: 0 },
+        { fromSession: 9, fromPlatform: 'Red', occurrence: 0 },
+      ]) {
+        const schedule = buildSchedule(twins(), opts, [{ kind: 'moveAthlete', athlete: key, ...from, toSession: 1, toPlatform: 'Blue' }]);
+        expect(totalsOf(schedule)).toEqual([['Red', [70, 120, 125]]]);
+        expect(schedule.warnings.map((w) => w.code)).toEqual(['skippedEdit']);
+      }
+    });
+
+    it('moves the first match, as before, for an edit saved before moves named their source', () => {
+      expect(totalsOf(buildSchedule(twins(), opts, [{ kind: 'moveAthlete', athlete: key, toSession: 1, toPlatform: 'Blue' }]))).toEqual([
+        ['Red', [70, 125]],
+        ['Blue', [120]],
+      ]);
+    });
   });
 
   it('moves a whole class out of a group', () => {
@@ -334,6 +372,13 @@ describe('edits', () => {
     expect(schedule.warnings.map((w) => w.code)).toEqual(['skippedEdit']);
   });
 
+  it('skips a retime that leaves no two hours for the weigh-in, and takes one that does', () => {
+    const retimed = (startTime: string) => buildSchedule([lifter('Men', '89', 150)], options(), [{ kind: 'setSessionTime', session: 1, date: '2027-03-06', startTime }]);
+    expect(retimed('01:59').sessions[0]?.startTime).toBe('09:00:00');
+    expect(retimed('01:59').warnings.map((w) => w.code)).toEqual(['skippedEdit']);
+    expect(retimed('02:00').sessions.map((s) => [s.startTime, s.weighInTime])).toEqual([['02:00:00', '00:00:00']]);
+  });
+
   it('skips edits that no longer fit and warns about them and about overfull groups', () => {
     const entrants = base();
     const schedule = buildSchedule(entrants, opts, [
@@ -348,13 +393,16 @@ describe('edits', () => {
 });
 
 describe('options', () => {
-  it('defaults to the meet days at 9:00 on one platform', () => {
+  it('defaults to the meet days at 9:00 on one platform, youth and masters lifting on their own', () => {
     const defaults = defaultBuilderOptions({ startDate: '2027-03-06', endDate: '2027-03-07' });
     expect(defaults.days).toEqual([
       { date: '2027-03-06', firstStart: '09:00' },
       { date: '2027-03-07', firstStart: '09:00' },
     ]);
+    expect(defaults.separateAgeGroups).toBe(true);
     expect(() => checkBuilderOptions(defaults)).not.toThrow();
+    expect(defaults).not.toHaveProperty('weighInMinutes');
+    expect(() => checkBuilderOptions({ ...defaults, days: [{ date: '2027-03-06', firstStart: '02:00' }] })).not.toThrow();
   });
 
   it('caps meet days and reads a blank end as one day', () => {
@@ -385,7 +433,7 @@ describe('options', () => {
       'days must be listed in date order',
     ],
     [{ days: [{ date: '2027-03-06', firstStart: '9am' }] }, 'the first start on 2027-03-06 is not an HH:MM time'],
-    [{ days: [{ date: '2027-03-06', firstStart: '01:00' }] }, 'the first start on 2027-03-06 leaves no time for its weigh-in'],
+    [{ days: [{ date: '2027-03-06', firstStart: '01:59' }] }, 'the first start on 2027-03-06 leaves no time for its weigh-in'],
     [{ days: [{ date: '2027-03-06', firstStart: '23:00' }] }, 'the first session on 2027-03-06 would end after midnight'],
     [{ platforms: [] }, 'platforms must name 1 to 6 platforms'],
     [{ platforms: ['Red', 'red'] }, 'the platform "red" is listed twice'],

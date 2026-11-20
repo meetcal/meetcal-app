@@ -4,5 +4,6 @@ pub mod home;
 pub mod link;
 pub mod not_found;
 pub mod privacy;
+pub mod schedule_builder;
 pub mod submit_meet;
 pub mod terms;

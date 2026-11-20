@@ -1,3 +1,4 @@
+use crate::app::link_rel;
 use leptos::prelude::*;
 use leptos_router::components::A;
 
@@ -13,8 +14,8 @@ pub fn NotFoundSection() -> impl IntoView {
             <h1>"Page Not Found"</h1>
             <p>"This page doesn’t exist, or it has moved."</p>
             <nav class="not-found-links" aria-label="Where to go next">
-                <A href="/">"Go to the home page"</A>
-                <A href="/comp-data">"Browse competition data"</A>
+                <A href="/" attr:rel=link_rel("/")>"Go to the home page"</A>
+                <A href="/comp-data" attr:rel=link_rel("/comp-data")>"Browse competition data"</A>
             </nav>
         </section>
     }

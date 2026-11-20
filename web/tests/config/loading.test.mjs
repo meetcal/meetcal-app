@@ -41,7 +41,7 @@ async function filesUnder(directory, prefix = "") {
 test("every content-hashed file in the build is cached for a year, and nothing else is", async () => {
   const files = await filesUnder("../../dist/");
   const hashed = files.filter((path) => CONTENT_HASH.test(path));
-  for (const required of [/^\/meetcal-web-.*\.js$/, /_bg\.wasm$/, /^\/styles-.*\.css$/, /^\/snippets\/.*auth_bridge\.js$/, /^\/app-bootstrap-.*\.js$/]) {
+  for (const required of [/^\/meetcal-web-[0-9a-f]{16}\.js$/, /^\/meetcal-web-[0-9a-f]{15,16}_bg\.wasm$/, /^\/meetcal-web-schedule-builder-[0-9a-f]{16}\.js$/, /^\/meetcal-web-schedule-builder-[0-9a-f]{15,16}_bg\.wasm$/, /^\/styles-.*\.css$/, /^\/snippets\/.*auth_bridge\.js$/, /^\/app-bootstrap-.*\.js$/]) {
     assert.ok(hashed.some((path) => required.test(path)), `no hashed file matches ${required}`);
   }
   for (const path of files) {
@@ -87,15 +87,27 @@ test("pages and the routes they rewrite to revalidate on every visit", () => {
   }
 });
 
-test("every page starts the app's downloads with the HTML", async () => {
-  for (const file of ["index.html", "seo/records.html", "seo/wrapped.html", "404.html"]) {
+const APPS = {
+  site: "meetcal-web",
+  scheduleBuilder: "meetcal-web-schedule-builder",
+};
+
+function appOfPage(file) {
+  return file === "seo/schedule-builder.html" ? APPS.scheduleBuilder : APPS.site;
+}
+
+test("every page starts its own app's downloads with the HTML", async () => {
+  for (const file of ["index.html", "seo/records.html", "seo/wrapped.html", "404.html", "seo/schedule-builder.html"]) {
+    const app = appOfPage(file);
     const html = await readFile(new URL(`../../dist/${file}`, import.meta.url), "utf8");
     const head = html.slice(0, html.indexOf("</head>"));
-    assert.match(head, /<link rel="modulepreload" href="\/meetcal-web-[0-9a-f]+\.js"/, `${file}: no glue modulepreload`);
+    assert.match(head, new RegExp(`<link rel="modulepreload" href="/${app}-[0-9a-f]{16}\\.js"`), `${file}: no ${app} glue modulepreload`);
     for (const snippet of ["auth_bridge.js", "answer_store.js"]) {
       assert.match(head, new RegExp(`<link rel="modulepreload" href="/snippets/meetcal-web-[0-9a-f]+-[0-9a-f]{16}/src/${snippet.replace(".", "\\.")}"`), `${file}: no ${snippet} modulepreload`);
     }
-    assert.match(head, /<link rel="preload" href="\/meetcal-web-[0-9a-f]+_bg\.wasm" as="fetch" type="application\/wasm" crossorigin/, `${file}: no wasm preload`);
+    assert.match(head, new RegExp(`<link rel="preload" href="/${app}-[0-9a-f]{15,16}_bg\\.wasm" as="fetch" type="application/wasm" crossorigin`), `${file}: no ${app} wasm preload`);
+    const otherApp = app === APPS.site ? APPS.scheduleBuilder : APPS.site;
+    assert.doesNotMatch(head, new RegExp(`href="/${otherApp}-[0-9a-f]`), `${file}: preloads the ${otherApp} app`);
     assert.doesNotMatch(head, /<script src=/, `${file}: a classic script in <head> blocks the first paint`);
   }
 });
@@ -116,13 +128,30 @@ test("every page shell paints its route's own page before the app runs", async (
 const budgets = JSON.parse(await readFile(new URL("../budgets.json", import.meta.url), "utf8"));
 const WASM_RAW_BUDGET_BYTES = budgets.wasmRawBytes;
 const WASM_BROTLI_11_BUDGET_BYTES = budgets.wasmBrotli11Bytes;
+const SCHEDULE_BUILDER_WASM_RAW_BUDGET_BYTES = budgets.scheduleBuilderWasmRawBytes;
+const SCHEDULE_BUILDER_WASM_BROTLI_11_BUDGET_BYTES = budgets.scheduleBuilderWasmBrotli11Bytes;
 const REQUESTS_BEFORE_WASM_BUDGET = budgets.requestsBeforeWasm;
 
-async function builtWasm() {
+async function builtWasm(app) {
   const dist = new URL("../../dist/", import.meta.url);
-  const names = (await readdir(dist)).filter((file) => /^meetcal-web-[0-9a-f]{15,16}_bg\.wasm$/.test(file));
-  assert.equal(names.length, 1, "expected one content-hashed Wasm binary in dist/");
+  const names = (await readdir(dist)).filter((file) => new RegExp(`^${app}-[0-9a-f]{15,16}_bg\\.wasm$`).test(file));
+  assert.equal(names.length, 1, `expected one content-hashed ${app} Wasm binary in dist/`);
   return readFile(new URL(names[0], dist));
+}
+
+function brotli11(bytes) {
+  return brotliCompressSync(bytes, {
+    params: {
+      [zlib.BROTLI_PARAM_QUALITY]: 11,
+      [zlib.BROTLI_PARAM_SIZE_HINT]: bytes.length,
+    },
+  });
+}
+
+function assertWasmWithin(name, wasm, rawBudget, brotliBudget) {
+  assert.ok(wasm.length <= rawBudget, `${name} is ${wasm.length} bytes, over its ${rawBudget}-byte budget`);
+  const brotli = brotli11(wasm);
+  assert.ok(brotli.length <= brotliBudget, `${name} is ${brotli.length} bytes at brotli 11, over its ${brotliBudget}-byte budget`);
 }
 
 async function builtPages() {
@@ -131,20 +160,15 @@ async function builtPages() {
 }
 
 test("the Wasm binary stays inside its raw and brotli-11 size budgets", async () => {
-  const wasm = await builtWasm();
-  assert.ok(
-    wasm.length <= WASM_RAW_BUDGET_BYTES,
-    `the Wasm binary is ${wasm.length} bytes, over its ${WASM_RAW_BUDGET_BYTES}-byte budget`,
-  );
-  const brotli = brotliCompressSync(wasm, {
-    params: {
-      [zlib.BROTLI_PARAM_QUALITY]: 11,
-      [zlib.BROTLI_PARAM_SIZE_HINT]: wasm.length,
-    },
-  });
-  assert.ok(
-    brotli.length <= WASM_BROTLI_11_BUDGET_BYTES,
-    `the Wasm binary is ${brotli.length} bytes at brotli 11, over its ${WASM_BROTLI_11_BUDGET_BYTES}-byte budget`,
+  assertWasmWithin("the Wasm binary", await builtWasm(APPS.site), WASM_RAW_BUDGET_BYTES, WASM_BROTLI_11_BUDGET_BYTES);
+});
+
+test("the Schedule Builder's own Wasm binary stays inside its raw and brotli-11 size budgets", async () => {
+  assertWasmWithin(
+    "the Schedule Builder's Wasm binary",
+    await builtWasm(APPS.scheduleBuilder),
+    SCHEDULE_BUILDER_WASM_RAW_BUDGET_BYTES,
+    SCHEDULE_BUILDER_WASM_BROTLI_11_BUDGET_BYTES,
   );
 });
 
@@ -152,7 +176,7 @@ test("no page asks for more than its budget of files before the Wasm binary", as
   const fetching = /<link\b[^>]*\brel="(?:stylesheet|preload|modulepreload)"[^>]*>|<script\b[^>]*\bsrc=/g;
   for (const file of await builtPages()) {
     const html = await readFile(new URL(`../../dist/${file}`, import.meta.url), "utf8");
-    const wasmPreload = html.search(/<link rel="preload" href="\/meetcal-web-[0-9a-f]+_bg\.wasm"/);
+    const wasmPreload = html.search(new RegExp(`<link rel="preload" href="/${appOfPage(file)}-[0-9a-f]+_bg\\.wasm"`));
     assert.ok(wasmPreload > 0, `${file}: no wasm preload`);
     const before = html.slice(0, wasmPreload).match(fetching) ?? [];
     const requests = 1 + before.length;
@@ -166,6 +190,7 @@ test("no page asks for more than its budget of files before the Wasm binary", as
 test("the release build optimizes the Wasm binary for size", async () => {
   const html = await readFile(new URL("../../index.html", import.meta.url), "utf8");
   assert.match(html, /<link data-trunk rel="rust" data-wasm-opt="z"[^>]*\/>/);
+  assert.match(html, /<link data-trunk rel="rust"[^>]* data-bin="meetcal-web" \/>/);
 
   const cargo = await readFile(new URL("../../Cargo.toml", import.meta.url), "utf8");
   const release = cargo.slice(cargo.indexOf("[profile.release]"));
@@ -184,17 +209,27 @@ test("every page shows a loading shell until the app mounts", async () => {
   }
 });
 
-test("the bootstrap reports a failed load instead of leaving the page blank", async () => {
-  const name = (await readdir(new URL("../../dist/", import.meta.url))).find((file) => /^app-bootstrap-[0-9a-f]{16}\.js$/.test(file));
-  assert.ok(name, "no content-hashed bootstrap in dist/");
-  const bootstrap = await readFile(new URL(`../../dist/${name}`, import.meta.url), "utf8");
-  assert.doesNotMatch(bootstrap, /^import /m);
-  assert.match(bootstrap, /await import\("\/meetcal-web-[0-9a-f]+\.js"\)/);
-  assert.match(bootstrap, /module_or_path: "\/meetcal-web-[0-9a-f]+_bg\.wasm"/);
-  assert.match(bootstrap, /catch \(error\)/);
-  assert.match(bootstrap, /couldn\\u2019t load/);
-  assert.match(bootstrap, /location\.reload\(\)/);
-  assert.match(bootstrap, /startAnalytics\(\);\n\} catch/, "analytics must start only once the app has mounted");
-  const html = await readFile(new URL("../../dist/index.html", import.meta.url), "utf8");
-  assert.ok(html.includes(`<script type="module" src="/${name}"></script>`));
+test("the Schedule Builder's Trunk page is the site's, building the builder's binary", async () => {
+  const site = await readFile(new URL("../../index.html", import.meta.url), "utf8");
+  const builder = await readFile(new URL("../../schedule-builder.html", import.meta.url), "utf8");
+  assert.equal(builder, site.replace('data-bin="meetcal-web"', 'data-bin="meetcal-web-schedule-builder"'));
+});
+
+test("each app's bootstrap loads its own Wasm and reports a failed load instead of leaving the page blank", async () => {
+  const dist = new URL("../../dist/", import.meta.url);
+  const names = (await readdir(dist)).filter((file) => /^app-bootstrap-[0-9a-f]{16}\.js$/.test(file));
+  assert.equal(names.length, 2, "expected one content-hashed bootstrap per app in dist/");
+  for (const [page, app] of [["index.html", APPS.site], ["seo/schedule-builder.html", APPS.scheduleBuilder]]) {
+    const html = await readFile(new URL(page, dist), "utf8");
+    const name = names.find((candidate) => html.includes(`<script type="module" src="/${candidate}"></script>`));
+    assert.ok(name, `${page} loads no content-hashed bootstrap`);
+    const bootstrap = await readFile(new URL(name, dist), "utf8");
+    assert.doesNotMatch(bootstrap, /^import /m);
+    assert.match(bootstrap, new RegExp(`await import\\("/${app}-[0-9a-f]{16}\\.js"\\)`));
+    assert.match(bootstrap, new RegExp(`module_or_path: "/${app}-[0-9a-f]{15,16}_bg\\.wasm"`));
+    assert.match(bootstrap, /catch \(error\)/);
+    assert.match(bootstrap, /couldn\\u2019t load/);
+    assert.match(bootstrap, /location\.reload\(\)/);
+    assert.match(bootstrap, /startAnalytics\(\);\n\} catch/, "analytics must start only once the app has mounted");
+  }
 });

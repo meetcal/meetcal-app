@@ -6,10 +6,10 @@ export const MAX_BUILDER_DAYS = 7;
 export const MAX_BUILDER_PLATFORMS = 6;
 export const MAX_PLATFORM_NAME_LENGTH = 30;
 export const MAX_BUILDER_EDITS = 500;
+export const WEIGH_IN_MINUTES = 120;
 export const BUILDER_LIMITS = {
   sessionMinutes: { min: 15, max: 480 },
   breakMinutes: { min: 0, max: 240 },
-  weighInMinutes: { min: 0, max: 240 },
   maxAthletesPerPlatform: { min: 1, max: 60 },
   maxSessionsPerDay: { min: 1, max: 30 },
 } as const;
@@ -20,7 +20,6 @@ export const DEFAULT_BUILDER_SETTINGS = {
   firstStart: '09:00',
   sessionMinutes: 120,
   breakMinutes: 0,
-  weighInMinutes: 120,
   maxAthletesPerPlatform: 15,
   platforms: ['Red'],
 } as const;
@@ -32,7 +31,6 @@ export const builderOptionsValidator = v.object({
   days: v.array(v.object({ date: v.string(), firstStart: v.string() })),
   sessionMinutes: v.number(),
   breakMinutes: v.number(),
-  weighInMinutes: v.number(),
   maxAthletesPerPlatform: v.number(),
   maxSessionsPerDay: v.union(v.number(), v.null()),
   platforms: v.array(v.string()),
@@ -42,7 +40,15 @@ export const builderOptionsValidator = v.object({
 });
 
 export const builderEditValidator = v.union(
-  v.object({ kind: v.literal('moveAthlete'), athlete: v.string(), toSession: v.number(), toPlatform: v.string() }),
+  v.object({
+    kind: v.literal('moveAthlete'),
+    athlete: v.string(),
+    fromSession: v.optional(v.number()),
+    fromPlatform: v.optional(v.string()),
+    occurrence: v.optional(v.number()),
+    toSession: v.number(),
+    toPlatform: v.string(),
+  }),
   v.object({
     kind: v.literal('moveClass'),
     fromSession: v.number(),
@@ -92,7 +98,6 @@ export function checkBuilderOptions(options: BuilderOptions): void {
   }
   requireWhole('sessionMinutes', options.sessionMinutes);
   requireWhole('breakMinutes', options.breakMinutes);
-  requireWhole('weighInMinutes', options.weighInMinutes);
   requireWhole('maxAthletesPerPlatform', options.maxAthletesPerPlatform);
   if (options.maxSessionsPerDay !== null) requireWhole('maxSessionsPerDay', options.maxSessionsPerDay);
   const dates = new Set<string>();
@@ -103,7 +108,7 @@ export function checkBuilderOptions(options: BuilderOptions): void {
     dates.add(day.date);
     const start = minutesOfClock(day.firstStart);
     if (start === null) throw apiError(400, `the first start on ${day.date} is not an HH:MM time`);
-    if (start < options.weighInMinutes) throw apiError(400, `the first start on ${day.date} leaves no time for its weigh-in`);
+    if (start < WEIGH_IN_MINUTES) throw apiError(400, `the first start on ${day.date} leaves no time for its weigh-in`);
     if (start + options.sessionMinutes > MINUTES_PER_DAY) throw apiError(400, `the first session on ${day.date} would end after midnight`);
   }
   if (options.platforms.length === 0 || options.platforms.length > MAX_BUILDER_PLATFORMS) {
@@ -141,12 +146,11 @@ export function defaultBuilderOptions(meet: { startDate: string; endDate: string
     days: meetDays(meet.startDate, meet.endDate).map((date) => ({ date, firstStart: DEFAULT_BUILDER_SETTINGS.firstStart })),
     sessionMinutes: DEFAULT_BUILDER_SETTINGS.sessionMinutes,
     breakMinutes: DEFAULT_BUILDER_SETTINGS.breakMinutes,
-    weighInMinutes: DEFAULT_BUILDER_SETTINGS.weighInMinutes,
     maxAthletesPerPlatform: DEFAULT_BUILDER_SETTINGS.maxAthletesPerPlatform,
     maxSessionsPerDay: null,
     platforms: [...DEFAULT_BUILDER_SETTINGS.platforms],
     grouping: 'weightClass',
-    separateAgeGroups: false,
+    separateAgeGroups: true,
     order: 'womenThenMen',
   };
 }

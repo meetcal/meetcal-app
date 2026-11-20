@@ -16,7 +16,7 @@ const vercel: { rewrites: Array<{ source: string; destination: string }> } = JSO
 );
 
 type RouteBudget = { lcpMs: number; cls: number; ownBytes: number };
-type RouteName = "home" | "records" | "qualifyingTotals" | "meetCenter" | "meetCenterOnAMeet" | "wrapped" | "signIn";
+type RouteName = "home" | "records" | "qualifyingTotals" | "meetCenter" | "meetCenterOnAMeet" | "wrapped" | "scheduleBuilder" | "signIn";
 
 const budgets: {
   requestsBeforeWasm: number;
@@ -305,6 +305,14 @@ test.describe("throttled budgets on a Slow 4G phone", () => {
       await expect(page.getByRole("button", { name: "Build wrapped" })).toBeVisible();
     }, testInfo);
     expectWithin(measured, BUDGETS.wrapped);
+  });
+
+  test("Schedule Builder, its own app", async ({ page }, testInfo) => {
+    await mockAuth(page, { signedIn: false });
+    const measured = await measureLoad(page, "/schedule-builder", async () => {
+      await expect(page.getByRole("button", { name: "Search", exact: true })).toBeVisible();
+    }, testInfo);
+    expectWithin(measured, BUDGETS.scheduleBuilder);
   });
 
   test("the sign-in a signed-out visitor gets on Records", async ({ page }, testInfo) => {

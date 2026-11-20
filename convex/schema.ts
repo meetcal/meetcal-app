@@ -367,6 +367,8 @@ export default defineSchema({
     .index('by_eventId_and_loadedAt', ['eventId', 'loadedAt'])
     .index('by_loadedAt', ['loadedAt']),
 
+  schedule_builder_searches: defineTable({ searchedAt: v.number() }).index('by_searchedAt', ['searchedAt']),
+
   // A user's `Subscriptions` entitlement as RevenueCat's API last reported it
   // (`convex/entitlements.ts`), one row per Clerk user id (RevenueCat's app
   // user id). Premium queries read it (`convex/lib/access.ts`), so it is

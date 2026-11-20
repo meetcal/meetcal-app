@@ -3,6 +3,7 @@ mod device_login;
 mod kept_answers;
 mod meet_submissions;
 mod pass;
+mod schedule_builder;
 #[cfg(test)]
 mod tests;
 mod transport;
@@ -14,6 +15,7 @@ pub(crate) use device_login::*;
 pub(crate) use kept_answers::*;
 pub(crate) use meet_submissions::*;
 pub(crate) use pass::*;
+pub(crate) use schedule_builder::*;
 pub(crate) use transport::*;
 #[cfg(test)]
 pub(crate) use wire::wire_fixture;

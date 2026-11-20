@@ -5,6 +5,7 @@ terms|/terms|Terms of Use — MeetCal|Read the terms that apply when using the M
 subscription|/subscription|Manage Your MeetCal Subscription in the App|Open MeetCal on iOS or Android to start, change, restore, or cancel your subscription.|noindex, nofollow
 link|/link|Approve a MeetCal CLI Sign-In|Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login.|noindex, nofollow
 submit-meet|/submit-meet|Submit a Meet — MeetCal|Send MeetCal the schedule and start lists of a weightlifting meet it doesn't cover yet, and we'll add the meet.|noindex, nofollow
+schedule-builder|/schedule-builder|Weightlifting Meet Schedule Builder — MeetCal|Free for meet organizers: paste a meet's Sport80 link, build the meet's sessions in one click, adjust them, and export or publish the schedule.|index, follow
 comp-data|/comp-data|Competition Data|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
 qualifying-totals|/qualifying-totals|Weightlifting Qualifying Totals|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow
 standards|/standards|Weightlifting Standards|Sign in with your MeetCal account to explore subscription competition data on the web.|noindex, nofollow

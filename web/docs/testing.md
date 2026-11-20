@@ -58,6 +58,25 @@ disabled button while an upload is held) and the submission's arguments and
 token, a blank end date as `null`, the form's checks before anything uploads, a
 refused submission keeping the form filled, accessibility, and a small phone.
 
+`src/utils/api/` tests the Schedule Builder's calls: the options and edits as
+Convex's validators take them (camelCase, edits tagged by `kind`), reading a
+server error as its sentence, and decoding an exported workbook's base64.
+`src/pages/schedule_builder/` tests the options form's checks against the
+server's limits and weigh-in, which saved work a meet opens with, the Move To… targets, each
+entrant's own list, how class chips, sessions, athletes and publish answers read,
+and when a publish's answer stops showing.
+`tests/e2e/schedule-builder.spec.ts` covers `/schedule-builder` against mocked
+Convex answers: loading a meet from its entries list or its meet page,
+building, moving an athlete, Undo, the Export list's CSV and Excel downloads
+and its PDF print, the print styles, the browser's copy after a reload,
+retiming and swapping sessions (a day-2 session's Edit Time opening on day 2),
+the lists' keyboard use and where focus goes, the inert busy board, separate
+lists for entrants who share an identity, the confirmation before a new build
+drops edits, a build the server refuses keeping them, the form's two-hour weigh-in
+and midnight checks, a load Sport80 refuses, and, signed in, saving a draft,
+publishing for review and publishing again after an edit, the drafts list with
+Delete, and accessibility.
+
 `tests/shells.rs` renders every route's first frame natively and fails when `shells/` differs
 from it; `UPDATE_SHELLS=1 cargo test --test shells` rewrites `shells/`. The config tests
 (`npm run test:config`, after a build) check that every page in `dist/` carries its route's shell
@@ -82,7 +101,27 @@ npm run test:e2e
 ```
 
 The non-secret placeholder key compiles the authenticated test path into the
-Wasm build; Playwright stands in for Clerk and never reaches it.
+Wasm build; Playwright stands in for Clerk and never reaches it. The one build
+writes both apps, the site and the Schedule Builder, into `dist/`.
+
+Playwright serves `dist/` with `serve` and `tests/serve.json`: `/schedule-builder`
+gets the builder's own document (`seo/schedule-builder.html`, as Vercel's rewrite
+serves it), and every other path without a dot, at any depth, gets `index.html`,
+the site's app; a path with a dot is served as the file it names, or `404.html`.
+serve-handler turns the first `*` in a rewrite source into `(.*)`, so the
+catch-all is `/:path([^.]+)`, never `[^.]*`, and never `**`, whose match would
+rewrite the builder's document to `index.html` again. A config test runs
+serve-handler on a stand-in `dist/` to check each case, and keeps the builder's
+rewrite equal to `vercel.json`'s.
+
+Size budgets live in `tests/budgets.json`. `npm run test:config` holds each
+app's Wasm to its own raw and brotli-11 budget (`wasmRawBytes` and
+`wasmBrotli11Bytes` for the site, `scheduleBuilderWasmRawBytes` and
+`scheduleBuilderWasmBrotli11Bytes` for the builder), checks that every page
+preloads only its own app's glue and Wasm, and caps the files asked for before
+it. `tests/e2e/performance.spec.ts` loads each main route, `/schedule-builder`
+included, on a throttled Slow 4G phone and holds it to its entry under
+`slow4gPhone.routes`.
 
 The suite exercises every route in Chromium and WebKit, including Pixel, iPhone,
 and small-phone viewports. It also checks deep links, subscription handoffs,

@@ -32,6 +32,28 @@ export function entriesEventId(pageUrl: string): string {
   return entriesPage(pageUrl).event;
 }
 
+const MEET_PAGE_PATHS = [/^\/public\/events\/(\d+)\/?$/, /^\/public\/wizard\/e\/(\d+)\/?$/];
+
+export function meetPageEventId(pathname: string): string | null {
+  for (const path of MEET_PAGE_PATHS) {
+    const match = path.exec(pathname);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+export function sport80EntriesUrlOf(link: string, eventId: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(link);
+  } catch {
+    return null;
+  }
+  if (parsed.origin !== SPORT80) return null;
+  const match = ENTRIES_PAGE.exec(parsed.pathname);
+  return match?.[1] === eventId ? canonicalEntriesUrl(parsed.pathname) : null;
+}
+
 /**
  * Why an entries list was not stored: no stored meet is its event (by id) or
  * has its title. Usually the meet was stored before Sport80 retitled it, or

@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 use leptos_router::location::RequestUrl;
-use meetcal_web::app::SiteRoutes;
+use meetcal_web::app::{WasmApp, WasmAppRoutes};
 use meetcal_web::auth::{AuthContext, initial_auth_state, route_needs_sign_in};
 use meetcal_web::components::seo::{PageMetadata, metadata_for_path, shell_paths};
 use meetcal_web::components::subscription_gate::provide_access;
@@ -26,7 +26,7 @@ fn first_frame(path: &str) -> String {
         route_needs_sign_in(path),
     )));
     provide_access();
-    let html = view! { <SiteRoutes footer=false /> }.to_html();
+    let html = view! { <WasmAppRoutes app=WasmApp::serving(path) footer=false /> }.to_html();
     drop(owner);
     without_lazy_downloads(&html.replace("<!>", "").replace("<form ", "<form inert "))
 }

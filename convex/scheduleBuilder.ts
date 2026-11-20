@@ -5,7 +5,8 @@ import { MEET_ROSTER_MAX, readAll } from './lib/boundedRead';
 import { requireUserId } from './lib/access';
 import { meetByName } from './lib/meetData';
 import { apiError, requireNonEmpty } from './lib/validation';
-import { buildSchedule, type BuilderEntrant } from './lib/scheduleBuilder';
+import { buildSchedule, type BuilderEntrant, type BuiltSchedule } from './lib/scheduleBuilder';
+import { platformLabel } from './lib/schedulePublishing';
 import { bytesToBase64 } from './lib/base64';
 import { EXPORT_CONTENT_TYPES, exportFileName, scheduleCsv, scheduleWorkbook } from './lib/scheduleExport';
 import {
@@ -22,6 +23,7 @@ export const MAX_DRAFTS_PER_USER = 50;
 export const LOAD_COOLDOWN_MS = 10 * 60 * 1000;
 export const MAX_LOADS_PER_HOUR = 60;
 export const LOAD_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
+export const MAX_SEARCHES_PER_HOUR = 120;
 const HOUR_MS = 60 * 60 * 1000;
 const LOAD_LOG_PRUNE_BATCH = 20;
 
@@ -61,12 +63,19 @@ export const defaults = query({
   },
 });
 
+export function withGroupLabels(schedule: BuiltSchedule) {
+  return {
+    ...schedule,
+    sessions: schedule.sessions.map((session) => ({ ...session, groups: session.groups.map((group) => ({ ...group, label: platformLabel(group) })) })),
+  };
+}
+
 export const preview = query({
   args: { meet: v.string(), options: builderOptionsValidator, edits: v.array(builderEditValidator) },
   handler: async (ctx, { meet, options, edits }) => {
     checked(options, edits);
     const row = await requireMeet(ctx, meet);
-    return buildSchedule(await entrantsOf(ctx, row.name), options, edits);
+    return withGroupLabels(buildSchedule(await entrantsOf(ctx, row.name), options, edits));
   },
 });
 
@@ -178,5 +187,25 @@ export const finishLoad = internalMutation({
   args: { claim: v.id('schedule_builder_loads'), meet: v.string() },
   handler: async (ctx, { claim, meet }) => {
     await ctx.db.patch(claim, { meet, loadedAt: Date.now() });
+  },
+});
+
+export const claimSearch = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const stale = await ctx.db
+      .query('schedule_builder_searches')
+      .withIndex('by_searchedAt', (q) => q.lt('searchedAt', now - LOAD_LOG_RETENTION_MS))
+      .take(LOAD_LOG_PRUNE_BATCH);
+    for (const row of stale) await ctx.db.delete(row._id);
+    const lastHour = await ctx.db
+      .query('schedule_builder_searches')
+      .withIndex('by_searchedAt', (q) => q.gt('searchedAt', now - HOUR_MS))
+      .take(MAX_SEARCHES_PER_HOUR);
+    if (lastHour.length >= MAX_SEARCHES_PER_HOUR) {
+      throw apiError(429, 'MeetCal is searching Sport80 a lot right now; try again in a few minutes', { max: MAX_SEARCHES_PER_HOUR });
+    }
+    await ctx.db.insert('schedule_builder_searches', { searchedAt: now });
   },
 });

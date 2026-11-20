@@ -23,6 +23,7 @@ const WSO_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/spor
 // addresses whose city or state reads like a country, and the live online
 // qualifier row, whose address is the country alone.
 const ABROAD_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-meet-widget-abroad.json'), 'utf8'));
+const TURKEY_CUP_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-meet-widget-turkey-cup-20261112.json'), 'utf8'));
 
 describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meets.js)', () => {
   it('parses Sport80 addresses the way the Node scripts did', () => {
@@ -153,8 +154,8 @@ describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meet
     expect(() => readWidgetPage({ total: '1' })).toThrow('no data array');
     expect(() => readWidgetPage({ total: 1, data: [{ subtitle: '10/01/2026' }] })).toThrow('row 0 has no name');
     // A missing address or date is told apart from a blank one.
-    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: ' A ' }] }).rows).toEqual([{ id: '7', name: 'A', address: null, subtitle: null }]);
-    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: 'A', address: '', subtitle: '' }] }).rows).toEqual([{ id: '7', name: 'A', address: '', subtitle: '' }]);
+    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: ' A ' }] }).rows).toEqual([{ id: '7', name: 'A', address: null, subtitle: null, isEvent: true, entriesUrl: null }]);
+    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: 'A', address: '', subtitle: '' }] }).rows).toEqual([{ id: '7', name: 'A', address: '', subtitle: '', isEvent: true, entriesUrl: null }]);
   });
 
   it('fails a meet with no dates field rather than wait for its dates', () => {
@@ -303,5 +304,57 @@ describe('US states and time zones', () => {
     for (const state of ['AL', 'AK', 'AZ', 'CA', 'FL', 'HI', 'ID', 'IN', 'KS', 'KY', 'MI', 'NE', 'ND', 'OR', 'SD', 'TN', 'TX']) {
       expect(isMeetTimeZone(usTimeZone(state) ?? '')).toBe(true);
     }
+  });
+});
+
+describe("the upcoming listing's entries pages", () => {
+  const ENTRIES = 'https://usaweightlifting.sport80.com/public/events/15084/entries/21962';
+  const row = (id: string | number | null, actions: unknown) => ({ id, name: 'Turkey Cup', actions });
+  const entryList = (id: number, stage: number) => ({ type: 'internal', url: `https://usaweightlifting.sport80.com/public/events/${id}/entries/${stage}?bl=`, text: 'Entry List' });
+
+  it("reads each event's entries page from Sport80's answer", () => {
+    expect(readWidgetPage(TURKEY_CUP_PAGE)).toEqual({
+      total: 1,
+      rows: [
+        {
+          id: '15084',
+          name: 'Turkey Cup',
+          subtitle: '11/21/2026 - 11/21/2026',
+          address: '5400 King Hill Ave, Saint Joseph, Missouri, United States of America, 64504-1503',
+          isEvent: true,
+          entriesUrl: ENTRIES,
+        },
+      ],
+    });
+  });
+
+  it('takes the entries page of an event whose id Sport80 sends as a number', () => {
+    expect(readWidgetPage({ total: 1, data: [row(15084, [entryList(15084, 21962)])] }).rows[0]?.entriesUrl).toBe(ENTRIES);
+  });
+
+  it('reads a row as an event unless Sport80 says it is not one', () => {
+    const page = { total: 3, data: [{ ...row('1', []), is_event: false }, { ...row('2', []), is_event: true }, row('3', [])] };
+    expect(readWidgetPage(page).rows.map(({ id, isEvent }) => [id, isEvent])).toEqual([
+      ['1', false],
+      ['2', true],
+      ['3', true],
+    ]);
+  });
+
+  it("gives no entries page for an event without one, whose only one is another event's or another site's, or whose actions Sport80 sends in another shape", () => {
+    const wizard = { url: 'https://usaweightlifting.sport80.com/public/wizard/e/15084', text: 'Enter Now' };
+    const elsewhere = { url: 'https://example.com/public/events/15084/entries/21962', text: 'Entry List' };
+    const page = {
+      total: 6,
+      data: [
+        row('15084', [wizard]),
+        row('15084', [entryList(999, 1), elsewhere, 'junk', { url: 7 }]),
+        row('15084', []),
+        row('15084', null),
+        row('15084', entryList(15084, 21962)),
+        row(null, [entryList(15084, 21962)]),
+      ],
+    };
+    expect(readWidgetPage(page).rows.map(({ entriesUrl }) => entriesUrl)).toEqual([null, null, null, null, null, null]);
   });
 });
