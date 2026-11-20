@@ -22,6 +22,10 @@ export function entriesEndpoint(pageUrl: string): string {
   return `${SPORT80}/api/public/events/datatable/${event}/entries/${stage}`;
 }
 
+export function meetPageUrl(eventId: string): string | null {
+  return /^\d+$/.test(eventId) ? `${SPORT80}/public/events/${eventId}` : null;
+}
+
 export function canonicalEntriesUrl(pageUrl: string): string {
   const { event, stage } = entriesPage(pageUrl);
   return `${SPORT80}/public/events/${event}/entries/${stage}`;

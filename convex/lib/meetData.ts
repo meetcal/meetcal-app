@@ -9,6 +9,7 @@ import { hasSession } from './roster';
 import { athleteGenderLabel } from './normalize';
 import { accumulateBests, bestsSince, namedBests, toApiLiftingResult, ZERO_BESTS, type ApiLiftingResult, type NamedBests, type YearBests } from './results';
 import { compareBytes, compareCollated } from './sort';
+import { liftersAtRows } from './startList';
 import { isMeetTimeZone } from './validation';
 
 // Per-meet answers. Queries serve them from the meet's views when fresh and
@@ -263,7 +264,6 @@ function scheduleKey(sessionId: number, platform: string): string {
   return `${sessionId}\u0000${platform}`;
 }
 
-/** `athletes LEFT JOIN session_schedule ON (session, platform)`, by name in SQL text order. */
 export function joinRoster(athletes: Doc<'athletes'>[], schedule: readonly ApiScheduleRow[]): RosterItem[] {
   const bySession = new Map<string, ApiScheduleRow[]>();
   for (const row of schedule) {
@@ -272,36 +272,29 @@ export function joinRoster(athletes: Doc<'athletes'>[], schedule: readonly ApiSc
     if (list) list.push(row);
     else bySession.set(key, [row]);
   }
-  const items: RosterItem[] = [];
-  for (const athlete of [...athletes].sort((a, b) => compareCollated(a.name, b.name))) {
-    const placed = hasSession(athlete);
-    const matches = placed ? (bySession.get(scheduleKey(athlete.sessionNumber!, athlete.sessionPlatform!)) ?? []) : [];
-    const joined = matches.length === 0 ? [undefined] : matches;
-    joined.forEach((s, j) => {
-      items.push({
-        member_id: athlete.memberId,
-        name: athlete.name,
-        age: athlete.age,
-        club: athlete.club,
-        wso: athlete.wso ?? null,
-        gender: athleteGenderLabel(athlete.gender),
-        weight_class: athlete.weightClass,
-        entry_total: athlete.entryTotal,
-        adaptive: athlete.adaptive,
-        session: placed
-          ? {
-              session_number: athlete.sessionNumber!,
-              session_platform: athlete.sessionPlatform!,
-              date: s?.date ?? null,
-              start_time: s?.start_time ?? null,
-              weigh_in_time: s?.weigh_in_time ?? null,
-            }
-          : null,
-        j,
-      });
-    });
-  }
-  return items;
+  const byName = [...athletes].sort((a, b) => compareCollated(a.name, b.name));
+  const rowsOfAthlete = (athlete: Doc<'athletes'>) => (hasSession(athlete) ? (bySession.get(scheduleKey(athlete.sessionNumber!, athlete.sessionPlatform!)) ?? []) : []);
+  return liftersAtRows(byName, rowsOfAthlete).map(({ athlete, row: s, j }) => ({
+    member_id: athlete.memberId,
+    name: athlete.name,
+    age: athlete.age,
+    club: athlete.club,
+    wso: athlete.wso ?? null,
+    gender: athleteGenderLabel(athlete.gender),
+    weight_class: athlete.weightClass,
+    entry_total: athlete.entryTotal,
+    adaptive: athlete.adaptive,
+    session: hasSession(athlete)
+      ? {
+          session_number: athlete.sessionNumber!,
+          session_platform: athlete.sessionPlatform!,
+          date: s?.date ?? null,
+          start_time: s?.start_time ?? null,
+          weigh_in_time: s?.weigh_in_time ?? null,
+        }
+      : null,
+    j,
+  }));
 }
 
 export async function computeRoster(ctx: QueryCtx, meet: string, schedule?: readonly ApiScheduleRow[]): Promise<RosterItem[]> {

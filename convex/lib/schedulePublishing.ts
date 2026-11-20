@@ -1,7 +1,7 @@
 import { isoDateOf } from './dates';
 import { escapeHtml } from './email';
-import { meetDays } from './scheduleBuilderOptions';
-import type { BuiltGroup, BuiltSchedule } from './scheduleBuilder';
+import { clockLabel, meetDays } from './scheduleBuilderOptions';
+import type { BuiltGroup, BuiltSchedule, LockedPlace, PublishedPart, RowTimes } from './scheduleBuilder';
 
 export const MAX_PUBLISHES_PER_DAY = 10;
 export const REVIEW_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -11,7 +11,7 @@ export type PublicationStatus = 'pending' | 'live' | 'approved' | 'rejected' | '
 export const PENDING_PUBLICATION_DAYS = 14;
 
 export type PublishedScheduleRow = { date: string; sessionId: number; startTime: string; weighInTime: string; platform: string; weightClass: string };
-export type Placement = { memberId: string; name: string; sessionNumber: number; platform: string };
+export type Placement = { memberId: string; name: string; sessionNumber: number; platform: string; rosterId?: string };
 export type PublishedSchedule = { rows: PublishedScheduleRow[]; placements: Placement[] };
 
 const AGE_GROUP_LABELS: Record<BuiltGroup['ageGroup'], string> = { youth: ' (Youth)', masters: ' (Masters)', open: '', '': '' };
@@ -23,12 +23,42 @@ export function platformLabel(group: Pick<BuiltGroup, 'gender' | 'weightClasses'
   return `${gender} ${group.weightClasses.join(', ')}${split}${AGE_GROUP_LABELS[group.ageGroup]}`;
 }
 
+export function labelOf(group: Pick<BuiltGroup, 'gender' | 'weightClasses' | 'split' | 'ageGroup' | 'publishedRows'>): string {
+  if (!group.publishedRows || group.publishedRows.length === 0) return platformLabel(group);
+  return [...new Set(group.publishedRows.map((row) => row.weightClass))].join(' / ');
+}
+
+export function timesOf(session: RowTimes, group: Pick<BuiltGroup, 'times'>): RowTimes {
+  return group.times ?? { date: session.date, startTime: session.startTime, weighInTime: session.weighInTime };
+}
+
+type ShownGroup = Pick<BuiltGroup, 'gender' | 'weightClasses' | 'split' | 'ageGroup' | 'publishedRows' | 'times'>;
+
+export function rowsOf(session: RowTimes, group: ShownGroup): PublishedPart[] {
+  return group.publishedRows ?? [{ ...timesOf(session, group), weightClass: labelOf(group) }];
+}
+
+export function lockedEditProblem(locked: readonly LockedPlace[]): string | null {
+  const [first] = locked;
+  return first ? `Session ${first.session} · ${first.platform} has several published rows, so it can't be changed here. Use Rebuild From Scratch to regroup it.` : null;
+}
+
+export function writtenPlatform(group: Pick<BuiltGroup, 'platform' | 'storedPlatform'>): string {
+  return group.storedPlatform ?? group.platform;
+}
+
+export const NO_PUBLISHED_TIME = 'No Published Time';
+
+export function writesRows(session: BuiltSchedule['sessions'][number]): boolean {
+  return session.groups.some((group) => rowsOf(session, group).length > 0);
+}
+
 export function publishProblem(schedule: BuiltSchedule, meet: { startDate: string; endDate: string }): string | null {
   if (schedule.athletes === 0 || schedule.sessions.length === 0) return 'the meet has no entrants to publish yet';
   const days = meetDays(meet.startDate, meet.endDate);
   const outside = schedule.sessions.find((s) => s.date !== '' && days.length > 0 && !days.includes(s.date));
   if (outside) return `session ${outside.number} is on ${outside.date}, which is not one of the meet's days`;
-  const unscheduled = schedule.sessions.filter((s) => s.startTime === '').length;
+  const unscheduled = schedule.sessions.filter((s) => s.startTime === '' && writesRows(s)).length;
   if (unscheduled > 0) return `${unscheduled} session${unscheduled === 1 ? ' has' : 's have'} no time; fit every session into the meet's days before publishing`;
   return null;
 }
@@ -38,12 +68,19 @@ export function publishedSchedule(schedule: BuiltSchedule): PublishedSchedule {
   const placements: Placement[] = [];
   for (const session of schedule.sessions) {
     for (const group of session.groups) {
-      rows.push({ date: session.date, sessionId: session.number, startTime: session.startTime, weighInTime: session.weighInTime, platform: group.platform, weightClass: platformLabel(group) });
-      for (const athlete of group.athletes) placements.push({ memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: group.platform });
+      const platform = writtenPlatform(group);
+      for (const row of rowsOf(session, group)) rows.push({ ...row, sessionId: session.number, platform: row.platform ?? platform });
+      for (const athlete of group.athletes) {
+        const seated = athlete.seat && athlete.seat.session === session.number && athlete.seat.platform.trim().toLowerCase() === group.platform.toLowerCase() ? athlete.seat.platform : platform;
+        const placement = { memberId: athlete.memberId, name: athlete.name, sessionNumber: session.number, platform: seated };
+        placements.push(athlete.rosterId === undefined ? placement : { ...placement, rosterId: athlete.rosterId });
+      }
     }
   }
   return { rows, placements };
 }
+
+export type ChangeNames = { added: readonly string[]; removed: readonly string[] };
 
 export type PublicationEmailContent = {
   meet: string;
@@ -51,24 +88,48 @@ export type PublicationEmailContent = {
   contactEmail?: string;
   userId: string;
   schedule: BuiltSchedule;
+  changes: ChangeNames;
   lastLiveAt: number | null;
   hasSchedule: boolean;
   reviewUrl?: string;
 };
 
+const timesLine = (times: RowTimes) => `Weigh-In ${clockLabel(times.weighInTime)} · Start ${clockLabel(times.startTime)}`;
+
+const sameTimes = (a: RowTimes, b: RowTimes) => a.startTime === b.startTime && a.weighInTime === b.weighInTime;
+
+export function ownTimesLabel(session: RowTimes, group: ShownGroup): string | null {
+  const rows = rowsOf(session, group);
+  const [first] = rows;
+  if (!first) return NO_PUBLISHED_TIME;
+  if (rows.some((row) => !sameTimes(row, first))) return rows.map((row) => `${row.weightClass} · ${timesLine(row)}`).join('\n');
+  const times = timesOf(session, group);
+  return sameTimes(times, session) ? null : timesLine(times);
+}
+
+function rowLine(session: RowTimes, group: BuiltGroup, row: PublishedPart): string {
+  const own = sameTimes(row, session) ? '' : ` (${escapeHtml(timesLine(row))})`;
+  return `<li>${escapeHtml(group.platform)}${own}: ${escapeHtml(row.weightClass)} (${group.athletes.length})</li>`;
+}
+
 function sessionLines(schedule: BuiltSchedule): string {
   return schedule.sessions
     .map((session) => {
-      const platforms = session.groups.map((g) => `${escapeHtml(g.platform)}: ${escapeHtml(platformLabel(g))} (${g.athletes.length})`).join('; ');
-      return `<li>Session ${session.number}, ${escapeHtml(session.date)} ${escapeHtml(session.startTime.slice(0, 5))}: ${platforms}</li>`;
+      const rows = session.groups.flatMap((group) => rowsOf(session, group).map((row) => rowLine(session, group, row))).join('');
+      return `<li>Session ${session.number}, ${escapeHtml(session.date)} ${escapeHtml(session.startTime.slice(0, 5))}<ul>${rows}</ul></li>`;
     })
     .join('');
+}
+
+function changeLines({ added, removed }: ChangeNames): string {
+  const line = (what: string, names: readonly string[]) => (names.length > 0 ? `<p>${what}: ${escapeHtml(names.join(', '))}.</p>` : '');
+  return line('Adds to the start list', added) + line('Takes off the start list', removed);
 }
 
 export function renderPublicationEmail(content: PublicationEmailContent): { subject: string; html: string } {
   const from = content.contactEmail ? escapeHtml(content.contactEmail) : 'no email given';
   const warnings = content.schedule.warnings.length ? `<p>Warnings:</p><ul>${content.schedule.warnings.map((w) => `<li>${escapeHtml(w.message)}</li>`).join('')}</ul>` : '';
-  const summary = `<p>${escapeHtml(content.meet)}: ${content.schedule.athletes} athletes in ${content.schedule.sessions.length} sessions, from ${from} (${escapeHtml(content.userId)}).</p>${warnings}<ul>${sessionLines(content.schedule)}</ul>`;
+  const summary = `<p>${escapeHtml(content.meet)}: ${content.schedule.athletes} athletes in ${content.schedule.sessions.length} sessions, from ${from} (${escapeHtml(content.userId)}).</p>${changeLines(content.changes)}${warnings}<ul>${sessionLines(content.schedule)}</ul>`;
   if (content.status === 'live') {
     return { subject: `Schedule updated: ${content.meet}`, html: `<p>The meet's organizer published a new schedule. It is live.</p>${summary}` };
   }
@@ -98,6 +159,8 @@ export type ReviewPageContent = {
   contactEmail?: string;
   userId: string;
   schedule: BuiltSchedule;
+  changes: ChangeNames;
+  problem: string | null;
   lastLiveAt: number | null;
   hasSchedule: boolean;
   publicationId: string;
@@ -111,13 +174,16 @@ export function renderReviewPage(content: ReviewPageContent): string {
     ...(content.contactEmail ? { contactEmail: content.contactEmail } : {}),
     userId: content.userId,
     schedule: content.schedule,
+    changes: content.changes,
     lastLiveAt: content.lastLiveAt,
     hasSchedule: content.hasSchedule,
   });
   const hidden = `<input type="hidden" name="id" value="${escapeHtml(content.publicationId)}"><input type="hidden" name="token" value="${escapeHtml(content.token)}">`;
+  const approve = content.problem === null ? '<button name="decision" value="approve">Approve</button>' : '';
+  const problem = content.problem === null ? '' : `<p><strong>${escapeHtml(content.problem)}</strong></p>`;
   const actions =
     content.status === 'pending'
-      ? `<form method="post">${hidden}<button name="decision" value="approve">Approve</button><button name="decision" value="reject">Reject</button></form>`
+      ? `${problem}<form method="post">${hidden}${approve}<button name="decision" value="reject">Reject</button></form>`
       : `<p>This schedule is already ${escapeHtml(content.status)}.</p>`;
   return page(`Review: ${content.meet}`, `<h1>Review Schedule</h1>${html}${actions}`);
 }

@@ -13,6 +13,7 @@ const meetOf = (url: string) => targets.find((target) => url.includes(`/datatabl
 
 function deployment(afterStoring: (meet: string) => void = () => {}) {
   const stored: string[] = [];
+  const listed: [string, number][] = [];
   const ctx = {
     runQuery: async (ref: unknown, args: { title?: string }) => {
       const name = getFunctionName(ref as never);
@@ -20,7 +21,11 @@ function deployment(afterStoring: (meet: string) => void = () => {}) {
       if (name === 'scrapers/queries:entriesMeet') return { name: args.title, status: 'upcoming', endDate: '2099-01-01' };
       return {};
     },
-    runMutation: async (_ref: unknown, args: { meet: string }) => {
+    runMutation: async (ref: unknown, args: { meet: string; rows?: unknown[] }) => {
+      if (getFunctionName(ref as never) === 'ingest:recordSport80Entrants') {
+        listed.push([args.meet, args.rows?.length ?? 0]);
+        return { published: false, inserted: 0, updated: 0, deleted: 0 };
+      }
       stored.push(args.meet);
       afterStoring(args.meet);
       return { inserted: 1, updated: 0, unchanged: 0, sessionSkipped: 0, notOnStartList: 0, rejected: 0, deleted: 0 };
@@ -38,7 +43,7 @@ function deployment(afterStoring: (meet: string) => void = () => {}) {
       (error: unknown) => (describeFailure(error).failures ?? []).filter((f) => f.notReached).map((f) => f.source),
     );
   const dryRun = () => handlerOf<{ dryRun: boolean }, { label: string; meet?: string; error?: string }[]>(run)(ctx, { dryRun: true });
-  return { stored, failedSources, failureText, unreached, dryRun };
+  return { stored, listed, failedSources, failureText, unreached, dryRun };
 }
 
 beforeEach(() => {
@@ -65,6 +70,16 @@ describe("the entries run's time budget (#574)", () => {
     const { stored, failedSources } = deployment();
     expect(await failedSources()).toEqual([]);
     expect(stored).toEqual(['Meet A', 'Meet B', 'Meet C']);
+  });
+
+  it("records each target's whole Sport80 list after storing its entries", async () => {
+    const { listed, failedSources } = deployment();
+    expect(await failedSources()).toEqual([]);
+    expect(listed).toEqual([
+      ['Meet A', 1],
+      ['Meet B', 1],
+      ['Meet C', 1],
+    ]);
   });
 
   it('stores the targets it reached and fails naming the ones it did not, the same ones every run', async () => {

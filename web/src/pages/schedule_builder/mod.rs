@@ -1,5 +1,6 @@
 mod board;
 mod browser;
+mod changes;
 mod drafts;
 mod form;
 mod models;
@@ -7,11 +8,14 @@ mod publish;
 
 use crate::auth::{AuthContext, AuthState};
 use crate::pages::comp_data::loading::{Load, LoadState, load_error};
-use crate::utils::api::{self, BuilderEdit, BuilderOptions, ExportFormat, MeetMatches};
-use board::{Board, BoardActions, Menu, MenuId, UNDO_BUTTON_ID};
+use crate::utils::api::{
+    self, Basis, BuilderEdit, BuilderOptions, ExportFormat, MeetMatches, ScheduleBase,
+};
+use board::{Board, BoardActions, Menu, MenuId, UNDO_BUTTON_ID, alert_line};
 use browser::{
     focus_element, now_ms, print_page, read_local_work, save_download, write_local_work,
 };
+use changes::sport80_panel;
 use drafts::{SavedSchedules, builder_path};
 use form::{BUILD_BUTTON_ID, OptionsPanel};
 use futures::future::{AbortHandle, abortable};
@@ -21,7 +25,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use models::{
     BuiltSchedule, Defaults, LocalWork, MAX_BUILDER_EDITS, SavedDraft, Start, checked_options,
-    form_of, is_sport80_link, match_details, starting_point, unbuilt_message,
+    form_of, is_sport80_link, match_details, rebuild_warning, starting_point, unbuilt_message,
 };
 use publish::PublishPanel;
 
@@ -198,17 +202,7 @@ fn LoadForm() -> impl IntoView {
                     Finding::Idle => "",
                 }}
             </p>
-            {move || {
-                error
-                    .get()
-                    .map(|message| {
-                        view! {
-                            <p class="access-inline-error builder-error" role="alert">
-                                {message}
-                            </p>
-                        }
-                    })
-            }}
+            {move || alert_line(error.get(), "access-inline-error builder-error")}
             {move || {
                 found
                     .get()
@@ -361,7 +355,8 @@ fn Workspace(meet: String, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView
             return;
         };
         let local = read_local_work(&meet.get_value());
-        let start = starting_point(&defaults.options, saved, local);
+        let start = starting_point(&defaults, saved, local);
+        let notice = notice.or_else(|| start.notice.map(str::to_owned));
         opened.set(Some(Opened {
             defaults,
             start,
@@ -405,16 +400,22 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
     let meet_name = defaults.meet.clone();
     let form = RwSignal::new(form_of(&defaults.options.days, &start.options));
     let meet_defaults = StoredValue::new(defaults.options);
+    let sport80_link = defaults.sport80_link;
     let applied = RwSignal::new(start.built.then(|| start.options.clone()));
     let edits = RwSignal::new(start.edits);
+    let basis = RwSignal::new(start.basis);
+    let on_published =
+        Memo::new(move |_| basis.with(|basis| basis.base == ScheduleBase::Published));
+    let checks = RwSignal::new(0_u64);
     let form_error = RwSignal::new(None::<String>);
     let edit_error = RwSignal::new(None::<String>);
     let pending_rebuild = RwSignal::new(None::<BuilderOptions>);
-    let replaced = RwSignal::new(None::<(BuilderOptions, Vec<BuilderEdit>)>);
+    let replaced = RwSignal::new(None::<(BuilderOptions, Vec<BuilderEdit>, Basis)>);
 
     Effect::new(move |previous: Option<()>| {
         let options = applied.get();
         let changes = edits.get();
+        let basis = basis.get();
         let rebuilding = replaced.with(Option::is_some);
         if previous.is_none() || rebuilding {
             return;
@@ -425,6 +426,7 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                 &LocalWork {
                     options,
                     edits: changes,
+                    basis,
                     saved_at: now_ms(),
                 },
             );
@@ -433,14 +435,20 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
 
     let preview = Load::new(
         move || {
-            applied
-                .get()
-                .map(|options| (meet.get_value(), options, edits.get()))
+            applied.get().map(|options| {
+                (
+                    meet.get_value(),
+                    options,
+                    edits.get(),
+                    basis.get(),
+                    checks.get(),
+                )
+            })
         },
-        |request: Option<(String, BuilderOptions, Vec<BuilderEdit>)>| async move {
+        |request: Option<(String, BuilderOptions, Vec<BuilderEdit>, Basis, u64)>| async move {
             match request {
-                Some((meet, options, edits)) => {
-                    api::builder_preview::<BuiltSchedule>(&meet, &options, &edits)
+                Some((meet, options, edits, basis, _)) => {
+                    api::builder_preview::<BuiltSchedule>(&meet, &options, &edits, basis.base)
                         .await
                         .map(Some)
                         .map_err(|error| error.to_string())
@@ -464,9 +472,14 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
         if replaced.with_untracked(Option::is_none)
             && let Some(previous) = applied.get_untracked()
         {
-            replaced.set(Some((previous, edits.get_untracked())));
+            replaced.set(Some((
+                previous,
+                edits.get_untracked(),
+                basis.get_untracked(),
+            )));
         }
         edits.set(Vec::new());
+        basis.update(|basis| basis.base = ScheduleBase::Entries);
         applied.set(Some(options));
     };
     Effect::new(move |_| {
@@ -477,17 +490,22 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                 }
             }
             LoadState::Failed(message) => {
-                if let Some((options, kept)) = replaced.get_untracked() {
+                if let Some((options, kept, kept_basis)) = replaced.get_untracked() {
                     replaced.set(None);
                     form_error.set(Some(unbuilt_message(kept.len(), message)));
                     edits.set(kept);
+                    basis.set(kept_basis);
                     applied.set(Some(options));
                 }
             }
             LoadState::Loading => {}
         });
     });
+    let publishing = RwSignal::new(false);
     let build = move || {
+        if publishing.get_untracked() {
+            return;
+        }
         let options = match checked_options(&form.get_untracked()) {
             Ok(options) => options,
             Err(message) => {
@@ -496,6 +514,10 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
             }
         };
         form_error.set(None);
+        if on_published.get_untracked() {
+            pending_rebuild.set(Some(options));
+            return;
+        }
         if applied.with_untracked(|applied| applied.as_ref() == Some(&options)) {
             pending_rebuild.set(None);
             preview.retry_failed();
@@ -508,13 +530,18 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
         }
     };
     let build_label = Signal::derive(move || {
-        if applied.with(Option::is_none) {
+        if on_published.get() {
+            "Rebuild From Scratch"
+        } else if applied.with(Option::is_none) {
             "Build Schedule"
         } else {
             "Build Again"
         }
     });
     let add_edit = Callback::new(move |edit: BuilderEdit| {
+        if publishing.get_untracked() {
+            return false;
+        }
         if edits.with_untracked(Vec::len) >= MAX_BUILDER_EDITS {
             edit_error.set(Some(format!(
                 "A schedule holds at most {MAX_BUILDER_EDITS} edits. Build again to start over."
@@ -544,49 +571,50 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                 "Load Another Meet"
             </A>
         </div>
-        {notice
-            .map(|message| {
-                view! {
-                    <p class="access-inline-error no-print" role="alert">
-                        {message}
-                    </p>
-                }
-            })}
+        {alert_line(notice, "access-inline-error no-print")}
         <OptionsPanel
             form
             on_build=move |()| build()
             build_label
+            busy=publishing
             error=Signal::derive(move || form_error.get())
         />
         {move || {
             pending_rebuild
                 .get()
                 .map(|options| {
-                    let count = edits.with(Vec::len);
+                    let count = edits.with_untracked(Vec::len);
+                    let published = on_published.get_untracked();
                     let options = StoredValue::new(options);
                     view! {
                         <div
                             class="builder-confirm no-print"
                             role="alertdialog"
-                            aria-label="Discard your edits?"
+                            aria-label=if published {
+                                "Rebuild from scratch?"
+                            } else {
+                                "Discard your edits?"
+                            }
                         >
-                            <p>
-                                {if count == 1 {
-                                    "Building again discards your edit.".to_owned()
-                                } else {
-                                    format!("Building again discards your {count} edits.")
-                                }}
-                            </p>
+                            <p>{rebuild_warning(published, count)}</p>
                             <div class="builder-confirm-actions">
                                 <button
                                     class="builder-button"
                                     type="button"
+                                    disabled=publishing
                                     on:click=move |_| {
+                                        if publishing.get_untracked() {
+                                            return;
+                                        }
                                         apply(options.get_value());
                                         focus_element(BUILD_BUTTON_ID);
                                     }
                                 >
-                                    "Discard Edits and Build"
+                                    {if published {
+                                        "Rebuild From Scratch"
+                                    } else {
+                                        "Discard Edits and Build"
+                                    }}
                                 </button>
                                 <button
                                     class="builder-button-quiet"
@@ -602,6 +630,25 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                             </div>
                         </div>
                     }
+                })
+        }}
+        {move || {
+            on_published
+                .get()
+                .then(|| {
+                    sport80_panel(
+                        last_board,
+                        Signal::derive(move || {
+                            applied
+                                .with(|applied| {
+                                    applied.as_ref().map(|o| o.platforms.clone()).unwrap_or_default()
+                                })
+                        }),
+                        sport80_link.clone(),
+                        checks,
+                        publishing,
+                        actions,
+                    )
                 })
         }}
         <Show when=move || applied.with(Option::is_some)>
@@ -625,18 +672,8 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                         }}
                     </p>
                 </div>
-                <Toolbar meet applied edits open_menu />
-                {move || {
-                    edit_error
-                        .get()
-                        .map(|message| {
-                            view! {
-                                <p class="access-inline-error no-print" role="alert">
-                                    {message}
-                                </p>
-                            }
-                        })
-                }}
+                <Toolbar meet applied edits basis publishing open_menu />
+                {move || alert_line(edit_error.get(), "access-inline-error no-print")}
                 {move || {
                     let options = applied
                         .get_untracked()
@@ -669,14 +706,19 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                             LoadState::Ready(Some(schedule)) => {
                                 view! {
                                     <Warnings schedule=schedule.clone() />
-                                    <Board schedule=schedule.clone() options busy=false actions />
+                                    <Board
+                                        schedule=schedule.clone()
+                                        options
+                                        busy=publishing.get()
+                                        actions
+                                    />
                                 }
                                     .into_any()
                             }
                         })
                 }}
             </section>
-            <PublishPanel meet=meet.get_value() applied edits />
+            <PublishPanel meet=meet.get_value() applied edits basis publishing />
         </Show>
         {move || {
             matches!(auth.state.get(), AuthState::SignedOut)
@@ -717,7 +759,7 @@ fn Warnings(schedule: BuiltSchedule) -> impl IntoView {
 enum DraftSave {
     Idle,
     Saving,
-    Saved(BuilderOptions, Vec<BuilderEdit>),
+    Saved(BuilderOptions, Vec<BuilderEdit>, Basis),
 }
 
 const EXPORT_BUTTON_ID: &str = "builder-export";
@@ -761,39 +803,46 @@ fn Toolbar(
     meet: StoredValue<String>,
     applied: RwSignal<Option<BuilderOptions>>,
     edits: RwSignal<Vec<BuilderEdit>>,
+    basis: RwSignal<Basis>,
+    publishing: RwSignal<bool>,
     open_menu: RwSignal<Option<MenuId>>,
 ) -> impl IntoView {
     let auth = expect_context::<AuthContext>();
     let exporting = RwSignal::new(None::<ExportFormat>);
     let problem = RwSignal::new(None::<String>);
     let draft = RwSignal::new(DraftSave::Idle);
-    let download = move |format: ExportFormat| {
-        let Some(options) = applied.get_untracked() else {
-            return;
-        };
-        if exporting.with_untracked(Option::is_some) {
-            return;
-        }
-        let changes = edits.get_untracked();
-        problem.set(None);
-        exporting.set(Some(format));
-        spawn_local(async move {
-            let saved =
-                match api::builder_export(&meet.get_value(), &options, &changes, format).await {
-                    Ok(file) => save_download(&file),
-                    Err(error) => Err(error.to_string()),
-                };
-            if let Err(message) = saved {
-                problem.try_set(Some(message));
+    let download =
+        move |format: ExportFormat| {
+            let Some(options) = applied.get_untracked() else {
+                return;
+            };
+            if exporting.with_untracked(Option::is_some) {
+                return;
             }
-            exporting.try_set(None);
-        });
-    };
+            let changes = edits.get_untracked();
+            let base = basis.with_untracked(|basis| basis.base);
+            problem.set(None);
+            exporting.set(Some(format));
+            spawn_local(async move {
+                let saved =
+                    match api::builder_export(&meet.get_value(), &options, &changes, base, format)
+                        .await
+                    {
+                        Ok(file) => save_download(&file),
+                        Err(error) => Err(error.to_string()),
+                    };
+                if let Err(message) = saved {
+                    problem.try_set(Some(message));
+                }
+                exporting.try_set(None);
+            });
+        };
     let is_saved = Memo::new(move |_| {
         draft.with(|draft| match draft {
-            DraftSave::Saved(options, saved_edits) => {
+            DraftSave::Saved(options, saved_edits, saved_basis) => {
                 applied.with(|applied| applied.as_ref() == Some(options))
                     && edits.with(|edits| edits == saved_edits)
+                    && basis.with(|basis| basis == saved_basis)
             }
             DraftSave::Idle | DraftSave::Saving => false,
         })
@@ -806,12 +855,14 @@ fn Toolbar(
             return;
         }
         let changes = edits.get_untracked();
+        let kept_basis = basis.get_untracked();
         problem.set(None);
         draft.set(DraftSave::Saving);
         spawn_local(async move {
-            match api::save_builder_draft(&meet.get_value(), &options, &changes).await {
+            match api::save_builder_draft(&meet.get_value(), &options, &changes, &kept_basis).await
+            {
                 Ok(()) => {
-                    draft.try_set(DraftSave::Saved(options, changes));
+                    draft.try_set(DraftSave::Saved(options, changes, kept_basis));
                 }
                 Err(error) => {
                     problem.try_set(Some(error.to_string()));
@@ -826,7 +877,7 @@ fn Toolbar(
                 id=UNDO_BUTTON_ID
                 class="builder-button-quiet"
                 type="button"
-                disabled=move || edits.with(Vec::is_empty)
+                disabled=move || publishing.get() || edits.with(Vec::is_empty)
                 on:click=move |_| {
                     edits
                         .update(|edits| {
@@ -907,16 +958,6 @@ fn Toolbar(
                 </Menu>
             </div>
         </div>
-        {move || {
-            problem
-                .get()
-                .map(|message| {
-                    view! {
-                        <p class="access-inline-error no-print" role="alert">
-                            {message}
-                        </p>
-                    }
-                })
-        }}
+        {move || alert_line(problem.get(), "access-inline-error no-print")}
     }
 }

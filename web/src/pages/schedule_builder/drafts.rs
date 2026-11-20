@@ -1,3 +1,4 @@
+use super::board::alert_line;
 use super::browser::{local_date, remove_local_work};
 use super::models::DraftSummary;
 use crate::auth::{AuthContext, AuthState};
@@ -57,17 +58,7 @@ fn DraftList(user: String) -> impl IntoView {
     view! {
         <section class="builder-panel builder-drafts" aria-labelledby="builder-drafts-heading">
             <h2 id="builder-drafts-heading">"Saved Schedules"</h2>
-            {move || {
-                error
-                    .get()
-                    .map(|message| {
-                        view! {
-                            <p class="access-inline-error" role="alert">
-                                {message}
-                            </p>
-                        }
-                    })
-            }}
+            {move || alert_line(error.get(), "access-inline-error")}
             {move || {
                 select_response(
                     drafts,

@@ -5,6 +5,7 @@ import { action, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { apiError } from './lib/validation';
+import { LOAD_COOLDOWN_MS } from './scheduleBuilder';
 import { errorMessage } from './lib/errors';
 import { fetchEntriesMeet, readEntries } from './scrapers/entries';
 import { fetchWidgetPage } from './scrapers/meets';
@@ -111,12 +112,16 @@ async function storeMeet(ctx: ActionCtx, eventId: string, title: string, listing
   return stored;
 }
 
+type LoadAnswer = { meet: string; refreshed: boolean; checkedAt: number; nextCheckAt: number };
+
+const loadAnswer = (meet: string, refreshed: boolean, checkedAt: number): LoadAnswer => ({ meet, refreshed, checkedAt, nextCheckAt: checkedAt + LOAD_COOLDOWN_MS });
+
 export const load = action({
   args: { url: v.string() },
-  handler: async (ctx, { url }): Promise<{ meet: string; refreshed: boolean }> => {
+  handler: async (ctx, { url }): Promise<LoadAnswer> => {
     const link = sport80LinkOf(url);
-    const claimed: { recentMeet: string } | { claim: Id<'schedule_builder_loads'> } = await ctx.runMutation(internal.scheduleBuilder.claimLoad, { eventId: link.eventId });
-    if ('recentMeet' in claimed) return { meet: claimed.recentMeet, refreshed: false };
+    const claimed: { recentMeet: string; loadedAt: number } | { claim: Id<'schedule_builder_loads'> } = await ctx.runMutation(internal.scheduleBuilder.claimLoad, { eventId: link.eventId });
+    if ('recentMeet' in claimed) return loadAnswer(claimed.recentMeet, false, claimed.loadedAt);
     const fromSport80 = sport80Within(LOAD_BUDGET_MS, 'load');
     const listing = upcomingListing(fromSport80);
     const entriesUrl = await entriesUrlOf(link, listing);
@@ -132,9 +137,10 @@ export const load = action({
         console.error(`scheduleBuilder load (${meet.name}): ${errorMessage(error)}`);
         throw apiError(409, "the meet's entries changed more than MeetCal updates on its own; they'll be checked by hand. Try again later");
       }
+      await ctx.runMutation(internal.ingest.recordSport80Entrants, { meet: meet.name, rows: entries });
     }
-    await ctx.runMutation(internal.scheduleBuilder.finishLoad, { claim: claimed.claim, meet: meet.name });
-    return { meet: meet.name, refreshed: true };
+    const loadedAt: number = await ctx.runMutation(internal.scheduleBuilder.finishLoad, { claim: claimed.claim, meet: meet.name });
+    return loadAnswer(meet.name, true, loadedAt);
   },
 });
 

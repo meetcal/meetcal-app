@@ -1,3 +1,4 @@
+use super::board::alert_line;
 use super::models::{
     BREAK_MINUTES, Limit, MAX_ATHLETES_PER_PLATFORM, MAX_BUILDER_PLATFORMS, MAX_SESSIONS_PER_DAY,
     OptionsForm, SESSION_MINUTES, new_platform_name,
@@ -52,6 +53,7 @@ pub(crate) fn OptionsPanel(
     #[prop(into)] on_build: Callback<()>,
     #[prop(into)] build_label: Signal<&'static str>,
     #[prop(into)] error: Signal<Option<String>>,
+    busy: RwSignal<bool>,
 ) -> impl IntoView {
     let day_count = form.with_untracked(|form| form.days.len());
     let platform_count = Memo::new(move |_| form.with(|form| form.platforms.len()));
@@ -282,18 +284,13 @@ pub(crate) fn OptionsPanel(
                             .collect_view()}
                     </div>
                 </fieldset>
-                {move || {
-                    error
-                        .get()
-                        .map(|message| {
-                            view! {
-                                <p class="access-inline-error builder-error" role="alert">
-                                    {message}
-                                </p>
-                            }
-                        })
-                }}
-                <button id=BUILD_BUTTON_ID class="builder-button builder-build" type="submit">
+                {move || alert_line(error.get(), "access-inline-error builder-error")}
+                <button
+                    id=BUILD_BUTTON_ID
+                    class="builder-button builder-build"
+                    type="submit"
+                    disabled=busy
+                >
                     {move || build_label.get()}
                 </button>
             </form>

@@ -3117,6 +3117,13 @@ main > div:has(> h4) > p {
     flex: none;
 }
 
+.builder-locked > header .builder-session-actions,
+.builder-group.builder-locked .builder-classes,
+.builder-group.builder-locked .builder-menu,
+.builder-group.builder-locked .builder-withdrawn-line button {
+    display: none;
+}
+
 .builder-menu-button,
 .builder-chip {
     min-height: 36px;
@@ -3253,6 +3260,51 @@ main > div:has(> h4) > p {
     background: color-mix(in srgb, var(--accent) 12%, var(--card));
     font-size: 0.82rem;
     font-weight: 700;
+}
+
+.builder-changes {
+    display: grid;
+    gap: 8px;
+}
+
+.builder-changes-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 14px;
+}
+
+.builder-changes-head h2 {
+    flex: 1 1 auto;
+    margin: 0;
+}
+
+.builder-changes .builder-subheading {
+    margin-top: 10px;
+}
+
+.builder-changes .builder-help {
+    margin: 0;
+}
+
+.builder-group-time {
+    flex-basis: 100%;
+    white-space: pre-line;
+    color: var(--text-secondary);
+    font-size: 0.86rem;
+    font-weight: 500;
+}
+
+.builder-withdrawn-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 4px;
+}
+
+.builder-withdrawn {
+    background: color-mix(in srgb, #c53b35 12%, var(--card));
 }
 
 @media (max-width: 560px) {

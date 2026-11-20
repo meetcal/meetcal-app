@@ -59,11 +59,17 @@ export const builderEditValidator = v.union(
   }),
   v.object({ kind: v.literal('swapSessions'), session: v.number(), withSession: v.number() }),
   v.object({ kind: v.literal('setSessionTime'), session: v.number(), date: v.string(), startTime: v.string() }),
+  v.object({ kind: v.literal('addAthlete'), athlete: v.string(), toSession: v.number(), toPlatform: v.string() }),
+  v.object({ kind: v.literal('removeAthlete'), athlete: v.string(), fromSession: v.number(), fromPlatform: v.string(), occurrence: v.number() }),
 );
+
+export const scheduleBaseValidator = v.union(v.literal('entries'), v.literal('published'));
+export const baseVersionValidator = v.union(v.string(), v.null());
 
 export type BuilderOptions = Infer<typeof builderOptionsValidator>;
 export type BuilderEdit = Infer<typeof builderEditValidator>;
 export type BuilderOrder = BuilderOptions['order'];
+export type ScheduleBase = Infer<typeof scheduleBaseValidator>;
 
 export function minutesOfClock(clock: string): number | null {
   const match = /^(\d{1,2}):(\d{2})$/.exec(clock.trim());
@@ -72,6 +78,10 @@ export function minutesOfClock(clock: string): number | null {
   const minutes = Number(match[2]);
   if (hours > 23 || minutes > 59) return null;
   return hours * 60 + minutes;
+}
+
+export function minutesOfStoredClock(stored: string): number | null {
+  return minutesOfClock(stored.trim().split(':').slice(0, 2).join(':'));
 }
 
 export function storedClockOf(minutes: number): string {
@@ -92,7 +102,7 @@ function requireWhole(field: keyof typeof BUILDER_LIMITS, value: number): void {
   }
 }
 
-export function checkBuilderOptions(options: BuilderOptions): void {
+export function checkBuilderOptions(options: BuilderOptions, publishedPlatforms: ReadonlySet<string> = new Set()): void {
   if (options.days.length === 0 || options.days.length > MAX_BUILDER_DAYS) {
     throw apiError(400, `days must list 1 to ${MAX_BUILDER_DAYS} meet days`, { max: MAX_BUILDER_DAYS });
   }
@@ -114,8 +124,9 @@ export function checkBuilderOptions(options: BuilderOptions): void {
   if (options.platforms.length === 0 || options.platforms.length > MAX_BUILDER_PLATFORMS) {
     throw apiError(400, `platforms must name 1 to ${MAX_BUILDER_PLATFORMS} platforms`, { max: MAX_BUILDER_PLATFORMS });
   }
-  const names = new Set<string>();
+  const names = new Set([...publishedPlatforms].map((platform) => platform.toLowerCase()));
   for (const platform of options.platforms) {
+    if (publishedPlatforms.has(platform)) continue;
     const name = platform.trim();
     if (name === '' || name.length > MAX_PLATFORM_NAME_LENGTH) throw apiError(400, `a platform name must be 1 to ${MAX_PLATFORM_NAME_LENGTH} characters`);
     if (name !== platform) throw apiError(400, `the platform name ${JSON.stringify(platform)} has spaces around it`);
@@ -124,9 +135,12 @@ export function checkBuilderOptions(options: BuilderOptions): void {
   }
 }
 
+export const HALF_SOURCE = "a lifter's move names both the session and the platform it comes from, or neither";
+
 export function checkBuilderEdits(edits: readonly BuilderEdit[]): void {
   if (edits.length > MAX_BUILDER_EDITS) throw apiError(400, `at most ${MAX_BUILDER_EDITS} edits`, { max: MAX_BUILDER_EDITS });
   for (const edit of edits) {
+    if (edit.kind === 'moveAthlete' && (edit.fromSession === undefined) !== (edit.fromPlatform === undefined)) throw apiError(400, HALF_SOURCE);
     if (edit.kind === 'setSessionTime' && (!isValidIsoDate(edit.date) || minutesOfClock(edit.startTime) === null)) {
       throw apiError(400, 'a session time edit needs a YYYY-MM-DD date and an HH:MM start');
     }
