@@ -49,7 +49,7 @@ export const markSoleLifters = internalAction({
     const page: { names: string[]; done: boolean } = await ctx.runQuery(internal.lifters.lifterNamesPage, { after: after ?? '' });
     let total = marked ?? 0;
     for (const names of chunks(page.names, MAX_LINK_NAMES)) total += await ctx.runMutation(internal.ingest.markSoleLifterRows, { names });
-    const last = page.names.at(-1);
+    const last = page.names[page.names.length - 1];
     if (page.done || last === undefined) {
       console.log(`lifters: ${total} unlinked results marked as their name's sole lifter's`);
       return;

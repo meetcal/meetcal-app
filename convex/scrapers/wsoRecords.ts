@@ -30,9 +30,18 @@ import { PAWV_TABS, parsePawvTab, pawvCsvUrl } from './parse/wso/pawv';
 import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
 import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSouth';
 import { newYorkPdfUrls, parseNewYork } from './parse/wso/newYork';
-import { newEnglandPdfUrls, parseNewEngland } from './parse/wso/newEngland';
+import {
+  NEW_ENGLAND_ACCESS_TOKENS_URL,
+  NEW_ENGLAND_ITEMS_QUERY_URL,
+  NEW_ENGLAND_MAX_PAGES,
+  NEW_ENGLAND_PAGE_SIZE,
+  newEnglandAccessToken,
+  newEnglandItemsPage,
+  newEnglandItemsQuery,
+  parseNewEngland,
+} from './parse/wso/newEngland';
 import { MISSOURI_VALLEY_URL, missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
-import { fetchPdfRetrying, fetchTextRetrying } from './lib/transientFetch';
+import { fetchJsonRetrying, fetchPdfRetrying, fetchTextRetrying, postJsonRetrying } from './lib/transientFetch';
 import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { classKey } from '../lib/normalize';
@@ -170,6 +179,17 @@ function usawTemplate(csv: string, wso: string): WsoRecord[] {
   return records;
 }
 
+async function newEnglandRows(token: string): Promise<unknown[]> {
+  const rows: unknown[] = [];
+  for (let page = 0; page < NEW_ENGLAND_MAX_PAGES; page++) {
+    const json = await postJsonRetrying(NEW_ENGLAND_ITEMS_QUERY_URL, newEnglandItemsQuery(rows.length), { headers: { authorization: `Bearer ${token}` } });
+    const items = newEnglandItemsPage(json);
+    rows.push(...items);
+    if (items.length < NEW_ENGLAND_PAGE_SIZE) return rows;
+  }
+  throw new Error(`New England records run past ${NEW_ENGLAND_MAX_PAGES} pages of ${NEW_ENGLAND_PAGE_SIZE}`);
+}
+
 const DMV_COLUMNS: FlatColumns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record', name: 'Name', date: 'Date', location: 'Event' };
 
 export const WSO_SOURCES: WsoSource[] = [
@@ -268,10 +288,8 @@ export const WSO_SOURCES: WsoSource[] = [
   {
     wso: 'New England',
     scrape: async () => {
-      const urls = newEnglandPdfUrls(await fetchTextRetrying('https://www.newenglandweightlifting.com/records'));
-      if (!urls.length) throw new Error('No records PDFs found on the New England records page');
-      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdfRetrying(url, PDF_TIMEOUT_MS))));
-      return everyPart('New England', pdfs.map((pages) => parseNewEngland(pages, 'New England')), (i) => urls[i] ?? '');
+      const token = newEnglandAccessToken(await fetchJsonRetrying(NEW_ENGLAND_ACCESS_TOKENS_URL));
+      return parseNewEngland(await newEnglandRows(token), 'New England');
     },
   },
   {
