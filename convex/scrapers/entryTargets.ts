@@ -1,6 +1,7 @@
 import { ENTRY_TARGETS_MAX, readAll } from '../lib/boundedRead';
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
+import { apiError } from '../lib/validation';
 
 /**
  * The Sport80 entries pages the entries cron reads (the backend's
@@ -23,6 +24,24 @@ export const add = internalMutation({
       .first();
     if (existing) await ctx.db.patch(existing._id, { label });
     else await ctx.db.insert('entry_targets', { label, url });
+  },
+});
+
+export const BUILDER_TARGETS_MAX = ENTRY_TARGETS_MAX - 100;
+
+export const addFromBuilder = internalMutation({
+  args: { label: v.string(), url: v.string() },
+  handler: async (ctx, { label, url }) => {
+    const existing = await ctx.db
+      .query('entry_targets')
+      .withIndex('by_url', (q) => q.eq('url', url))
+      .first();
+    if (existing) return;
+    const held = await ctx.db.query('entry_targets').take(BUILDER_TARGETS_MAX);
+    if (held.length >= BUILDER_TARGETS_MAX) {
+      throw apiError(429, 'MeetCal is following as many meets as it can right now; try again in a few days', { max: BUILDER_TARGETS_MAX });
+    }
+    await ctx.db.insert('entry_targets', { label, url });
   },
 });
 

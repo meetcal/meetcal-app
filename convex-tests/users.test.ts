@@ -167,6 +167,10 @@ describe('deleteUserData (#250)', () => {
       { tokenId: 't_a', userId: A, client: 'cli', createdAt: 1, expiresAt: 2 },
       { tokenId: 't_b', userId: B, client: 'cli', createdAt: 1, expiresAt: 2 },
     ],
+    schedule_drafts: [
+      { userId: A, meet: 'Open', options: {}, edits: [], updatedAt: 1 },
+      { userId: B, meet: 'Open', options: {}, edits: [], updatedAt: 1 },
+    ],
   });
   const run = handlerOf<{ userId: string }, Record<string, unknown>>(deleteUserData);
 
@@ -190,9 +194,10 @@ describe('deleteUserData (#250)', () => {
       apiTokens: 1,
       meetSubmissions: 1,
       meetSubmissionUploadUrls: 1,
+      scheduleDrafts: 1,
       more: false,
     });
-    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets', 'entitlements', 'entitlement_syncs', 'api_tokens', 'meet_submissions', 'meet_submission_upload_urls']) {
+    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets', 'entitlements', 'entitlement_syncs', 'api_tokens', 'meet_submissions', 'meet_submission_upload_urls', 'schedule_drafts']) {
       expect(store.rows(table).map((r) => r.userId)).toEqual([B]);
     }
     expect(store.rows('meet_submission_files').map((r) => r.storageId)).toEqual(['_storage:b']);
@@ -208,6 +213,7 @@ describe('deleteUserData (#250)', () => {
       apiTokens: 0,
       meetSubmissions: 0,
       meetSubmissionUploadUrls: 0,
+      scheduleDrafts: 0,
       more: false,
     });
   });
