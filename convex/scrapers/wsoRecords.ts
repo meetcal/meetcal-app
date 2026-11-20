@@ -14,6 +14,7 @@ import {
   gvizCsvByGid,
   gvizCsvFirstTab,
   resolveTabs,
+  sheetExportCsvByGid,
   sheetHtmlViewUrl,
   sheetIdOf,
   sheetTabList,
@@ -29,9 +30,18 @@ import { PAWV_TABS, parsePawvTab, pawvCsvUrl } from './parse/wso/pawv';
 import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
 import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSouth';
 import { newYorkPdfUrls, parseNewYork } from './parse/wso/newYork';
-import { newEnglandPdfUrls, parseNewEngland } from './parse/wso/newEngland';
+import {
+  NEW_ENGLAND_ACCESS_TOKENS_URL,
+  NEW_ENGLAND_ITEMS_QUERY_URL,
+  NEW_ENGLAND_MAX_PAGES,
+  NEW_ENGLAND_PAGE_SIZE,
+  newEnglandAccessToken,
+  newEnglandItemsPage,
+  newEnglandItemsQuery,
+  parseNewEngland,
+} from './parse/wso/newEngland';
 import { MISSOURI_VALLEY_URL, missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
-import { fetchPdfRetrying, fetchTextRetrying } from './lib/transientFetch';
+import { fetchJsonRetrying, fetchPdfRetrying, fetchTextRetrying, postJsonRetrying } from './lib/transientFetch';
 import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { classKey } from '../lib/normalize';
@@ -82,16 +92,12 @@ async function fetchTabList(sheetId: string): Promise<SheetTab[]> {
   return sheetTabList(await fetchSheetText(sheetHtmlViewUrl(sheetId)));
 }
 
-/**
- * The tabs' CSVs, each tab named by gid or by name and checked against the
- * sheet's visible tabs first (`resolveTabs`): a tab hidden, renamed or
- * deleted fails the source, rather than Google serving the hidden tab's
- * stale records, or its first tab in place of a deleted one. `headers` is
- * passed on to `gvizCsvByGid`; `list` is the tab list when already fetched.
- */
-async function fetchTabs(sheetId: string, refs: readonly TabRef[], { headers, list }: { headers?: number; list?: readonly SheetTab[] } = {}): Promise<string[]> {
-  const gids = resolveTabs(list ?? (await fetchTabList(sheetId)), refs);
-  return await mapLimited(gids, SHEET_CONCURRENCY, (gid) => fetchSheetText(gvizCsvByGid(sheetId, gid, headers)));
+type TabFetch = { list?: readonly SheetTab[] } & ({ export?: false; headers?: number } | { export: true; headers?: never });
+
+async function fetchTabs(sheetId: string, refs: readonly TabRef[], options: TabFetch = {}): Promise<string[]> {
+  const gids = resolveTabs(options.list ?? (await fetchTabList(sheetId)), refs);
+  const csvUrl = (gid: string) => (options.export ? sheetExportCsvByGid(sheetId, gid) : gvizCsvByGid(sheetId, gid, options.headers));
+  return await mapLimited(gids, SHEET_CONCURRENCY, (gid) => fetchSheetText(csvUrl(gid)));
 }
 
 /**
@@ -171,6 +177,17 @@ function usawTemplate(csv: string, wso: string): WsoRecord[] {
   const { records, warnings } = parseUsawTemplate(csv, wso);
   for (const warning of warnings) console.log(`wso records (${wso}): ${warning}`);
   return records;
+}
+
+async function newEnglandRows(token: string): Promise<unknown[]> {
+  const rows: unknown[] = [];
+  for (let page = 0; page < NEW_ENGLAND_MAX_PAGES; page++) {
+    const json = await postJsonRetrying(NEW_ENGLAND_ITEMS_QUERY_URL, newEnglandItemsQuery(rows.length), { headers: { authorization: `Bearer ${token}` } });
+    const items = newEnglandItemsPage(json);
+    rows.push(...items);
+    if (items.length < NEW_ENGLAND_PAGE_SIZE) return rows;
+  }
+  throw new Error(`New England records run past ${NEW_ENGLAND_MAX_PAGES} pages of ${NEW_ENGLAND_PAGE_SIZE}`);
 }
 
 const DMV_COLUMNS: FlatColumns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record', name: 'Name', date: 'Date', location: 'Event' };
@@ -271,10 +288,8 @@ export const WSO_SOURCES: WsoSource[] = [
   {
     wso: 'New England',
     scrape: async () => {
-      const urls = newEnglandPdfUrls(await fetchTextRetrying('https://www.newenglandweightlifting.com/records'));
-      if (!urls.length) throw new Error('No records PDFs found on the New England records page');
-      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdfRetrying(url, PDF_TIMEOUT_MS))));
-      return everyPart('New England', pdfs.map((pages) => parseNewEngland(pages, 'New England')), (i) => urls[i] ?? '');
+      const token = newEnglandAccessToken(await fetchJsonRetrying(NEW_ENGLAND_ACCESS_TOKENS_URL));
+      return parseNewEngland(await newEnglandRows(token), 'New England');
     },
   },
   {
@@ -288,12 +303,14 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () =>
       usawTemplate(await fetchSheetText('https://docs.google.com/spreadsheets/d/1tVJuneaIrPigqz5V9dLH9kKMbtU3sQC9/export?format=csv'), 'Minnesota-Dakotas'),
   },
-  // The "Detailed" tab (gid 1649080864) is the current set; TX and OK are
-  // the 2025 per-state tabs. Read by gid: the Python asked for the name.
+  // The "Detailed" tab (gid 1649080864) is the current set, read by gid: the
+  // Python asked for the name. It is read through `/export`, not gviz: gviz
+  // serves only the rows a filter left on the sheet shows, and in November
+  // 2026 a filter on Age Group = M50 served 16 of the 298 classes.
   {
     wso: 'Texas-Oklahoma',
     scrape: async () => {
-      const [detailed] = await fetchTabs('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', [{ gid: '1649080864' }]);
+      const [detailed] = await fetchTabs('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', [{ gid: '1649080864' }], { export: true });
       return usawTemplate(detailed ?? '', 'Texas-Oklahoma');
     },
   },

@@ -1,97 +1,104 @@
-import type { PdfLine } from '../../lib/pdf';
+import { isRecord } from '../../../lib/json';
 import { recordHolder } from '../holder';
-import { blankRecord, intOrNull, plusLast, setLift, type WsoRecord } from './common';
+import { blankRecord, plusLast, setLift, type LiftName, type WsoRecord } from './common';
 
-// New England (port of `manual_scrapers/scraper_pdf_newengland.py` and its
-// auto wrapper): every records PDF linked from the records page, a table per
-// page under a title ("16/17 Youth Men's Records"), columns Class, Lift,
-// Name, Representing, Location/Meet, Weight, Date, three rows per class.
-//
-// The Python read pdfplumber's table cells. The Weight column sits between
-// free-text columns, so here each text run (one per cell) goes to the column
-// whose header it is centred under, the class printing on the middle row.
-//
-// The holder is the Name cell less the bodyweight it ends with ("Cian
-// Whitney (29.70)"), the Date, and the Location/Meet cell (a meet name,
-// "2025 Bay State Games"); Representing is the athlete's club, not a place.
+export const NEW_ENGLAND_SITE = 'https://www.newenglandweightlifting.com';
+export const NEW_ENGLAND_ACCESS_TOKENS_URL = `${NEW_ENGLAND_SITE}/_api/v1/access-tokens`;
+export const NEW_ENGLAND_ITEMS_QUERY_URL = `${NEW_ENGLAND_SITE}/_api/cloud-data/v2/items/query`;
+export const NEW_ENGLAND_CMS_APP_ID = '8f099af5-b472-4119-abfb-029f1f372d34';
+export const NEW_ENGLAND_RECORDS_COLLECTION = 'NewEnglandWeightliftingRecords';
+export const NEW_ENGLAND_PAGE_SIZE = 200;
+export const NEW_ENGLAND_MAX_PAGES = 25;
 
-/** Every records PDF the page links, in page order. */
-export function newEnglandPdfUrls(html: string): string[] {
-  return [...new Set([...html.matchAll(/href="(https:\/\/www\.newenglandweightlifting\.com\/_files\/ugd\/[a-zA-Z0-9_/]+\.pdf)"/g)].map((m) => m[1] ?? ''))];
+export const newEnglandItemsQuery = (offset: number) => ({
+  dataCollectionId: NEW_ENGLAND_RECORDS_COLLECTION,
+  query: { paging: { limit: NEW_ENGLAND_PAGE_SIZE, offset } },
+});
+
+export function newEnglandAccessToken(json: unknown): string {
+  const apps = isRecord(json) ? json.apps : undefined;
+  const app = isRecord(apps) ? apps[NEW_ENGLAND_CMS_APP_ID] : undefined;
+  const token = isRecord(app) ? app.accessToken : undefined;
+  if (typeof token !== 'string' || !token) {
+    throw new Error(`New England access tokens have no token for the CMS app ${NEW_ENGLAND_CMS_APP_ID}`);
+  }
+  return token;
 }
 
-/** "16/17 Youth Men's Records" -> ["U17", "Men"], "35-39 Masters Women's Records" -> ["Masters 35", "Women"]. */
-export function newEnglandSection(header: string): [age: string, gender: 'Men' | 'Women'] | null {
-  const text = header.trim();
-  const gender = text.includes('Men') ? 'Men' : text.includes('Women') ? 'Women' : null;
-  if (!gender) return null;
-  if (text.includes('Open')) return ['Senior', gender];
-  if (text.includes('Junior')) return ['Junior', gender];
-  if (text.includes('Youth') || text.includes('16-17') || text.includes('16/17')) {
-    if (['16-17', '16/17', 'U17'].some((s) => text.includes(s))) return ['U17', gender];
-    if (['14-15', '14/15', 'U15'].some((s) => text.includes(s))) return ['U15', gender];
-    if (text.includes('13')) return ['U13', gender];
-    if (text.includes('11U') || text.includes('U11')) return ['U11', gender];
-    return null;
-  }
-  if (text.includes('Masters')) {
-    const range = /(\d+)\s*-\s*\d+/.exec(text);
-    if (range) return [`Masters ${range[1]}`, gender];
-  }
-  return null;
+export function newEnglandItemsPage(json: unknown): unknown[] {
+  const items = isRecord(json) ? json.dataItems : undefined;
+  if (!Array.isArray(items)) throw new Error(`New England ${NEW_ENGLAND_RECORDS_COLLECTION} query answered without dataItems`);
+  return items.map((item: unknown, i) => {
+    if (!isRecord(item) || !isRecord(item.data)) throw new Error(`New England ${NEW_ENGLAND_RECORDS_COLLECTION} item ${i} has no data`);
+    return item.data;
+  });
 }
 
-const COLUMNS = ['Class', 'Lift', 'Name', 'Representing', 'Location/Meet', 'Weight', 'Date'] as const;
-type Column = (typeof COLUMNS)[number];
+const YOUTH_AGES: Readonly<Record<string, string>> = { '11U': 'U11', '12/13': 'U13', '14/15': 'U15', '16/17': 'U17' };
 
-const centre = (run: { x: number; end: number }) => (run.x + run.end) / 2;
+export function newEnglandAgeCategory(division: string, age: string): string | null {
+  if (division === 'Open' && age === '') return 'Senior';
+  if (division === 'Junior' && age === '') return 'Junior';
+  if (division === 'Youth') return YOUTH_AGES[age] ?? null;
+  const masters = division === 'Masters' ? /^(\d+)-(\d+)$/.exec(age) : null;
+  return masters ? `Masters ${masters[1]}` : null;
+}
 
-/** "Cian Whitney (29.70)" -> "Cian Whitney": a trailing parenthesised number is the lifter's bodyweight. */
-const athlete = (name: string) => name.replace(/\s*\(\s*\d+(?:\.\d+)?\s*(?:kg)?\s*\)$/i, '');
+const LIFTS: Readonly<Record<string, LiftName>> = { Snatch: 'snatch', 'Clean & Jerk': 'cj', Total: 'total' };
+const SEXES = new Set(['Men', 'Women']);
 
-/** One PDF's records, page by page, in the order the Python wrote them. */
-export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: string): WsoRecord[] {
-  const records: WsoRecord[] = [];
-  for (const page of pages) {
-    let section: [string, 'Men' | 'Women'] | null = null;
-    let columns: { name: Column; centre: number }[] | null = null;
-    let block: WsoRecord | null = null;
-    const blocks: WsoRecord[] = [];
-    for (const line of page) {
-      if (line.text.includes('Records')) {
-        section = newEnglandSection(line.text) ?? section;
-        continue;
-      }
-      if (line.runs[0]?.text.trim() === 'Class') {
-        columns = line.runs.flatMap((run) => {
-          const name = COLUMNS.find((column) => column === run.text.trim());
-          return name === undefined ? [] : [{ name, centre: centre(run) }];
-        });
-        continue;
-      }
-      if (!columns?.length) continue;
-      const cells: Partial<Record<Column, string>> = {};
-      for (const run of line.runs) {
-        const nearest = columns.reduce((best, column) => (Math.abs(column.centre - centre(run)) < Math.abs(best.centre - centre(run)) ? column : best));
-        cells[nearest.name] = [cells[nearest.name], run.text.trim()].filter(Boolean).join(' ');
-      }
-      const lift = cells.Lift ?? '';
-      const classCell = cells.Class && /^\d+$/.test(cells.Class.replaceAll('+', '').replaceAll(' ', '')) ? cells.Class : null;
-      if (!/Snatch|C&J|Clean|Total/.test(lift) && !classCell) continue;
-      if (!block || lift.includes('Snatch')) {
-        block = blankRecord(wso, section?.[0] ?? '', section?.[1] ?? 'Men');
-        blocks.push(block);
-      }
-      if (classCell) block.weightClass = plusLast(classCell);
-      const name = cells.Name ?? '';
-      const weight = cells.Weight ?? '';
-      // "Open" is a class with no record yet; 0 or a non-number is none either.
-      const parsed = name.toUpperCase() === 'OPEN' || !weight ? null : intOrNull(weight);
-      const value = parsed ? parsed : null;
-      const field = lift.includes('Snatch') ? 'snatch' : lift.includes('C&J') || lift.includes('Clean') ? 'cj' : lift.includes('Total') ? 'total' : null;
-      if (field) setLift(block, field, value, recordHolder(value, athlete(name), cells.Date, cells['Location/Meet']));
-    }
-    records.push(...blocks.filter((b) => b.weightClass && b.ageCategory));
+const text = (row: Record<string, unknown>, field: string) => {
+  const value = row[field];
+  return typeof value === 'string' ? value.trim() : '';
+};
+
+function kilos(row: Record<string, unknown>, describe: () => string): number {
+  const kg = row.kg;
+  if (typeof kg !== 'number' || !Number.isInteger(kg) || kg <= 0) throw new Error(`New England ${describe()}: kg ${JSON.stringify(kg)} is not a whole positive number`);
+  return kg;
+}
+
+type Lift = { lift: LiftName; value: number | null; holder: ReturnType<typeof recordHolder> };
+
+function liftOf(row: Record<string, unknown>, describe: () => string): Lift {
+  const lift = LIFTS[text(row, 'lift')];
+  if (!lift) throw new Error(`New England ${describe()}: unknown lift ${JSON.stringify(row.lift)}`);
+  const status = text(row, 'status');
+  if (status === 'Open') return { lift, value: null, holder: undefined };
+  if (status === 'Standard') {
+    const value = kilos(row, describe);
+    return { lift, value, holder: recordHolder(value, 'Standard') };
   }
-  return records;
+  if (status === 'Record') {
+    const value = kilos(row, describe);
+    const athlete = text(row, 'athlete');
+    if (!athlete) throw new Error(`New England ${describe()}: a record with no athlete`);
+    return { lift, value, holder: recordHolder(value, athlete, text(row, 'recordDate'), text(row, 'meet')) };
+  }
+  throw new Error(`New England ${describe()}: unknown status ${JSON.stringify(row.status)}`);
+}
+
+export function parseNewEngland(rows: readonly unknown[], wso: string): WsoRecord[] {
+  const classes = new Map<string, { record: WsoRecord; lifts: Set<LiftName> }>();
+  rows.forEach((raw, i) => {
+    if (!isRecord(raw)) throw new Error(`New England row ${i} is not an object`);
+    const describe = () => text(raw, 'title') || `row ${i}`;
+    const age = newEnglandAgeCategory(text(raw, 'division'), text(raw, 'age'));
+    if (!age) throw new Error(`New England ${describe()}: unknown division ${JSON.stringify(raw.division)} and age ${JSON.stringify(raw.age)}`);
+    const sex = text(raw, 'sex');
+    if (!SEXES.has(sex)) throw new Error(`New England ${describe()}: unknown sex ${JSON.stringify(raw.sex)}`);
+    const weightClass = plusLast(text(raw, 'weightClass'));
+    if (!/^\d+\+?$/.test(weightClass)) throw new Error(`New England ${describe()}: unreadable weight class ${JSON.stringify(raw.weightClass)}`);
+    const { lift, value, holder } = liftOf(raw, describe);
+    const key = `${age}|${sex}|${weightClass}`;
+    const entry = classes.get(key) ?? { record: blankRecord(wso, age, sex, weightClass), lifts: new Set<LiftName>() };
+    classes.set(key, entry);
+    if (entry.lifts.has(lift)) throw new Error(`New England ${describe()}: listed twice`);
+    entry.lifts.add(lift);
+    setLift(entry.record, lift, value, holder);
+  });
+  const incomplete = [...classes].filter(([, { lifts }]) => lifts.size !== Object.keys(LIFTS).length).map(([key]) => key);
+  if (incomplete.length) throw new Error(`New England classes missing a lift: ${incomplete.join(', ')}`);
+  if (!classes.size) throw new Error(`New England ${NEW_ENGLAND_RECORDS_COLLECTION} parsed 0 records`);
+  return [...classes.values()].map(({ record }) => record);
 }

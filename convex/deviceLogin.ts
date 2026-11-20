@@ -3,6 +3,7 @@ import { internal } from './_generated/api';
 import { action, internalMutation, mutation, query, type QueryCtx } from './_generated/server';
 import { isMeetCalToken } from './lib/access';
 import { apiError } from './lib/validation';
+import { sha256Hex } from './lib/webhookSignature';
 import { recordTokenEvictingTheOldest, signApiToken, tokenRow, tokensConfigured, type IssuedToken } from './apiTokens';
 
 /**
@@ -59,11 +60,6 @@ export function userCodeFrom(bytes: Uint8Array): string | null {
     if (code.length === USER_CODE_LENGTH) return code;
   }
   return null;
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function randomHex(bytes: number): string {
