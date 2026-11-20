@@ -1,5 +1,5 @@
 
-import { fetchPdf, fetchText, retryable, withRetries, type RetryPolicy } from './http';
+import { fetchJson, fetchPdf, fetchText, postJson, retryable, withRetries, type RetryPolicy } from './http';
 import { errorMessage } from '../../lib/errors';
 
 /**
@@ -29,4 +29,12 @@ export async function fetchTextRetrying(url: string, timeoutMs?: number): Promis
 /** A PDF's bytes, retried on a transient failure (`TRANSIENT_RETRY`). */
 export async function fetchPdfRetrying(url: string, timeoutMs?: number): Promise<Uint8Array> {
   return await withRetries(() => fetchPdf(url, timeoutMs), TRANSIENT_RETRY, gaveUp(url));
+}
+
+export async function fetchJsonRetrying(url: string, options?: { timeoutMs?: number; headers?: Record<string, string> }): Promise<unknown> {
+  return await withRetries(() => fetchJson(url, options), TRANSIENT_RETRY, gaveUp(url));
+}
+
+export async function postJsonRetrying(url: string, body: unknown, options?: { timeoutMs?: number; headers?: Record<string, string> }): Promise<unknown> {
+  return await withRetries(() => postJson(url, body, options), TRANSIENT_RETRY, gaveUp(url, 'POST'));
 }
