@@ -1,4 +1,4 @@
-import { fetchPdf, fetchText, HttpStatusError } from '../../convex/scrapers/lib/http';
+import { fetchJson, fetchPdf, fetchText, HttpStatusError, postJson } from '../../convex/scrapers/lib/http';
 import { WSO_SOURCES } from '../../convex/scrapers/wsoRecords';
 
 // The WSOs read from their own sites, with the fetches and parsers stubbed:
@@ -7,6 +7,8 @@ jest.mock('../../convex/scrapers/lib/http', () => ({
   ...jest.requireActual('../../convex/scrapers/lib/http'),
   fetchText: jest.fn(),
   fetchPdf: jest.fn(),
+  fetchJson: jest.fn(),
+  postJson: jest.fn(),
 }));
 jest.mock('../../convex/scrapers/lib/pdf', () => ({
   pdfLines: jest.fn(async () => [['line']]),
@@ -26,8 +28,8 @@ jest.mock('../../convex/scrapers/parse/wso/newYork', () => ({
   parseNewYork: (_: unknown, wso: string) => [record(wso)],
 }));
 jest.mock('../../convex/scrapers/parse/wso/newEngland', () => ({
-  newEnglandPdfUrls: () => ['https://www.newenglandweightlifting.com/a.pdf'],
-  parseNewEngland: (_: unknown, wso: string) => [record(wso)],
+  ...jest.requireActual('../../convex/scrapers/parse/wso/newEngland'),
+  parseNewEngland: (rows: unknown[], wso: string) => rows.map(() => record(wso)),
 }));
 jest.mock('../../convex/scrapers/parse/wso/missouriValley', () => ({
   ...jest.requireActual('../../convex/scrapers/parse/wso/missouriValley'),
@@ -37,6 +39,8 @@ jest.mock('../../convex/scrapers/parse/wso/missouriValley', () => ({
 
 const textMock = jest.mocked(fetchText);
 const pdfMock = jest.mocked(fetchPdf);
+const jsonMock = jest.mocked(fetchJson);
+const postMock = jest.mocked(postJson);
 const reset = () => new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) });
 const timeout = () => Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
 const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
@@ -58,7 +62,6 @@ const PAGES = [
   ['Illinois', 'https://www.illinoisweightlifting.com/', 1],
   ['Mountain South', 'https://mountainsouth.org/records/', 2],
   ['New York', 'https://www.nywso.com/state-records', 1],
-  ['New England', 'https://www.newenglandweightlifting.com/records', 1],
 ] as const;
 
 describe('WSO site sources retry transient fetch failures', () => {
@@ -85,8 +88,8 @@ describe('WSO site sources retry transient fetch failures', () => {
     expect(pdfMock).toHaveBeenCalledTimes(pdfs + 2);
   });
 
-  it('keeps the 60-second PDF timeout for Mountain South, New York and New England', async () => {
-    for (const wso of ['Mountain South', 'New York', 'New England']) await scrape(wso);
+  it('keeps the 60-second PDF timeout for Mountain South and New York', async () => {
+    for (const wso of ['Mountain South', 'New York']) await scrape(wso);
     expect(pdfMock.mock.calls.every(([, timeoutMs]) => timeoutMs === 60_000)).toBe(true);
   });
 
@@ -122,5 +125,83 @@ describe('WSO site sources retry transient fetch failures', () => {
     const result = await scrape('Mountain South');
     expect(result).toEqual({ error: expect.objectContaining({ message: 'GET https://mountainsouth.org/b.pdf failed after 3 attempt(s): fetch failed (ECONNRESET: read ECONNRESET)' }) });
     expect(pdfMock.mock.calls.filter(([url]) => url.endsWith('b.pdf'))).toHaveLength(3);
+  });
+});
+
+describe('New England reads its records collection, retrying transient failures', () => {
+  const tokensUrl = 'https://www.newenglandweightlifting.com/_api/v1/access-tokens';
+  const queryUrl = 'https://www.newenglandweightlifting.com/_api/cloud-data/v2/items/query';
+  const tokens = { apps: { '8f099af5-b472-4119-abfb-029f1f372d34': { accessToken: 'visitor-token' } } };
+  const page = (size: number) => ({ dataItems: Array.from({ length: size }, () => ({ data: {} })) });
+
+  beforeEach(() => {
+    textMock.mockReset();
+    pdfMock.mockReset();
+    jsonMock.mockReset().mockResolvedValue(tokens);
+    postMock.mockReset().mockResolvedValueOnce(page(200)).mockResolvedValueOnce(page(200)).mockResolvedValueOnce(page(7));
+    jest.useFakeTimers();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('pages the collection with a fresh visitor token until a short page, fetching no page or PDF', async () => {
+    const result = await scrape('New England');
+    expect(result).toEqual({ value: expect.any(Array) });
+    expect((result as { value: unknown[] }).value).toHaveLength(407);
+    expect(jsonMock).toHaveBeenCalledWith(tokensUrl, undefined);
+    expect(postMock.mock.calls.map(([url, body, options]) => [url, body, options])).toEqual(
+      [0, 200, 400].map((offset) => [
+        queryUrl,
+        { dataCollectionId: 'NewEnglandWeightliftingRecords', query: { paging: { limit: 200, offset } } },
+        { headers: { authorization: 'Bearer visitor-token' } },
+      ]),
+    );
+    expect(textMock).not.toHaveBeenCalled();
+    expect(pdfMock).not.toHaveBeenCalled();
+  });
+
+  it('retries the access tokens after a connection reset and a timeout', async () => {
+    jsonMock.mockRejectedValueOnce(reset()).mockRejectedValueOnce(timeout());
+    const result = await scrape('New England');
+    expect(result).not.toHaveProperty('error');
+    expect(jsonMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries each collection page after a connection reset and a timeout', async () => {
+    postMock.mockReset()
+      .mockRejectedValueOnce(reset()).mockResolvedValueOnce(page(200))
+      .mockRejectedValueOnce(timeout()).mockResolvedValueOnce(page(3));
+    const result = await scrape('New England');
+    expect((result as { value: unknown[] }).value).toHaveLength(203);
+    expect(postMock).toHaveBeenCalledTimes(4);
+    expect(postMock.mock.calls.map(([, body]) => (body as { query: { paging: { offset: number } } }).query.paging.offset)).toEqual([0, 0, 200, 200]);
+  });
+
+  it('fails at once when the access tokens answer 403', async () => {
+    jsonMock.mockReset().mockRejectedValue(new HttpStatusError(tokensUrl, 403));
+    const result = await scrape('New England');
+    expect(result).toEqual({ error: expect.objectContaining({ message: `GET ${tokensUrl} failed after 1 attempt(s): GET ${tokensUrl} failed with 403` }) });
+    expect(jsonMock).toHaveBeenCalledTimes(1);
+    expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it('fails at once when a collection page answers 401', async () => {
+    postMock.mockReset().mockRejectedValue(new HttpStatusError(queryUrl, 401, 'POST'));
+    const result = await scrape('New England');
+    expect(result).toEqual({ error: expect.objectContaining({ message: `POST ${queryUrl} failed after 1 attempt(s): POST ${queryUrl} failed with 401` }) });
+    expect(postMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails when the CMS app has no token', async () => {
+    jsonMock.mockReset().mockResolvedValue({ apps: {} });
+    const result = await scrape('New England');
+    expect(result).toEqual({ error: expect.objectContaining({ message: expect.stringContaining('no token for the CMS app') }) });
+    expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it('gives up past its page limit instead of looping forever', async () => {
+    postMock.mockReset().mockResolvedValue(page(200));
+    const result = await scrape('New England');
+    expect(result).toEqual({ error: expect.objectContaining({ message: 'New England records run past 25 pages of 200' }) });
+    expect(postMock).toHaveBeenCalledTimes(25);
   });
 });

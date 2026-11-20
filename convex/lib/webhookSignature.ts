@@ -1,3 +1,5 @@
+import { sha256Hex } from './tokens';
+
 /**
  * Verifies a Svix-signed webhook, as Clerk sends them
  * (https://docs.svix.com/receiving/verifying-payloads/how-manual): the
@@ -37,6 +39,11 @@ export function constantTimeEqual(a: string, b: string): boolean {
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
+}
+
+export async function secretsMatch(given: string, expected: string): Promise<boolean> {
+  const [givenDigest, expectedDigest] = await Promise.all([sha256Hex(given), sha256Hex(expected)]);
+  return constantTimeEqual(givenDigest, expectedDigest);
 }
 
 export async function webhookSignature(secret: string, id: string, timestamp: string, body: string): Promise<string> {
