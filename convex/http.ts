@@ -4,6 +4,7 @@ import { internal } from './_generated/api';
 import { httpAction } from './_generated/server';
 import { jwks } from './apiTokens';
 import { revenuecatWebhook } from './entitlements';
+import { reviewDecisionHttp, reviewPageHttp } from './schedulePublications';
 import { UNREADABLE_SECRET, verifyWebhook } from './lib/webhookSignature';
 
 const http = httpRouter();
@@ -47,5 +48,7 @@ export const clerkWebhook = httpAction(async (ctx, request) => {
 http.route({ path: '/clerk/webhook', method: 'POST', handler: clerkWebhook });
 http.route({ path: '/revenuecat/webhook', method: 'POST', handler: revenuecatWebhook });
 http.route({ path: '/.well-known/jwks.json', method: 'GET', handler: jwks });
+http.route({ path: '/schedule-builder/review', method: 'GET', handler: reviewPageHttp });
+http.route({ path: '/schedule-builder/review', method: 'POST', handler: reviewDecisionHttp });
 
 export default http;

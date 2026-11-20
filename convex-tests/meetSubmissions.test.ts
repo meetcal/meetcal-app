@@ -9,11 +9,10 @@ import {
   MAX_MEET_SUBMISSION_UPLOAD_URLS_PER_DAY,
   MAX_MEET_SUBMISSIONS_PER_DAY,
   MEET_SUBMISSION_CLEANUP_BATCH,
-  MEET_SUBMISSION_EMAIL_RETRY_DELAYS_MS,
   MEET_SUBMISSION_RETENTION_MS,
   renderMeetSubmissionEmail,
 } from '../convex/lib/meetSubmissions';
-import { sendEmail } from '../convex/lib/email';
+import { EMAIL_RETRY_DELAYS_MS, sendEmail } from '../convex/lib/email';
 import { fakeMutationCtx, handlerOf, type StoredFile } from './fakeDb';
 import { itemAt } from '../convex/lib/json';
 
@@ -250,14 +249,14 @@ describe('the email', () => {
     withRecipient('owner@example.com', async () => {
       sendEmailMock.mockRejectedValue(new Error('OneSignal email failed (500)'));
       jest.spyOn(console, 'warn').mockImplementation(() => {});
-      for (const [attempt, delay] of MEET_SUBMISSION_EMAIL_RETRY_DELAYS_MS.entries()) {
+      for (const [attempt, delay] of EMAIL_RETRY_DELAYS_MS.entries()) {
         const { ctx, scheduled, mutations } = actionCtx(content);
         await run(ctx, { submissionId: 's1', attempt });
         expect(scheduled).toEqual([{ name: 'meetSubmissions:email', delayMs: delay, args: { submissionId: 's1', attempt: attempt + 1 } }]);
         expect(mutations).toEqual([]);
       }
       const { ctx } = actionCtx(content);
-      await expect(run(ctx, { submissionId: 's1', attempt: MEET_SUBMISSION_EMAIL_RETRY_DELAYS_MS.length })).rejects.toThrow('OneSignal email failed');
+      await expect(run(ctx, { submissionId: 's1', attempt: EMAIL_RETRY_DELAYS_MS.length })).rejects.toThrow('OneSignal email failed');
     }));
 
   it('sends nothing without a recipient, or for a submission emailed or deleted', async () => {

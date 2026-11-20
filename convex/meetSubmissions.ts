@@ -3,8 +3,8 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalAction, internalMutation, internalQuery, mutation, type MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
-import { sendEmail } from './lib/email';
-import { checkMeetSubmission, DAY_MS, deleteMeetSubmission, FILE_ALREADY_SUBMITTED_CODE, MAX_MEET_SUBMISSION_FILE_BYTES, MAX_MEET_SUBMISSION_FILES, MAX_MEET_SUBMISSION_UPLOAD_URLS_PER_DAY, MAX_MEET_SUBMISSIONS_PER_DAY, MEET_SUBMISSION_CLEANUP_BATCH, MEET_SUBMISSION_EMAIL_RETRY_DELAYS_MS, MEET_SUBMISSION_RETENTION_MS, type MeetSubmissionEmailContent, ORPHAN_UPLOAD_MS, renderMeetSubmissionEmail } from './lib/meetSubmissions';
+import { EMAIL_RETRY_DELAYS_MS, sendEmail } from './lib/email';
+import { checkMeetSubmission, DAY_MS, deleteMeetSubmission, FILE_ALREADY_SUBMITTED_CODE, MAX_MEET_SUBMISSION_FILE_BYTES, MAX_MEET_SUBMISSION_FILES, MAX_MEET_SUBMISSION_UPLOAD_URLS_PER_DAY, MAX_MEET_SUBMISSIONS_PER_DAY, MEET_SUBMISSION_CLEANUP_BATCH, MEET_SUBMISSION_RETENTION_MS, type MeetSubmissionEmailContent, ORPHAN_UPLOAD_MS, renderMeetSubmissionEmail } from './lib/meetSubmissions';
 import { requireUserId } from './lib/access';
 import { apiError } from './lib/validation';
 
@@ -139,15 +139,6 @@ export const markEmailed = internalMutation({
   },
 });
 
-/**
- * Emails a submission to `MEET_SUBMISSION_EMAIL`, Reply-To the submitter.
- * A failed send is tried again after each of
- * MEET_SUBMISSION_EMAIL_RETRY_DELAYS_MS; the last failure is thrown, so it
- * shows in the logs and Sentry. Without `MEET_SUBMISSION_EMAIL` it is only
- * logged. Sends nothing for a submission already emailed or deleted.
- *
- *   npx convex run meetSubmissions:email '{"submissionId":"…","attempt":0}'
- */
 export const email = internalAction({
   args: { submissionId: v.id('meet_submissions'), attempt: v.number() },
   handler: async (ctx, { submissionId, attempt }) => {
@@ -162,7 +153,7 @@ export const email = internalAction({
     try {
       await sendEmail(to, subject, html, { replyTo: content.contactEmail });
     } catch (error) {
-      const delay = MEET_SUBMISSION_EMAIL_RETRY_DELAYS_MS[attempt];
+      const delay = EMAIL_RETRY_DELAYS_MS[attempt];
       if (delay === undefined) throw error;
       console.warn(`meet submission ${submissionId}: email failed (attempt ${attempt + 1}), retrying in ${delay / 1000}s:`, error);
       await ctx.scheduler.runAfter(delay, internal.meetSubmissions.email, { submissionId, attempt: attempt + 1 });

@@ -497,6 +497,8 @@ export const deleteUserData = internalMutation({
       ctx.db.query('api_tokens').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('meet_submission_upload_urls').withIndex('by_userId_and_createdAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('schedule_drafts').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('schedule_publications').withIndex('by_userId_and_createdAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('meet_organizers').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
     ]);
     for (const rows of batches) for (const row of rows) await ctx.db.delete(row._id);
     const submissions = await ctx.db
@@ -506,7 +508,7 @@ export const deleteUserData = internalMutation({
     for (const submission of submissions) await deleteMeetSubmission(ctx, submission._id);
     const more = batches.some((rows) => rows.length === USER_DATA_DELETE_BATCH) || submissions.length === MEET_SUBMISSION_DELETE_BATCH;
     if (more) await ctx.scheduler.runAfter(0, internal.users.deleteUserData, { userId });
-    const [sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens, meetSubmissionUploadUrls, scheduleDrafts] = batches.map((rows) => rows.length);
+    const [sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens, meetSubmissionUploadUrls, scheduleDrafts, schedulePublications, meetOrganizers] = batches.map((rows) => rows.length);
     return {
       sessions,
       preferences,
@@ -518,6 +520,8 @@ export const deleteUserData = internalMutation({
       meetSubmissions: submissions.length,
       meetSubmissionUploadUrls,
       scheduleDrafts,
+      schedulePublications,
+      meetOrganizers,
       more,
     };
   },

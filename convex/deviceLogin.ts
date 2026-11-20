@@ -1,9 +1,9 @@
 import { v } from 'convex/values';
+import { randomHex, sha256Hex } from './lib/tokens';
 import { internal } from './_generated/api';
 import { action, internalMutation, mutation, query, type QueryCtx } from './_generated/server';
 import { isMeetCalToken } from './lib/access';
 import { apiError } from './lib/validation';
-import { sha256Hex } from './lib/webhookSignature';
 import { recordTokenEvictingTheOldest, signApiToken, tokenRow, tokensConfigured, type IssuedToken } from './apiTokens';
 
 /**
@@ -60,10 +60,6 @@ export function userCodeFrom(bytes: Uint8Array): string | null {
     if (code.length === USER_CODE_LENGTH) return code;
   }
   return null;
-}
-
-function randomHex(bytes: number): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /** The Clerk user, refusing anonymous callers and MeetCal-issued tokens (401). */

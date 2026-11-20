@@ -59,6 +59,7 @@ export const JOBS: Record<string, Job> = {
   // Meet submissions past 30 days, with their files, and uploads that never
   // became a submission (`meetSubmissions.ts`).
   'meet-submissions-cleanup': { schedule: '20 9 * * *', run: { kind: 'mutation', fn: internal.meetSubmissions.cleanup } },
+  'schedule-publications-expire': { schedule: '25 9 * * *', run: { kind: 'mutation', fn: internal.schedulePublications.expire } },
 };
 
 /**

@@ -1,7 +1,7 @@
 import { typedKeys } from '../lib/json';
 import { MEET_ROSTER_MAX, MEET_SESSIONS_MAX, readAll } from '../lib/boundedRead';
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { normalizeGender } from '../lib/normalize';
 import { hasNoMemberId, ONE_OFF_MEMBER_ID, placeholderMemberId } from '../lib/memberIds';
@@ -10,6 +10,9 @@ import { exceedsShrink } from '../lib/shrinkGuard';
 import { halfSession, hasSession, isJunkEntrant, isStoredMemberId, rosterProblems } from '../lib/roster';
 import { athletesFields, sessionScheduleFields } from '../schema';
 import { recordWrite } from './hints';
+import { apiError } from '../lib/validation';
+import type { PublishedSchedule } from '../lib/schedulePublishing';
+import { athleteKey } from '../lib/scheduleBuilder';
 
 /**
  * An empty start list or schedule is a failed load, not a meet without
@@ -311,3 +314,42 @@ export const upsertEntryAthletes = internalMutation({
     return counts;
   },
 });
+
+export async function writeBuiltSchedule(ctx: MutationCtx, meet: string, published: PublishedSchedule): Promise<{ sessions: number; placed: number; cleared: number }> {
+  const roster = await readAll(
+    ctx.db.query('athletes').withIndex('by_meet', (q) => q.eq('meet', meet)),
+    MEET_ROSTER_MAX,
+    'athletes of one meet',
+  );
+  const rowsByKey = new Map<string, Doc<'athletes'>[]>();
+  for (const row of roster) rowsByKey.set(athleteKey(row), [...(rowsByKey.get(athleteKey(row)) ?? []), row]);
+  const placed = new Map<string, { sessionNumber: number; platform: string }>();
+  for (const placement of published.placements) {
+    const row = rowsByKey.get(athleteKey(placement))?.shift();
+    if (!row) throw apiError(409, `the entries changed since this schedule was built (${placement.name} is no longer entered); build it again`);
+    placed.set(row._id, { sessionNumber: placement.sessionNumber, platform: placement.platform });
+  }
+  let cleared = 0;
+  for (const row of roster) {
+    const place = placed.get(row._id);
+    if (place) {
+      if (row.sessionNumber !== place.sessionNumber || row.sessionPlatform !== place.platform) await ctx.db.patch(row._id, { sessionNumber: place.sessionNumber, sessionPlatform: place.platform });
+    } else if (hasSession(row)) {
+      await ctx.db.patch(row._id, { sessionNumber: undefined, sessionPlatform: undefined });
+      cleared++;
+    }
+  }
+  const existing = await readAll(
+    ctx.db.query('session_schedule').withIndex('by_meet', (q) => q.eq('meet', meet)),
+    MEET_SESSIONS_MAX,
+    'sessions of one meet',
+  );
+  for (const row of existing) await ctx.db.delete(row._id);
+  for (const row of published.rows) await ctx.db.insert('session_schedule', { ...row, meet });
+  await recordWrite(ctx, 'athletes', [
+    { kind: 'meet', key: meet },
+    { kind: 'table', key: 'athletes' },
+  ]);
+  await recordWrite(ctx, 'session_schedule', [{ kind: 'meet', key: meet }]);
+  return { sessions: new Set(published.rows.map((r) => r.sessionId)).size, placed: placed.size, cleared };
+}
